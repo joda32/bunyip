@@ -71,7 +71,10 @@ func BenchmarkQueryLargeDB(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer store.Close()
-	e := New(store)
+	e, err := New(context.Background(), store)
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	cases := []struct{ name, cpe string }{
 		{"typical_product", "cpe:/a:vendor42:product42:2.5"},

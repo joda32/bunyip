@@ -1,9 +1,10 @@
-// Package matcher correlates a supplied software identity (currently an
-// exact CPE) with candidate vulnerabilities in the local database.
+// Package matcher correlates software identities with candidate
+// vulnerabilities in the local database.
 //
 // The pipeline is:
 //
-//	supplied CPE -> candidate rules (indexed by part/vendor/product)
+//	observed CPE -> candidate identities (observed + curated aliases)
+//	             -> candidate rules per identity (indexed by part/vendor/product)
 //	             -> per-rule evaluation (attributes + version range)
 //	             -> per-CVE aggregation
 //	             -> enrichment (CVE details, KEV, exploit evidence)
@@ -24,18 +25,19 @@ import (
 
 	"offline-vulndb/internal/cpe"
 	"offline-vulndb/internal/database"
+	"offline-vulndb/internal/identity"
 	"offline-vulndb/internal/version"
 )
 
-// Confidence classifies how certain the software identity is.
-type Confidence string
+// Confidence is the identity confidence attached to results.
+type Confidence = identity.Confidence
 
 const (
-	Exact   Confidence = "EXACT"   // exact CPE with a concrete version was supplied
-	High    Confidence = "HIGH"    // deterministic product/version mapping (future)
-	Medium  Confidence = "MEDIUM"  // alias/banner mapping with strong evidence (future)
-	Low     Confidence = "LOW"     // product only, or ambiguous
-	Unknown Confidence = "UNKNOWN" // insufficient evidence
+	Exact   = identity.Exact
+	High    = identity.High
+	Medium  = identity.Medium
+	Low     = identity.Low
+	Unknown = identity.Unknown
 )
 
 // Applicability says whether a matched CVE depends on unevaluated conditions.
@@ -61,13 +63,18 @@ const coverageWarning = "NVD provides product (CPE) applicability data for only 
 
 // Engine runs queries against an open database.
 type Engine struct {
-	Store      *database.Store
-	Comparator version.Comparator
+	Store    *database.Store
+	Resolver *identity.Resolver
 }
 
-// New returns an Engine using the generic version comparator.
-func New(store *database.Store) *Engine {
-	return &Engine{Store: store, Comparator: version.Generic{}}
+// New returns an Engine using the aliases stored in the database. Version
+// comparators are chosen per product (see version.For).
+func New(ctx context.Context, store *database.Store) (*Engine, error) {
+	aliases, err := store.Aliases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &Engine{Store: store, Resolver: identity.NewResolver(aliases)}, nil
 }
 
 // Result is the full outcome of one query.
@@ -80,12 +87,23 @@ type Result struct {
 	Version            string           `json:"version"`
 	IdentityConfidence Confidence       `json:"identity_confidence"`
 	Comparator         string           `json:"comparator"`
+	Identities         []IdentityResult `json:"identities"`
 	CandidateRules     int              `json:"candidate_rules"`
 	MatchCount         int              `json:"match_count"`
 	UnknownCount       int              `json:"unknown_count"`
 	Vulnerabilities    []Vulnerability  `json:"vulnerabilities"`
 	Warnings           []string         `json:"warnings"`
 	Evaluations        []RuleEvaluation `json:"-"` // every rule, for --debug
+}
+
+// IdentityResult describes one candidate identity that was looked up.
+type IdentityResult struct {
+	CPE            string     `json:"cpe"`
+	Confidence     Confidence `json:"confidence"`
+	Source         string     `json:"source"`
+	Reason         string     `json:"reason"`
+	Comparator     string     `json:"comparator"`
+	CandidateRules int        `json:"candidate_rules"`
 }
 
 // Vulnerability is one candidate CVE with enrichment and explanation.
@@ -107,6 +125,7 @@ type Vulnerability struct {
 	KnownRansomware bool           `json:"known_ransomware"`
 	KEVDateAdded    string         `json:"kev_date_added,omitempty"`
 	MatchConfidence Confidence     `json:"match_confidence"`
+	MatchedCPE      string         `json:"matched_cpe"`
 	VersionStatus   version.Status `json:"version_status"`
 	Applicability   Applicability  `json:"applicability"`
 	MatchReason     string         `json:"match_reason"`
@@ -130,7 +149,8 @@ type MatchedRule struct {
 	Reason   string         `json:"reason"`
 }
 
-// QueryCPE runs a query for a supplied CPE string (2.2 or 2.3 binding).
+// QueryCPE runs a query for a supplied CPE string (2.2 or 2.3 binding),
+// including curated alias identities for it.
 func (e *Engine) QueryCPE(ctx context.Context, input string) (*Result, error) {
 	c, err := cpe.Parse(input)
 	if err != nil {
@@ -139,27 +159,52 @@ func (e *Engine) QueryCPE(ctx context.Context, input string) (*Result, error) {
 	if !cpe.IsSpecific(c.Vendor) || !cpe.IsSpecific(c.Product) {
 		return nil, fmt.Errorf("%w: CPE %s must name a specific vendor and product", ErrInsufficientIdentity, c)
 	}
-
-	res := &Result{
-		Input:              input,
-		NormalizedCPE:      c.String(),
-		Part:               c.Part,
-		Vendor:             cpe.Unescape(c.Vendor),
-		Product:            cpe.Unescape(c.Product),
-		Version:            cpe.Unescape(c.Version),
-		IdentityConfidence: identityConfidence(c),
-		Comparator:         e.Comparator.Name(),
-		Vulnerabilities:    []Vulnerability{},
-	}
-
-	rules, err := e.Store.CandidateRules(ctx, c.Part, c.Vendor, c.Product)
+	res, err := e.Query(ctx, e.Resolver.ResolveCPE(c, "supplied"))
 	if err != nil {
 		return nil, err
 	}
-	res.CandidateRules = len(rules)
-	for _, r := range rules {
-		res.Evaluations = append(res.Evaluations, EvaluateRule(e.Comparator, c, r))
+	res.Input = input
+	return res, nil
+}
+
+// Query looks up a list of candidate identities. The first candidate is the
+// observed identity and populates the top-level identity fields; results
+// from all candidates are merged per CVE.
+func (e *Engine) Query(ctx context.Context, cands []identity.Candidate) (*Result, error) {
+	if len(cands) == 0 {
+		return nil, fmt.Errorf("%w: no candidate identities", ErrInsufficientIdentity)
 	}
+	first := cands[0].CPE
+	res := &Result{
+		Input:              first.String(),
+		NormalizedCPE:      first.String(),
+		Part:               first.Part,
+		Vendor:             cpe.Unescape(first.Vendor),
+		Product:            cpe.Unescape(first.Product),
+		Version:            cpe.Unescape(first.Version),
+		IdentityConfidence: cands[0].Confidence,
+		Vulnerabilities:    []Vulnerability{},
+	}
+	for i, cand := range cands {
+		c := cand.CPE
+		cmp := version.For(c.Vendor, c.Product)
+		rules, err := e.Store.CandidateRules(ctx, c.Part, c.Vendor, c.Product)
+		if err != nil {
+			return nil, err
+		}
+		res.Identities = append(res.Identities, IdentityResult{
+			CPE: c.String(), Confidence: cand.Confidence, Source: cand.Source, Reason: cand.Reason,
+			Comparator: cmp.Name(), CandidateRules: len(rules),
+		})
+		res.CandidateRules += len(rules)
+		for _, r := range rules {
+			ev := EvaluateRule(cmp, c, r)
+			ev.IdentityCPE, ev.Confidence, ev.who = c.String(), cand.Confidence, describeIdentity(cand)
+			ev.order = i
+			res.Evaluations = append(res.Evaluations, ev)
+		}
+	}
+	res.Comparator = res.Identities[0].Comparator
 
 	if err := e.buildVulnerabilities(ctx, res); err != nil {
 		return nil, err
@@ -171,6 +216,7 @@ func (e *Engine) QueryCPE(ctx context.Context, input string) (*Result, error) {
 		res.Warnings = append(res.Warnings,
 			"Supplied CPE has no specific version; version-dependent results are UNKNOWN.")
 	}
+	res.Warnings = append(res.Warnings, identity.Notes(cands)...)
 	meta, err := e.Store.Metadata(ctx)
 	if err != nil {
 		return nil, err
@@ -184,13 +230,18 @@ func (e *Engine) QueryCPE(ctx context.Context, input string) (*Result, error) {
 	return res, nil
 }
 
-// identityConfidence: an exact supplied CPE is EXACT when it carries a
-// concrete version; without one only the product is known, which is LOW.
-func identityConfidence(c cpe.CPE) Confidence {
-	if cpe.IsSpecific(c.Version) {
-		return Exact
+// describeIdentity is the subject of a match_reason sentence.
+func describeIdentity(c identity.Candidate) string {
+	switch {
+	case strings.HasPrefix(c.Source, "alias:"):
+		return fmt.Sprintf("Curated alias identity %s:%s", cpe.Unescape(c.CPE.Vendor), cpe.Unescape(c.CPE.Product))
+	case c.Confidence != Exact:
+		return "Supplied CPE (no specific version)"
+	case c.Source == "supplied":
+		return "Exact supplied CPE"
+	default:
+		return fmt.Sprintf("Exact %s CPE", c.Source)
 	}
-	return Low
 }
 
 // buildVulnerabilities aggregates rule evaluations per CVE and enriches the
@@ -225,7 +276,7 @@ func (e *Engine) buildVulnerabilities(ctx context.Context, res *Result) error {
 	}
 
 	for _, id := range ids {
-		v := aggregate(id, byCVE[id], res.IdentityConfidence)
+		v := aggregate(id, byCVE[id])
 		enrich(&v, cves[id], kev, exploits[id])
 		if v.VersionStatus == version.Match {
 			res.MatchCount++
@@ -237,12 +288,14 @@ func (e *Engine) buildVulnerabilities(ctx context.Context, res *Result) error {
 	return nil
 }
 
-// aggregate combines the non-NO_MATCH rule evaluations of one CVE.
+// aggregate combines the non-NO_MATCH rule evaluations of one CVE, across
+// all candidate identities.
 //
-// A CVE is MATCH if any rule matched, preferring unconditional matches;
-// otherwise it is UNKNOWN. It is CONDITIONAL only if every matching rule is
-// conditional.
-func aggregate(id string, evs []RuleEvaluation, conf Confidence) Vulnerability {
+// A CVE is MATCH if any rule matched, otherwise UNKNOWN. Among the chosen
+// rules, unconditional ones come first, then those from the more confident
+// identity; the first one supplies match_confidence and match_reason. A CVE
+// is CONDITIONAL only if every matching rule is conditional.
+func aggregate(id string, evs []RuleEvaluation) Vulnerability {
 	status := version.Unknown
 	for _, ev := range evs {
 		if ev.Status == version.Match {
@@ -255,13 +308,22 @@ func aggregate(id string, evs []RuleEvaluation, conf Confidence) Vulnerability {
 			chosen = append(chosen, ev)
 		}
 	}
-	// Unconditional rules first so the reason describes the strongest one.
-	sort.SliceStable(chosen, func(i, j int) bool { return !chosen[i].Conditional && chosen[j].Conditional })
+	sort.SliceStable(chosen, func(i, j int) bool {
+		a, b := chosen[i], chosen[j]
+		if a.Conditional != b.Conditional {
+			return !a.Conditional
+		}
+		if ra, rb := identity.Rank(a.Confidence), identity.Rank(b.Confidence); ra != rb {
+			return ra > rb
+		}
+		return a.order < b.order
+	})
 
 	v := Vulnerability{
 		CVE:             id,
 		VersionStatus:   status,
-		MatchConfidence: conf,
+		MatchConfidence: chosen[0].Confidence,
+		MatchedCPE:      chosen[0].IdentityCPE,
 		Applicability:   Unconditional,
 		ExploitSources:  []string{},
 		ExploitEvidence: []Evidence{},
@@ -273,15 +335,12 @@ func aggregate(id string, evs []RuleEvaluation, conf Confidence) Vulnerability {
 	for _, ev := range chosen {
 		v.MatchedRules = append(v.MatchedRules, MatchedRule{ev.Criteria, ev.Range, ev.Status, ev.Reason})
 	}
-	v.MatchReason = matchReason(conf, chosen[0])
+	v.MatchReason = matchReason(chosen[0])
 	return v
 }
 
-func matchReason(conf Confidence, ev RuleEvaluation) string {
-	who := "Exact supplied CPE"
-	if conf != Exact {
-		who = "Supplied CPE (no specific version)"
-	}
+func matchReason(ev RuleEvaluation) string {
+	who := ev.who
 	var b strings.Builder
 	if ev.Status == version.Match {
 		fmt.Fprintf(&b, "%s matched vulnerability criteria %s and %s.", who, ev.Criteria, describeMatch(ev.Reason))
@@ -347,7 +406,8 @@ func enrich(v *Vulnerability, c database.CVE, kev map[string]database.KEVEntry, 
 //  4. public exploit
 //  5. CVSS (higher first; missing scores last)
 //  6. unconditional before conditional
-//  7. CVE ID (for determinism)
+//  7. identity confidence (higher first)
+//  8. CVE ID (for determinism)
 func sortVulnerabilities(vs []Vulnerability) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		a, b := vs[i], vs[j]
@@ -362,6 +422,9 @@ func sortVulnerabilities(vs []Vulnerability) {
 		}
 		if x, y := a.Applicability == Unconditional, b.Applicability == Unconditional; x != y {
 			return x
+		}
+		if x, y := identity.Rank(a.MatchConfidence), identity.Rank(b.MatchConfidence); x != y {
+			return x > y
 		}
 		return a.CVE < b.CVE
 	})

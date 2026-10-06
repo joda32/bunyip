@@ -146,7 +146,7 @@
       "cve_id": "CVE-0000-0202",
       "published_at": "2022-03-01T00:00:00Z",
       "modified_at": "2022-03-01T00:00:00Z",
-      "description": "[SYNTHETIC] OpenSSH 8.9 update p1 expressed NVD-style with the patch level in the update attribute (version 8.9, update p1). Demonstrates the version/update split problem.",
+      "description": "[SYNTHETIC] OpenSSH 8.9 update p1 expressed NVD-style with the patch level in the update attribute (version 8.9, update p1). The OpenSSH comparator joins version and update, so Nmap-style 8.9p1 matches.",
       "cvss_v3_score": 5.3,
       "severity": "MEDIUM",
       "configurations": [

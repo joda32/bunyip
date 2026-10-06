@@ -205,3 +205,42 @@ func forChunks(ids []string, fn func([]string) error) error {
 func placeholders(n int) string {
 	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }
+
+// Alias maps an observed vendor/product to the name NVD uses for the same
+// software. Values are canonical CPE attribute values; Part comes from
+// canonical_cpe_prefix ("cpe:2.3:<part>:<vendor>:<product>").
+type Alias struct {
+	Part             string
+	ObservedVendor   string
+	ObservedProduct  string
+	CanonicalVendor  string
+	CanonicalProduct string
+	Source           string
+	Confidence       string
+}
+
+// Aliases loads every alias row (the table is small).
+func (s *Store) Aliases(ctx context.Context) ([]Alias, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT COALESCE(observed_vendor, ''), observed_product, canonical_vendor, canonical_product,
+       canonical_cpe_prefix, source, confidence
+FROM aliases ORDER BY id`)
+	if err != nil {
+		return nil, wrapQueryErr(err)
+	}
+	defer rows.Close()
+	var out []Alias
+	for rows.Next() {
+		var a Alias
+		var prefix string
+		if err := rows.Scan(&a.ObservedVendor, &a.ObservedProduct, &a.CanonicalVendor, &a.CanonicalProduct,
+			&prefix, &a.Source, &a.Confidence); err != nil {
+			return nil, err
+		}
+		if f := strings.Split(prefix, ":"); len(f) >= 3 && f[0] == "cpe" && f[1] == "2.3" {
+			a.Part = f[2]
+		}
+		out = append(out, a)
+	}
+	return out, wrapQueryErr(rows.Err())
+}

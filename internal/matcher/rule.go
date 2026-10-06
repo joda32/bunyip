@@ -6,6 +6,7 @@ import (
 
 	"offline-vulndb/internal/cpe"
 	"offline-vulndb/internal/database"
+	"offline-vulndb/internal/identity"
 	"offline-vulndb/internal/version"
 )
 
@@ -26,6 +27,11 @@ type RuleEvaluation struct {
 	// supplied CPE cannot satisfy or refute.
 	Conditional   bool   `json:"conditional"`
 	ConditionNote string `json:"condition_note,omitempty"`
+	// Set by Engine.Query: which candidate identity was evaluated.
+	IdentityCPE string              `json:"identity_cpe,omitempty"`
+	Confidence  identity.Confidence `json:"identity_confidence,omitempty"`
+	who         string              // subject for match_reason
+	order       int                 // candidate position, for stable ordering
 }
 
 // EvaluateRule decides whether a vulnerable match rule applies to the
@@ -39,7 +45,10 @@ type RuleEvaluation struct {
 //   - the version is checked against either the criteria's concrete version
 //     or the rule's range bounds using the comparator;
 //   - NO_MATCH from any check wins; otherwise any UNKNOWN wins; only when
-//     every check passes is the rule a MATCH.
+//     every check passes is the rule a MATCH;
+//   - for version schemes whose comparator implements version.UpdateJoiner
+//     (OpenSSH), version and update are first folded into one effective
+//     version on both sides, so "9.3p1" equals criteria "9.3" + update "p1".
 func EvaluateRule(cmp version.Comparator, supplied cpe.CPE, rule database.MatchRule) RuleEvaluation {
 	ev := RuleEvaluation{
 		RuleID:   rule.ID,
@@ -56,6 +65,7 @@ func EvaluateRule(cmp version.Comparator, supplied cpe.CPE, rule database.MatchR
 		ev.Status, ev.Reason = version.Unknown, fmt.Sprintf("criteria could not be parsed: %v", err)
 		return ev
 	}
+	crit, supplied = joinUpdates(cmp, crit, supplied)
 
 	critAttrs, supAttrs := crit.Attributes(), supplied.Attributes()
 	var undecided []string
@@ -93,6 +103,25 @@ func EvaluateRule(cmp version.Comparator, supplied cpe.CPE, rule database.MatchR
 		ev.Reason += "; rule is in a negated configuration node, which is not evaluated"
 	}
 	return ev
+}
+
+// joinUpdates folds the update attribute into the version on each side when
+// the comparator understands that encoding. A folded update is replaced by
+// ANY so the attribute comparison does not count it twice.
+func joinUpdates(cmp version.Comparator, crit, sup cpe.CPE) (cpe.CPE, cpe.CPE) {
+	j, ok := cmp.(version.UpdateJoiner)
+	if !ok {
+		return crit, sup
+	}
+	for _, c := range []*cpe.CPE{&crit, &sup} {
+		if !cpe.IsSpecific(c.Version) || c.Update == cpe.Any {
+			continue
+		}
+		if v, ok := j.JoinUpdate(c.Version, c.Update); ok {
+			c.Version, c.Update = v, cpe.Any
+		}
+	}
+	return crit, sup
 }
 
 // evaluateVersion checks the supplied version attribute against the

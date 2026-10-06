@@ -84,7 +84,7 @@ func TestEvaluateRule(t *testing.T) {
 			database.MatchRule{Criteria: "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:x64:*",
 				Range: version.Range{EndExcluding: "2.4.60"}},
 			version.Match, false},
-		{"openssh update split", "cpe:/a:openbsd:openssh:8.9p1",
+		{"openssh update split, generic comparator", "cpe:/a:openbsd:openssh:8.9p1",
 			database.MatchRule{Criteria: "cpe:2.3:a:openbsd:openssh:8.9:p1:*:*:*:*:*:*"},
 			version.Unknown, false},
 		{"openssh update split, both given", "cpe:/a:openbsd:openssh:8.9:p1",
@@ -147,7 +147,11 @@ func fixtureEngine(t *testing.T) *Engine {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { ro.Close() })
-	return New(ro)
+	e, err := New(ctx, ro)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
 }
 
 // statuses maps CVE ID to version status for a result.
@@ -193,9 +197,10 @@ func TestQueryFixtureScenarios(t *testing.T) {
 		{"nginx 1.9 inside, numeric ordering", "cpe:/a:f5:nginx:1.9.15", Exact,
 			want{"CVE-0000-0102": version.Match}},
 		{"nginx 1.10.0 exclusive upper bound", "cpe:/a:f5:nginx:1.10.0", Exact, want{}},
-		{"nginx legacy nmap vendor finds nothing (alias not yet applied)", "cpe:/a:igor_sysoev:nginx:1.20.1", Exact, want{}},
+		{"nginx legacy nmap vendor resolved by alias", "cpe:/a:igor_sysoev:nginx:1.20.1", Exact,
+			want{"CVE-0000-0101": version.Match}},
 		{"openssh p-suffix range", "cpe:/a:openbsd:openssh:8.9p1", Exact,
-			want{"CVE-0000-0201": version.Match, "CVE-0000-0202": version.Unknown}},
+			want{"CVE-0000-0201": version.Match, "CVE-0000-0202": version.Match}}, // 8.9p1 == 8.9 + update p1
 		{"openssh range upper exclusive", "cpe:/a:openbsd:openssh:9.3p2", Exact, want{}},
 		{"iis exact version, KEV, no exploit", "cpe:/a:microsoft:internet_information_services:10.0", Exact,
 			want{"CVE-0000-0301": version.Match}},
@@ -333,5 +338,64 @@ func TestQueryErrors(t *testing.T) {
 		if !errors.Is(err, tt.want) {
 			t.Errorf("QueryCPE(%q) error = %v, want %v", tt.in, err, tt.want)
 		}
+	}
+}
+
+func TestEvaluateRuleOpenSSHJoin(t *testing.T) {
+	var o version.OpenSSH
+	tests := []struct {
+		supplied, criteria string
+		r                  version.Range
+		want               version.Status
+	}{
+		// The real CVE-2023-38408 rule set: < 9.3, 9.3:-, 9.3:p1 (fixed in 9.3p2).
+		{"cpe:/a:openbsd:openssh:9.3p1", "cpe:2.3:a:openbsd:openssh:9.3:p1:*:*:*:*:*:*", version.Range{}, version.Match},
+		{"cpe:/a:openbsd:openssh:9.3p1", "cpe:2.3:a:openbsd:openssh:9.3:-:*:*:*:*:*:*", version.Range{}, version.Match},
+		{"cpe:/a:openbsd:openssh:9.3p2", "cpe:2.3:a:openbsd:openssh:9.3:p1:*:*:*:*:*:*", version.Range{}, version.NoMatch},
+		{"cpe:/a:openbsd:openssh:9.3p2", "cpe:2.3:a:openbsd:openssh:9.3:-:*:*:*:*:*:*", version.Range{}, version.NoMatch},
+		{"cpe:/a:openbsd:openssh:9.3p1", "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*", version.Range{EndExcluding: "9.3"}, version.NoMatch},
+		{"cpe:/a:openbsd:openssh:9.6p1", "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
+			version.Range{StartIncluding: "8.5p1", EndExcluding: "9.8p1"}, version.Match}, // regreSSHion
+		// Supplied split form is joined too.
+		{"cpe:/a:openbsd:openssh:9.3:p1", "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*", version.Range{EndExcluding: "9.3p2"}, version.Match},
+		// Distro version strings remain undecidable.
+		{"cpe:/a:openbsd:openssh:9.6p1-3ubuntu13", "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*", version.Range{EndExcluding: "9.8p1"}, version.Unknown},
+	}
+	for _, tt := range tests {
+		ev := EvaluateRule(o, mustCPE(t, tt.supplied), database.MatchRule{Criteria: tt.criteria, Range: tt.r})
+		if ev.Status != tt.want {
+			t.Errorf("%s vs %s %v = %s (%s), want %s", tt.supplied, tt.criteria, tt.r, ev.Status, ev.Reason, tt.want)
+		}
+	}
+}
+
+func TestQueryAliasIdentity(t *testing.T) {
+	e := fixtureEngine(t)
+	r, err := e.QueryCPE(context.Background(), "cpe:/a:igor_sysoev:nginx:1.20.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Identities) != 2 || r.Identities[0].Confidence != Exact || r.Identities[1].Confidence != High ||
+		r.Identities[1].CPE != "cpe:2.3:a:f5:nginx:1.20.1:*:*:*:*:*:*:*" {
+		t.Fatalf("unexpected identities: %+v", r.Identities)
+	}
+	v := r.Vulnerabilities[0]
+	if v.MatchConfidence != High || v.MatchedCPE != r.Identities[1].CPE ||
+		!strings.HasPrefix(v.MatchReason, "Curated alias identity f5:nginx matched") {
+		t.Errorf("alias match not attributed: %+v", v)
+	}
+	if r.IdentityConfidence != Exact || r.NormalizedCPE != "cpe:2.3:a:igor_sysoev:nginx:1.20.1:*:*:*:*:*:*:*" {
+		t.Errorf("top-level identity should be the observed CPE: %+v", r)
+	}
+}
+
+func TestQueryComparatorPerProduct(t *testing.T) {
+	e := fixtureEngine(t)
+	r, err := e.QueryCPE(context.Background(), "cpe:/a:openbsd:openssh:8.9p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Comparator != "openssh" {
+		t.Errorf("comparator = %s, want openssh", r.Comparator)
 	}
 }

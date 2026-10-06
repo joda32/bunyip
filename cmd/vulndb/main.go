@@ -166,7 +166,11 @@ func cmdQuery(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	defer store.Close()
 
 	start := time.Now()
-	res, err := matcher.New(store).QueryCPE(ctx, *cpeArg)
+	engine, err := matcher.New(ctx, store)
+	if err != nil {
+		return err
+	}
+	res, err := engine.QueryCPE(ctx, *cpeArg)
 	if err != nil {
 		return err
 	}
