@@ -60,6 +60,32 @@ returned by a query.
   the exploit works.
 - **KEV:** every catalogue entry; unknown new fields are ignored.
 
+## Aliases
+
+`data/aliases.json` lists hand-reviewed aliases from identities that Nmap
+reports to the vendor/product names NVD uses. Examples:
+- `igor_sysoev:nginx` → `f5:nginx`, `nginx:nginx`;
+- `mysql:mysql` → `oracle:mysql`.
+
+Every build loads them into the `aliases` table, so they travel with the
+database. The build reports any alias target that has no NVD rules.
+
+To propose new aliases, e.g. after an Nmap upgrade:
+
+```bash
+.venv/bin/vulndb-update review-aliases --db vulndb.sqlite --nmap-probes /usr/share/nmap/nmap-service-probes
+```
+
+This lists two kinds of candidate, skipping identities that are already
+curated or rejected:
+- Nmap identities whose product NVD records only under another vendor;
+- Nmap identities where NVD has newer CVEs under another vendor.
+
+**Review each one by hand.** Product-name similarity is wrong about a third
+of the time (e.g. `microsoft:kerberos` is not MIT Kerberos). Add genuine
+renames or acquisitions to `aliases`, and record false matches under
+`rejected` so they aren't proposed again.
+
 ## Safety
 
 - Downloads use HTTPS only and only from `nvd.nist.gov` and `www.cisa.gov`

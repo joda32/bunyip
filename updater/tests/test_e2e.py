@@ -64,14 +64,14 @@ def test_apache_2_4_50_and_2_4_51(vulndb_bin, real_db):
 
 
 def test_openssh_version_update_split(vulndb_bin, real_db):
-    # Nmap-style 8.9p1 is clearly below 9.3: MATCH.
-    v = query(vulndb_bin, real_db, "cpe:/a:openbsd:openssh:8.9p1")
-    assert v["CVE-2023-38408"]["version_status"] == "MATCH"
-    # 9.3p1 vs NVD's "9.3" + update "p1" cannot be decided by the generic
-    # comparator: reported UNKNOWN, never as a false MATCH.
-    v = query(vulndb_bin, real_db, "cpe:/a:openbsd:openssh:9.3p1")
-    assert v["CVE-2023-38408"]["version_status"] == "UNKNOWN"
-    assert query(vulndb_bin, real_db, "cpe:/a:openbsd:openssh:9.4p1") == {}
+    # NVD: < 9.3, 9.3:-, 9.3:p1 (fixed in 9.3p2). The OpenSSH comparator joins
+    # NVD's version+update so Nmap-style versions evaluate correctly.
+    for detected, affected in [("8.9p1", True), ("9.3p1", True), ("9.3p2", False), ("9.4p1", False)]:
+        v = query(vulndb_bin, real_db, f"cpe:/a:openbsd:openssh:{detected}")
+        if affected:
+            assert v["CVE-2023-38408"]["version_status"] == "MATCH", detected
+        else:
+            assert "CVE-2023-38408" not in v, detected
 
 
 def test_and_configuration_is_conditional(vulndb_bin, real_db):
@@ -93,3 +93,20 @@ def test_go_verify_and_info(vulndb_bin, real_db):
     info = subprocess.run([str(vulndb_bin), "--db", str(real_db), "info"], capture_output=True, text=True, check=True)
     assert "NVD data as of:    2026-10-06T05:00:06Z" in info.stdout
     assert "SYNTHETIC" not in info.stdout
+
+
+def test_nmap_sample_against_real_records(vulndb_bin, real_db):
+    p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/sample.xml"),
+                        "--format", "json"], capture_output=True, text=True, check=True)
+    report = json.loads(p.stdout)["report"]
+    svcs = {s["port"]: s for s in report["hosts"][0]["services"]}
+    apache = {v["cve"]: v for v in svcs[80]["result"]["vulnerabilities"]}
+    assert {"CVE-2021-41773", "CVE-2021-42013", "CVE-2021-44790"} <= set(apache)
+    assert apache["CVE-2021-41773"]["known_exploited"] is True
+    ssh = svcs[22]
+    assert ssh["distro"] == "Ubuntu package 3ubuntu0.10"
+    assert any("backported" in n for n in ssh["notes"])
+    assert {v["cve"]: v["version_status"] for v in ssh["result"]["vulnerabilities"]}["CVE-2023-38408"] == "MATCH"
+    iis = report["hosts"][1]["services"][0]
+    assert any("against Microsoft Windows" in n for n in iis["notes"])
+    assert report["summary"]["not_probed"] == 1 and report["summary"]["unidentified"] == 1

@@ -26,18 +26,26 @@ exact matching rules are in [`docs/matching.md`](docs/matching.md).
 - Does not run, download or ship exploit code; it only records that exploit
   references exist.
 
-## Status: milestone 2
+## Status: milestone 3
 
 Implemented:
-- **Query engine (Go):** CPE 2.2/2.3 parsing and normalisation, a generic version
-  comparator, range evaluation (MATCH / NO_MATCH / UNKNOWN), awareness of NVD
-  AND/OR configuration structure, KEV and exploit enrichment, text and JSON
-  output, a debug trace, and `db init/verify/stats`.
+- **Query engine (Go):** CPE 2.2/2.3 parsing and normalisation, version
+  comparators chosen per product (generic, OpenSSH), range evaluation
+  (MATCH / NO_MATCH / UNKNOWN), awareness of NVD AND/OR configuration
+  structure, KEV and exploit enrichment, text and JSON output, a debug trace,
+  and `db init/verify/stats`.
+- **Nmap input:** `vulndb nmap scan.xml` assesses every open, fingerprinted
+  service in Nmap `-oX` output.
+- **Identity resolution:** curated aliases map the vendor/product names Nmap
+  reports to the names NVD uses (e.g. `mysql:mysql` → `oracle:mysql`).
+  Distribution packages (Ubuntu, Debian, RHEL, …) are detected and flagged.
 - **Updater (Python, [`updater/`](updater/README.md)):** builds a real database
-  from the NVD CVE JSON 2.0 feeds and the CISA KEV catalogue.
+  from the NVD CVE JSON 2.0 feeds, the CISA KEV catalogue and
+  `data/aliases.json`.
 
-Not yet: CVE List / CISA Vulnrichment as a second source, Nmap XML input,
-product-name/alias resolution, distro advisories, and the NSE adapter.
+Not yet: product-name resolution when no CPE is reported, the CVE List as a
+second source (evaluated and deferred, see [docs/data-sources.md](docs/data-sources.md)), distro advisories, and the
+NSE adapter.
 
 ## Build
 
@@ -192,6 +200,44 @@ With `--debug`, a rule-by-rule trace goes to stderr and the JSON gains a
   - `LOW`: product only, no version.
 - `match_reason`: a human-readable explanation, always present.
 
+## Assess an Nmap scan
+
+```bash
+nmap -sV -oX scan.xml 10.0.0.0/24        # -sV is required; -O adds OS guesses (shown, not assessed)
+bin/vulndb nmap scan.xml                  # compact per-host/per-port report
+bin/vulndb nmap scan.xml --format json    # full structured report
+nmap -sV -oX - 10.0.0.5 | bin/vulndb nmap -
+```
+
+```text
+Nmap scan: nmap -sV -O -oX sample.xml 192.0.2.0/29
+Hosts up 2, down 1 | open ports 6: assessed 4, unidentified 1, not probed 1
+Candidate vulnerabilities: 8 version matches (2 in CISA KEV, 4 with public exploit evidence), 1 undetermined
+
+192.0.2.20 (web01.example.test)
+  22/tcp ssh OpenSSH 8.9p1 Ubuntu 3ubuntu0.10
+    Identity: cpe:2.3:a:openbsd:openssh:8.9p1:*:*:*:*:*:*:* [EXACT]
+    Note: Distribution package detected (Ubuntu package 3ubuntu0.10): the vendor may have
+          backported security fixes without changing the upstream version, ...
+    CVE-0000-0201    HIGH      CVSS 8.1  exploit:YES KEV:NO  MATCH
+  443/tcp http nginx 1.20.1 (ssl)
+    Identity: cpe:2.3:a:igor_sysoev:nginx:1.20.1:*:*:*:*:*:*:* [EXACT]
+    Identity: cpe:2.3:a:f5:nginx:1.20.1:*:*:*:*:*:*:* [HIGH] (curated alias)
+    CVE-0000-0101    HIGH      CVSS 7.7  exploit:YES KEV:NO  MATCH  [via alias, HIGH]
+  8080/tcp http Mystery httpd 1.2
+    Note: No application CPE reported for "Mystery httpd 1.2"; ... not assessed.
+```
+
+Each open port is one of:
+- `ASSESSED`: an application CPE was looked up, plus any curated aliases.
+- `UNIDENTIFIED`: the service was fingerprinted but has no application CPE.
+- `NOT_PROBED`: Nmap only guessed the service from the port number.
+
+OS and hardware CPEs are listed but never queried as if they were the service.
+Flags on a CVE line mark results to review: `CONDITIONAL` (another condition,
+such as a specific OS, was not evaluated), `ransomware` (known use per KEV), and
+`via alias` (found only through a curated alias identity).
+
 ## Utility commands
 
 ```bash
@@ -207,13 +253,15 @@ failed verify), `2` usage error (unknown command or flag, unsupported
 
 ## Current limitations
 
-- Only exact CPE input. Nmap product strings (`Apache httpd`) and Nmap's
-  legacy vendor names (e.g. `igor_sysoev:nginx` vs NVD `f5:nginx`) are not
-  resolved yet. The `aliases` table exists, but nothing uses it so far.
-- One conservative, generic version comparator. Distro (`-1ubuntu1`), RPM,
-  PEP 440 and other schemes give UNKNOWN.
-- OpenSSH patch levels: Nmap reports `8.9p1`, while some NVD rules use version
-  `8.9` with update `p1`. Those rules come back as UNKNOWN, not as a match.
+- Services are assessed only through the CPEs Nmap reports. A service with a
+  product name but no CPE is reported as `UNIDENTIFIED` (product-name
+  resolution is planned).
+- Aliases cover 74 hand-reviewed Nmap identities. Others that NVD records under
+  a different vendor are missed until reviewed (`vulndb-update review-aliases`
+  lists candidates).
+- Version comparison: OpenSSH has its own comparator; everything else uses a
+  conservative generic one. Distro (`-1ubuntu1`), RPM, PEP 440 and similar
+  schemes give UNKNOWN.
 - AND/negated NVD configurations are flagged, not evaluated, because one CPE
   can't satisfy several conditions.
 - Distro backports are not evaluated (see above).
@@ -238,12 +286,17 @@ cmd/vulndb/          CLI and end-to-end tests
 internal/cpe/        CPE 2.2/2.3 parsing, normalisation, attribute matching
 internal/version/    comparator interface, generic comparator, range evaluation
 internal/database/   SQLite access, schema checks, verify/stats, fixture import
+internal/identity/   candidate identities: aliases, platform CPEs, distro detection
 internal/matcher/    rule evaluation, per-CVE aggregation, enrichment, ordering
+internal/nmap/       Nmap XML parser and scan assessment
 internal/output/     text and JSON rendering
+data/aliases.json    curated vendor/product aliases (loaded into the database)
 schema/schema.sql    database schema (embedded in the binary)
 updater/             Python updater: NVD + KEV -> vulndb.sqlite
 testdata/fixtures/   synthetic test data
 testdata/nvd/        real NVD/KEV records for updater and end-to-end tests
 testdata/contract/   shared Go/Python CPE canonicalisation vectors
+testdata/nmap/       a real Nmap scan and a hand-written multi-host sample
 docs/matching.md     matching semantics
+docs/data-sources.md source coverage measurements and decisions
 ```

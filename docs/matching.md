@@ -25,6 +25,37 @@ Both CPE bindings are accepted and normalised to the same internal value:
 - A query requires specific `part`, `vendor` and `product`; otherwise it fails
   with "insufficient identity information".
 
+## 1a. Identity resolution (`internal/identity`)
+
+An observed identity turns into one or more **candidate identities**, and each
+is looked up:
+
+1. The observed application CPE is always a candidate: EXACT with a concrete
+   version, LOW without one.
+2. Each curated alias for that `part:vendor:product` (from `data/aliases.json`,
+   stored in the `aliases` table) adds the same CPE under the vendor/product
+   NVD uses. Its confidence is the alias's (HIGH or MEDIUM) and never more than
+   the observed identity's.
+3. Results from all candidates are merged per CVE (section 6). Each CVE
+   reports the identity that matched it (`matched_cpe`, `match_confidence`).
+
+Aliases only ever **add** candidates. The observed identity is never replaced:
+both old and new vendors can hold CVEs (e.g. `mysql:mysql` up to 2017,
+`oracle:mysql` after).
+
+For Nmap services, `vulndb nmap` also:
+- does not query OS/hardware CPEs reported alongside a service
+  (`cpe:/o:linux:linux_kernel`) as the service;
+- does not assess services Nmap only guessed from the port number
+  (`method="table"`);
+- reports services that have a product name but no application CPE as
+  `UNIDENTIFIED` (no guessing);
+- detects distribution packaging from the version or extra-info text
+  (`9.6p1 Ubuntu 3ubuntu13.18`) or from OS CPEs, and attaches a backport
+  warning;
+- attaches product caveats (IIS vulnerabilities are recorded against Windows
+  CPEs).
+
 ## 2. Candidate lookup (`internal/database`)
 
 `cve_matches.criteria` is stored verbatim. The importer also derives
@@ -76,8 +107,22 @@ unless another bound is definitely violated (then NO_MATCH).
 ## 4. Version comparison (`internal/version`)
 
 Comparators implement `Compare(a, b) (int, error)`. An error means "cannot
-order these" and always becomes UNKNOWN. Milestone 1 ships one comparator,
-`generic`:
+order these" and always becomes UNKNOWN. The comparator is chosen per
+canonical vendor:product (`version.For`):
+
+**`openssh`** (for `openbsd:openssh`):
+- Versions are dotted numbers with an optional portable level `pN`.
+- A bare OpenBSD release `X.Y` equals the first portable release `X.Yp1`, the
+  code it corresponds to.
+- It also implements `UpdateJoiner`. NVD sometimes splits `9.3p1` into version
+  `9.3` + update `p1` (and uses `9.3` + update `-` for the OpenBSD release), so
+  version and update are folded into one effective version on both sides
+  before comparing.
+
+For the real CVE-2023-38408 rules (`< 9.3`, `9.3:-`, `9.3:p1`; fixed in
+9.3p2): 8.9p1 and 9.3p1 → MATCH, 9.3p2 → no match.
+
+**`generic`** (everything else):
 
 - dotted segments, each `digits[letters[digits]]`: `2.4.49`, `8.9p1`, `1.1.1k`;
 - numeric segment ordering (`1.9 < 1.10`), missing trailing segments are 0;
@@ -106,15 +151,21 @@ Rules are grouped by CVE. A CVE is MATCH if any rule matched, otherwise
 UNKNOWN if any rule was undecided; CVEs whose rules are all NO_MATCH are not
 returned. A CVE is CONDITIONAL only if every matching rule is conditional.
 
+Rules from all candidate identities are pooled. Among the chosen rules,
+unconditional ones come first, then rules from the more confident identity. The
+first one supplies `match_confidence`, `matched_cpe` and `match_reason`.
+
 ## 7. Confidence
 
-`match_confidence` currently reports identity confidence:
+`match_confidence` is the confidence of the identity that matched:
 
 | Level | When |
 |---|---|
-| EXACT | supplied CPE with a concrete version |
-| LOW | supplied CPE without a version (product only) |
-| HIGH / MEDIUM / UNKNOWN | reserved for alias / product-name resolution (later milestone) |
+| EXACT | observed CPE with a concrete version |
+| HIGH | curated alias: the same product under a renamed or acquired vendor |
+| MEDIUM | curated alias: the same product embedded or rebranded by another vendor |
+| LOW | observed CPE without a version (product only), or any alias of one |
+| UNKNOWN | reserved for product-name resolution (later milestone) |
 
 Version applicability is reported separately as `version_status`.
 
@@ -126,4 +177,5 @@ Version applicability is reported separately as `version_status`.
 4. public exploit
 5. CVSS (v3 preferred, else v4), higher first
 6. unconditional before conditional
-7. CVE ID
+7. identity confidence, higher first
+8. CVE ID

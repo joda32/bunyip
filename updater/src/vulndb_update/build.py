@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, cpe, kev, nvd
+from . import __version__, aliases, cpe, kev, nvd
 from .fetch import Feed
 from .jsonstream import ArrayStream
 
@@ -30,6 +30,8 @@ class BuildError(RuntimeError):
 
 @dataclass
 class Stats:
+    aliases: int = 0
+    aliases_without_rules: list[str] = field(default_factory=list)
     loaded: int = 0
     replaced: int = 0
     unchanged: int = 0
@@ -45,13 +47,13 @@ def feed_order(feeds: list[Feed]) -> list[Feed]:
 
 
 def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
-          allow_small: bool = False, log=print) -> Stats:
+          allow_small: bool = False, log=print, alias_rows: list | None = None) -> Stats:
     out = Path(out)
     tmp = out.with_name(f".{out.name}.building")
     tmp.unlink(missing_ok=True)
     conn = sqlite3.connect(tmp, isolation_level=None)
     try:
-        stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log)
+        stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows or [])
         conn.close()
         os.replace(tmp, out)
         return stats
@@ -61,7 +63,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
         raise
 
 
-def _build(conn, schema_sql, feeds, kev_path, allow_small, log) -> Stats:
+def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows) -> Stats:
     # The file is private until renamed, so durability during the load is
     # unnecessary; integrity is checked explicitly before the rename.
     conn.execute("PRAGMA journal_mode = OFF")
@@ -87,6 +89,7 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log) -> Stats:
     conn.execute("COMMIT")
     log(f"  KEV {catalogue.catalog_version}: {len(catalogue.rows)} entries")
 
+    _load_aliases(conn, alias_rows, stats, log)
     _write_metadata(conn, ordered, catalogue, stats)
     _self_check(conn, allow_small)
     conn.execute("ANALYZE")
@@ -102,6 +105,26 @@ def _load_feed(conn, feed: Feed, stats: Stats, log) -> None:
             count += 1
         conn.execute("COMMIT")
     log(f"  {feed.gz_path.name}: {count} records in {time.monotonic() - start:.1f}s")
+
+
+def _load_aliases(conn, rows: list, stats: Stats, log) -> None:
+    """Store curated aliases. A target with no NVD rules is kept (it may gain
+    rules later) but reported, since it currently adds nothing."""
+    conn.execute("BEGIN")
+    conn.executemany(
+        "INSERT INTO aliases (observed_vendor, observed_product, canonical_vendor, canonical_product,"
+        " canonical_cpe_prefix, source, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [(r.observed_vendor, r.observed_product, r.canonical_vendor, r.canonical_product,
+          r.canonical_cpe_prefix, r.source, r.confidence) for r in rows])
+    conn.execute("COMMIT")
+    stats.aliases = len(rows)
+    for r in rows:
+        if not conn.execute("SELECT 1 FROM cve_matches WHERE criteria_part = ? AND criteria_vendor = ?"
+                            " AND criteria_product = ? LIMIT 1",
+                            (r.part, r.canonical_vendor, r.canonical_product)).fetchone():
+            stats.aliases_without_rules.append(r.canonical_cpe_prefix)
+    if rows:
+        log(f"  aliases: {len(rows)} loaded, {len(stats.aliases_without_rules)} targets without NVD rules")
 
 
 def _apply(conn, rec: nvd.Record, stats: Stats) -> None:
@@ -181,6 +204,7 @@ def _write_metadata(conn, feeds: list[Feed], catalogue: kev.Catalogue, stats: St
             "SELECT COUNT(*) FROM cves WHERE NOT EXISTS"
             " (SELECT 1 FROM cve_configurations c WHERE c.cve_id = cves.cve_id)")),
         "nvd_rules_skipped": str(len(stats.skipped_rules)),
+        "aliases_loaded": str(stats.aliases),
     }
     conn.execute("BEGIN")
     conn.executemany("INSERT OR REPLACE INTO database_metadata (key, value) VALUES (?, ?)",
