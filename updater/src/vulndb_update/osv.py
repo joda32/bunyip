@@ -19,14 +19,28 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from . import debversion
+
 
 @dataclass(frozen=True)
 class Distro:
-    name: str           # our distro key, e.g. "ubuntu"
-    ecosystem: str      # OSV ecosystem export name, e.g. "Ubuntu"
-    record_prefix: str  # per-CVE record id prefix
+    name: str                 # our distro key, e.g. "ubuntu"
+    ecosystem: str            # OSV ecosystem export name, e.g. "Ubuntu"
+    record_prefix: str        # per-CVE record id prefix (primary source)
     standard: re.Pattern
     pro: re.Pattern | None
+    # Per-advisory records (Debian DSA/DLA) used only where no per-CVE row
+    # exists for a CVE/release/package, e.g. Debian 11 (LTS) fixes.
+    advisory_prefixes: tuple[str, ...] = ()
+    # Whether `versions` of no-fix entries list only that release's versions
+    # (Ubuntu) or the whole archive (Debian), which would be misleading.
+    unfixed_versions_release_specific: bool = True
+    # Whether a per-CVE fixed version is always a package of that release.
+    # Debian's may be an unstable version that predates the release.
+    fixed_version_in_release: bool = True
+    # Release encoded in package versions, e.g. Debian "+deb12u3" -> "12".
+    release_in_version: re.Pattern | None = None
+    urgency_key: str | None = None
 
 
 DISTROS = {
@@ -37,6 +51,18 @@ DISTROS = {
         # scan and are skipped.
         standard=re.compile(r"Ubuntu:(\d\d\.\d\d)(?::LTS)?"),
         pro=re.compile(r"Ubuntu:Pro:(\d\d\.\d\d):LTS"),
+        release_in_version=re.compile(r"ubuntu0\.(\d\d\.\d\d)"),
+        urgency_key="ubuntu_priority",
+    ),
+    "debian": Distro(
+        name="debian", ecosystem="Debian", record_prefix="DEBIAN-CVE-",
+        standard=re.compile(r"Debian:(\d+(?:\.\d+)?)"),  # "Debian:12" (bookworm)
+        pro=None,
+        advisory_prefixes=("DSA-", "DLA-"),
+        unfixed_versions_release_specific=False,
+        fixed_version_in_release=False,
+        release_in_version=re.compile(r"[+~]deb(\d+)u\d+"),
+        urgency_key="urgency",
     ),
 }
 
@@ -54,6 +80,11 @@ class AdvisoryRow:
     fixed_version: str | None
     affected_upstreams: str
     modified_at: str | None
+    urgency: str | None = None
+
+    @property
+    def key(self) -> tuple[str, str, str, str]:
+        return self.cve_id, self.release, self.channel, self.package
 
 
 @dataclass(frozen=True)
@@ -86,13 +117,24 @@ def _codename(purl: str | None) -> str | None:
     return (q.get("distro") or [None])[0]
 
 
-def _cve_id(record: dict) -> str | None:
-    for a in (record.get("upstream") or []) + (record.get("aliases") or []):
-        if a.startswith("CVE-"):
-            return a
-    rid = record.get("id", "")
-    m = re.search(r"CVE-\d{4}-\d+", rid)
-    return m.group(0) if m else None
+def _cve_ids(record: dict, per_cve: bool) -> list[str]:
+    """CVE ids a record covers: one for per-CVE records, possibly several
+    for per-advisory records (DSA/DLA)."""
+    ids = []
+    for a in (record.get("upstream") or []) + (record.get("aliases") or []) + (record.get("related") or []):
+        if re.fullmatch(r"CVE-\d{4}-\d+", a) and a not in ids:
+            ids.append(a)
+    if not ids:
+        m = re.search(r"CVE-\d{4}-\d+", record.get("id", ""))
+        ids = [m.group(0)] if m else []
+    return ids[:1] if per_cve else ids
+
+
+def _older_than(v: str, fixed: str) -> bool:
+    try:
+        return debversion.compare(v, fixed) < 0
+    except debversion.DebVersionError:
+        return False
 
 
 @dataclass
@@ -102,16 +144,23 @@ class Transformed:
     withdrawn: bool = False
 
 
-def transform(record: dict, d: Distro, packages: set[str]) -> Transformed:
+def transform(record: dict, d: Distro, packages: set[str], per_cve: bool = True) -> Transformed:
+    """Turn one OSV record into advisory rows for the mapped packages.
+
+    Affected-version lists are only trusted when they describe the release:
+    for fixed entries, versions older than the fix are kept; for no-fix
+    entries the list is used only if the distribution's lists are
+    release-specific (Ubuntu yes, Debian no).
+    """
     out = Transformed([], set())
     if record.get("withdrawn"):
         out.withdrawn = True
         return out
-    cve = _cve_id(record)
-    if not cve:
+    cves = _cve_ids(record, per_cve)
+    if not cves:
         return out
     for a in record.get("affected") or []:
-        pkg = a.get("package") or {}
+        pkg = a.get("package") or {}  # some entries carry only git ranges
         name = pkg.get("name")
         if name not in packages:
             continue
@@ -123,27 +172,43 @@ def transform(record: dict, d: Distro, packages: set[str]) -> Transformed:
         for r in a.get("ranges") or []:
             for ev in r.get("events") or []:
                 if "fixed" in ev:
-                    fixed = ev["fixed"]  # Ubuntu publishes one fix point per release
-        affected = [v for v in a.get("versions") or [] if isinstance(v, str)]
-        out.rows.append(AdvisoryRow(
-            source=f"osv:{d.ecosystem}", advisory_id=record["id"], cve_id=cve, distro=d.name,
-            release=release, channel=channel, codename=_codename(pkg.get("purl")), package=name,
-            fixed_version=fixed,
-            affected_upstreams=" ".join(sorted({upstream_of(v) for v in affected})),
-            modified_at=record.get("modified"),
-        ))
+                    fixed = ev["fixed"]  # one fix point per release
+        listed = [v for v in a.get("versions") or [] if isinstance(v, str)]
+        if fixed:
+            affected = [v for v in listed if _older_than(v, fixed)]
+        else:
+            affected = listed if d.unfixed_versions_release_specific else []
+        urgency = (a.get("ecosystem_specific") or {}).get(d.urgency_key) if d.urgency_key else None
+        for cve in cves:
+            out.rows.append(AdvisoryRow(
+                source=f"osv:{d.ecosystem}", advisory_id=record["id"], cve_id=cve, distro=d.name,
+                release=release, channel=channel, codename=_codename(pkg.get("purl")), package=name,
+                fixed_version=fixed,
+                affected_upstreams=" ".join(sorted({upstream_of(v) for v in affected})),
+                modified_at=record.get("modified"), urgency=urgency,
+            ))
         if channel == "standard":
-            for v in affected + ([fixed] if fixed else []):
+            known = list(affected)
+            if fixed and (d.fixed_version_in_release or not per_cve or _version_release(d, fixed) == release):
+                known.append(fixed)
+            for v in known:
                 out.versions.add(PackageVersion(d.name, release, name, v, upstream_of(v)))
     return out
 
 
-def iter_records(zip_path: Path, prefix: str):
-    """Yield the decoded per-CVE records of an OSV ecosystem zip."""
+def _version_release(d: Distro, version: str) -> str | None:
+    if d.release_in_version and (m := d.release_in_version.search(version)):
+        return m.group(1)
+    return None
+
+
+def iter_records(zip_path: Path, prefixes: str | tuple[str, ...]):
+    """Yield the decoded records of an OSV ecosystem zip whose ids start
+    with one of the given prefixes."""
     with zipfile.ZipFile(zip_path) as z:
         for info in z.infolist():
             name = info.filename.rsplit("/", 1)[-1]
-            if name.startswith(prefix) and name.endswith(".json"):
+            if name.startswith(prefixes) and name.endswith(".json"):
                 yield json.loads(z.read(info))
 
 

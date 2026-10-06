@@ -14,6 +14,7 @@ REPO = Path(__file__).resolve().parents[2]
 SCHEMA = REPO / "schema" / "schema.sql"
 NVD_DATA = REPO / "testdata" / "nvd"
 OSV_UBUNTU = REPO / "testdata" / "osv" / "ubuntu"
+OSV_DEBIAN = REPO / "testdata" / "osv" / "debian"
 KEV_FILE = "known_exploited_vulnerabilities.json"
 
 
@@ -81,6 +82,7 @@ def make_sources(directory: Path) -> Path:
     write_feed(directory, "modified", overlay_records())
     (directory / KEV_FILE).write_bytes((NVD_DATA / KEV_FILE).read_bytes())
     write_osv_export(directory, "Ubuntu", sorted(OSV_UBUNTU.glob("*.json")))
+    write_osv_export(directory, "Debian", sorted(OSV_DEBIAN.glob("*.json")))
     return directory
 
 

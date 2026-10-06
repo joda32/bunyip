@@ -20,6 +20,7 @@ package distro
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -57,6 +58,25 @@ type Store interface {
 	HasDistroData(ctx context.Context, distro string) (bool, error)
 	PackageVersionsByUpstream(ctx context.Context, distro string, packages []string, upstream string) ([]database.PackageVersion, error)
 	DistroAdvisories(ctx context.Context, distro, pkg, release string) ([]database.DistroAdvisory, error)
+	PackagesInRelease(ctx context.Context, distro, release string, packages []string) ([]string, error)
+}
+
+// releaseInRevision extracts a release encoded in package revisions:
+// Debian security/point updates ("2+deb12u3" -> "12") and Ubuntu
+// per-release uploads ("0ubuntu0.22.04.2" -> "22.04").
+var releaseInRevision = map[string]*regexp.Regexp{
+	"debian": regexp.MustCompile(`[+~]deb(\d+)u\d+`),
+	"ubuntu": regexp.MustCompile(`ubuntu0\.(\d\d\.\d\d)`),
+}
+
+// ReleaseFromRevision returns the release a package revision encodes, if any.
+func ReleaseFromRevision(distro, revision string) string {
+	if re := releaseInRevision[distro]; re != nil {
+		if m := re.FindStringSubmatch(revision); m != nil {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 // Target describes the observed software for advisory lookup.
@@ -86,14 +106,15 @@ type candidate struct {
 
 // Context is a resolved advisory context for one observed service.
 type Context struct {
-	Target     Target   `json:"-"`
-	Status     string   `json:"status"`
-	Releases   []string `json:"releases,omitempty"`
-	Package    string   `json:"package,omitempty"`
-	Installed  string   `json:"installed_version,omitempty"`
-	Reason     string   `json:"reason"`
-	candidates []candidate
-	exact      bool // release established from an exact published package version
+	Target       Target   `json:"-"`
+	Status       string   `json:"status"`
+	Releases     []string `json:"releases,omitempty"`
+	Package      string   `json:"package,omitempty"`
+	Installed    string   `json:"installed_version,omitempty"`
+	Reason       string   `json:"reason"`
+	candidates   []candidate
+	exact        bool   // release established from an exact package version or revision
+	fromRevision string // release encoded in the package revision, if that is how it was found
 }
 
 // Resolve determines the release and package the observation belongs to and
@@ -147,11 +168,45 @@ func Resolve(ctx context.Context, store Store, t Target) (*Context, error) {
 		}
 		cands = append(cands, cd)
 	}
+	// A revision that encodes its release ("+deb12u3") is definitive, even
+	// when that exact version is missing from the advisory data.
+	if rel := ReleaseFromRevision(t.Distro, t.Revision); rel != "" {
+		var inRel []candidate
+		for _, cd := range cands {
+			if cd.release == rel {
+				inRel = append(inRel, cd)
+			}
+		}
+		if len(inRel) == 0 {
+			pkgs, err := store.PackagesInRelease(ctx, t.Distro, rel, t.Packages)
+			if err != nil {
+				return nil, err
+			}
+			for _, p := range pkgs {
+				inRel = append(inRel, candidate{release: rel, pkg: p})
+			}
+		}
+		if len(inRel) > 0 {
+			cands, byExact, c.exact = inRel, true, true
+			c.fromRevision = rel
+		}
+	}
 	if t.ReleaseHint != "" {
 		var hinted []candidate
 		for _, cd := range cands {
 			if cd.release == t.ReleaseHint {
 				hinted = append(hinted, cd)
+			}
+		}
+		if len(hinted) == 0 && len(cands) == 0 {
+			// The observed version is not in the data, but the host's release
+			// is known from another service: use the package in that release.
+			pkgs, err := store.PackagesInRelease(ctx, t.Distro, t.ReleaseHint, t.Packages)
+			if err != nil {
+				return nil, err
+			}
+			for _, p := range pkgs {
+				hinted = append(hinted, candidate{release: t.ReleaseHint, pkg: p})
 			}
 		}
 		if len(hinted) > 0 {
@@ -166,6 +221,10 @@ func Resolve(ctx context.Context, store Store, t Target) (*Context, error) {
 		cands[i].advisories = map[string][]database.DistroAdvisory{}
 		for _, r := range rows {
 			cands[i].advisories[r.CVEID] = append(cands[i].advisories[r.CVEID], r)
+			if t.Revision != "" && cands[i].installed == "" && r.FixedVersion != "" {
+				// Epoch from the distribution's own versions of the package.
+				cands[i].installed = epochOf(r.FixedVersion) + t.Upstream + "-" + t.Revision
+			}
 		}
 		c.Releases = append(c.Releases, cands[i].release)
 	}
@@ -179,6 +238,8 @@ func Resolve(ctx context.Context, store Store, t Target) (*Context, error) {
 		c.Status, c.Package, c.Installed = Resolved, cands[0].pkg, cands[0].installed
 		how := fmt.Sprintf("%s %s ships in %s %s", cands[0].pkg, t.Upstream, t.DistroName, cands[0].release)
 		switch {
+		case c.fromRevision != "":
+			how = fmt.Sprintf("package revision %s encodes %s %s", t.Revision, t.DistroName, c.fromRevision)
 		case byExact:
 			how = fmt.Sprintf("package version %s is published in %s %s", stripEpoch(cands[0].installed), t.DistroName, cands[0].release)
 		case t.ReleaseHint == cands[0].release:
@@ -252,7 +313,7 @@ func (c *Context) evaluate(cd candidate, cve string) Verdict {
 	}
 	if row.FixedVersion == "" {
 		v.Status = NoFix
-		v.Reason = fmt.Sprintf("%s lists %s as affected with no fix released (may still be awaiting triage)", where, cd.pkg)
+		v.Reason = fmt.Sprintf("%s lists %s as affected with no fix released", where, cd.pkg) + urgencyNote(row.Urgency)
 		return v
 	}
 	if cd.installed != "" {
@@ -269,24 +330,58 @@ func (c *Context) evaluate(cd candidate, cve string) Verdict {
 		}
 		return v
 	}
-	if slices.Contains(row.AffectedUpstreams, c.Target.Upstream) {
+	// Revision not visible: decide from the upstream versions where that is
+	// conclusive for every package of the observed upstream version.
+	fixed, err := version.ParseDeb(row.FixedVersion)
+	if err != nil {
+		v.Status, v.Reason = NoData, fmt.Sprintf("cannot parse fixed version %s: %v", row.FixedVersion, err)
+		return v
+	}
+	cmp := version.CompareDeb(version.DebVersion{Epoch: fixed.Epoch, Upstream: c.Target.Upstream},
+		version.DebVersion{Epoch: fixed.Epoch, Upstream: fixed.Upstream})
+	switch {
+	case cmp > 0:
+		v.Status = Fixed
+		v.Reason = fmt.Sprintf("%s fixed this in %s; every %s %s package is newer", where, row.FixedVersion, cd.pkg, c.Target.Upstream)
+	case cmp < 0:
+		v.Status = Vulnerable
+		v.Reason = fmt.Sprintf("%s fixed this in %s, a newer upstream version than the observed %s",
+			where, row.FixedVersion, c.Target.Upstream)
+	case len(row.AffectedUpstreams) > 0 && !slices.Contains(row.AffectedUpstreams, c.Target.Upstream):
+		v.Status = Fixed
+		v.Reason = fmt.Sprintf("%s lists no affected %s %s package (fixed from %s)", where, cd.pkg, c.Target.Upstream, row.FixedVersion)
+	default:
 		v.Status = FixAvailable
 		v.Reason = fmt.Sprintf("fixed in %s in %s; the installed package revision is not visible, so the host "+
 			"is patched only if it runs %s or later", where, row.FixedVersion, row.FixedVersion)
-	} else {
-		v.Status = Fixed
-		v.Reason = fmt.Sprintf("%s lists no affected %s %s package (fixed from %s)", where, cd.pkg, c.Target.Upstream, row.FixedVersion)
 	}
 	return v
 }
 
+// urgencyNote explains a distribution's own rating of an unfixed issue.
+func urgencyNote(u string) string {
+	switch u {
+	case "":
+		return " (may still be awaiting triage)"
+	case "unimportant":
+		return "; rated unimportant by the distribution, which does not plan to fix it"
+	case "end-of-life":
+		return "; the package is no longer supported by the distribution in this release"
+	case "not yet assigned":
+		return " (urgency not yet assigned; may still be awaiting triage)"
+	default:
+		return fmt.Sprintf(" (distribution urgency: %s)", u)
+	}
+}
+
 // Additional returns definitive findings the distribution data adds beyond
-// the given CVEs: with the installed version known and a single release,
-// every advisory whose fixed version is newer than the installed package.
+// the given CVEs, for a single resolved release: every advisory whose fixed
+// version is newer than the installed package (or, with the revision not
+// visible, whose fix came in a newer upstream version than observed).
 // "No fix" rows are not added on their own, because they include CVEs still
-// awaiting triage.
+// awaiting triage and issues the distribution chose not to fix.
 func (c *Context) Additional(known map[string]bool) []Verdict {
-	if c.Status != Resolved || c.Installed == "" {
+	if c.Status != Resolved {
 		return nil
 	}
 	var out []Verdict

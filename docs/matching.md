@@ -187,19 +187,22 @@ Upstream version matching cannot see fixes a distribution has backported into
 its own packages. When a service shows distribution packaging (e.g. Nmap's
 `OpenSSH 9.6p1 Ubuntu 3ubuntu13.18`, `Apache httpd 2.4.52 (Ubuntu)`), each
 candidate CVE is also evaluated against that distribution's security
-advisories. Ubuntu is supported, from the OSV.dev export of Ubuntu's tracker.
+advisories. Ubuntu and Debian are supported, from the OSV.dev exports of their
+security trackers.
 
 **Package.** The candidate CPEs map to distribution source packages through
 the curated `distro_packages` table (`data/distro_packages.json`), e.g.
 `openbsd:openssh` → `openssh` and `postgresql:postgresql` → `postgresql-14`.
 
 **Release.** Inferred from the published package versions:
+- a revision that encodes its release is decisive: Debian `+deb12u3` → 12,
+  Ubuntu `0ubuntu0.22.04.2` → 22.04;
 - with the package revision visible, a release that published exactly
   `<upstream>-<revision>` is preferred;
 - otherwise, any release that shipped the observed upstream version;
 - in `vulndb nmap`, a release established from an exact package version on a
   host (usually from OpenSSH) is used as a hint for that host's other
-  services;
+  services, including when the service's own version is not in the data;
 - several candidate releases → `AMBIGUOUS`. A verdict is given only when all
   candidate releases agree.
 
@@ -207,20 +210,29 @@ the curated `distro_packages` table (`data/distro_packages.json`), e.g.
 
 | Status | When |
 |---|---|
-| `FIXED` | revision visible and installed ≥ fixed version; or revision not visible and no package of the observed upstream version in that release is listed as affected |
-| `VULNERABLE` | revision visible and installed < fixed version (including fixes only in Ubuntu Pro/ESM, for a standard host) |
-| `FIX_AVAILABLE` | revision not visible; the release fixed it in a later package revision. Patched only if the host is up to date |
-| `NO_FIX` | the release is listed as affected with no fix released. This includes CVEs still awaiting triage |
+| `FIXED` | revision visible and installed ≥ fixed version; or revision not visible and either the observed upstream version is newer than the fix's upstream, or no package of the observed upstream version in that release is listed as affected |
+| `VULNERABLE` | revision visible and installed < fixed version (including fixes only in Ubuntu Pro/ESM, for a standard host); or revision not visible and the fix came in a newer upstream version than observed |
+| `FIX_AVAILABLE` | revision not visible; the release fixed it in a later package revision of the same upstream version. Patched only if the host is up to date |
+| `NO_FIX` | the release is listed as affected with no fix released. The reason carries the distribution's urgency, e.g. Debian `unimportant` (no fix planned) or not yet triaged |
 | `NO_DATA` | no row for the CVE/package/release (usually not affected, or not yet assessed); unmapped product; no data for that distribution; or ambiguous releases that disagree |
 
 `FIXED` results stay in the output, but they are excluded from match counts
 and listed separately ("fixed in the Ubuntu package").
 
-**Distribution-only findings.** With the installed version known and a single
-release, any advisory whose fixed version is newer than the installed package
-is reported as a `VULNERABLE` finding (`distro_only: true`), even when NVD has
-no matching rule. `NO_FIX` rows never add findings on their own: Ubuntu marks
+**Distribution-only findings.** For a single resolved release, any advisory
+whose verdict is `VULNERABLE` is reported as a finding (`distro_only: true`),
+even when NVD has no matching rule. Such a verdict needs either an installed
+version older than the fix, or a fix in a newer upstream version. `NO_FIX` rows never add findings on their own: Ubuntu marks
 new CVEs as affected before triage.
+
+**Data trust.** Affected-version lists are used only where they describe the
+release:
+- Ubuntu's lists;
+- Debian's lists for fixed entries, keeping versions older than the fix;
+- not Debian's no-fix lists, which span the whole archive.
+
+Debian 11 (LTS) rows come from DLA advisories where no per-CVE record covers
+them.
 
 **Channels.** Rows come from standard releases and Ubuntu Pro (ESM). An
 installed revision containing `esm` uses Pro rows; otherwise standard rows,

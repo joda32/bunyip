@@ -65,8 +65,33 @@ matches became 6.
 - 3 are VULNERABLE: fixed in `3ubuntu13.19`, which `apt` on the host confirmed
   as the pending update.
 
-Other OSV.dev exports in the same format: Debian (74 MB), Red Hat, Rocky
-Linux, AlmaLinux, SUSE and Alpine.
+## Debian security tracker via OSV.dev (in use)
+
+Export: `osv-vulnerabilities.storage.googleapis.com/Debian/all.zip`.
+- 240 MB uncompressed.
+- 69,801 records: 58,357 `DEBIAN-CVE-*`, 6,246 DSA, 4,701 DLA, 207 DTSA,
+  290 `CVE-*`; 657 withdrawn.
+
+Coverage of `DEBIAN-CVE-*` by release:
+- Debian 12 (bookworm), 13 (trixie) and 14 (testing): about 57k entries each;
+- Debian 11 (bullseye, LTS): only 1,198. Bullseye fixes are mainly in DLA
+  (684) and DSA (706) records, which are used to fill the gaps.
+
+Quirks found in real data:
+- `versions` on no-fix entries spans the whole archive. For example, bookworm
+  lists `10.0p1` and backports versions, but bookworm ships OpenSSH 9.2p1.
+- A fixed version can be an unstable upload that predates the release. For
+  example, trixie's fix for CVE-2024-6387 is `1:9.7p1-7`, with no affected
+  trixie versions.
+- 3 `affected` entries have no `package`, only git ranges.
+- `ecosystem_specific.urgency`: `not yet assigned`, `unimportant` (4,607 no-fix
+  entries), `low`, `medium`, `high`, `end-of-life`.
+
+Revisions encode the release (`+deb12u3`), which pins Debian hosts even when
+the exact package version is absent from the data.
+
+Other OSV.dev exports in the same format: Red Hat, Rocky Linux, AlmaLinux,
+SUSE and Alpine. They use RPM/apk versions, which need their own comparators.
 
 ## CVE List V5 / CISA Vulnrichment (evaluated, deferred)
 

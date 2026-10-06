@@ -42,7 +42,7 @@ Usage:
 
 Commands:
   query --cpe CPE [--format text|json]   find candidate CVEs for a CPE (2.2 or 2.3)
-        [--distro ubuntu [--package-version VER]]  also evaluate distribution advisories
+        [--distro ubuntu|debian [--package-version VER]]  also evaluate distribution advisories
   nmap FILE [--format text|json]         assess services in Nmap XML output (-oX); FILE "-" = stdin
   info                                   show database provenance and age
   db init [--fixture FILE] [--force]     create a new database (optionally loading a fixture)
@@ -159,7 +159,7 @@ func cmdQuery(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	g.register(fs)
 	cpeArg := fs.String("cpe", "", "CPE 2.3 formatted string or CPE 2.2 URI")
 	formatArg := fs.String("format", "text", "output format: text or json")
-	distroArg := fs.String("distro", "", "distribution the software was installed from (ubuntu)")
+	distroArg := fs.String("distro", "", "distribution the software was installed from (ubuntu, debian)")
 	pkgVerArg := fs.String("package-version", "", "installed distribution package version, e.g. 1:9.6p1-3ubuntu13.18")
 	if err := parseSub(fs, args); err != nil {
 		return err
@@ -285,10 +285,10 @@ func distroInput(name, pkgVersion string) (*matcher.DistroInput, error) {
 		}
 		return nil, nil
 	}
-	names := map[string]string{"ubuntu": "Ubuntu"}
+	names := map[string]string{"ubuntu": "Ubuntu", "debian": "Debian"}
 	display, ok := names[strings.ToLower(name)]
 	if !ok {
-		return nil, fmt.Errorf("query: unsupported --distro %q (supported: ubuntu)", name)
+		return nil, fmt.Errorf("query: unsupported --distro %q (supported: debian, ubuntu)", name)
 	}
 	info := identity.DistroInfo{Name: display, Key: strings.ToLower(name)}
 	if pkgVersion != "" {

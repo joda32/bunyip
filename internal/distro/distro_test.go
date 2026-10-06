@@ -2,6 +2,7 @@ package distro
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,7 +18,7 @@ type fakeStore struct {
 }
 
 func (f fakeStore) HasDistroData(ctx context.Context, d string) (bool, error) {
-	return d == "ubuntu", nil
+	return d == "ubuntu" || d == "debian", nil
 }
 
 func (f fakeStore) PackageVersionsByUpstream(ctx context.Context, d string, pkgs []string, up string) ([]database.PackageVersion, error) {
@@ -42,8 +43,22 @@ func (f fakeStore) DistroAdvisories(ctx context.Context, d, pkg, rel string) ([]
 	return out, nil
 }
 
+func (f fakeStore) PackagesInRelease(ctx context.Context, d, rel string, pkgs []string) ([]string, error) {
+	var out []string
+	for _, a := range f.adv {
+		if a.Distro == d && a.Release == rel && slices.Contains(pkgs, a.Package) && !slices.Contains(out, a.Package) {
+			out = append(out, a.Package)
+		}
+	}
+	return out, nil
+}
+
 func adv(cve, rel, pkg, channel, fixed string, ups ...string) database.DistroAdvisory {
-	return database.DistroAdvisory{AdvisoryID: "UBUNTU-" + cve, CVEID: cve, Distro: "ubuntu", Release: rel,
+	distro := "ubuntu"
+	if !strings.Contains(rel, ".") {
+		distro = "debian"
+	}
+	return database.DistroAdvisory{AdvisoryID: "OSV-" + cve, CVEID: cve, Distro: distro, Release: rel,
 		Channel: channel, Package: pkg, FixedVersion: fixed, AffectedUpstreams: ups}
 }
 
@@ -68,8 +83,17 @@ var store = fakeStore{
 		adv("CVE-2099-0001", "20.04", "nginx", "standard", "1.18.0-0ubuntu1.5", "1.18.0"),
 		adv("CVE-2099-0001", "22.04", "nginx", "standard", "1.18.0-6ubuntu14.5", "1.18.0"),
 		adv("CVE-2099-0002", "20.04", "nginx", "standard", "", "1.18.0"),
-		adv("CVE-2099-0002", "22.04", "nginx", "standard", "1.18.0-6ubuntu14.1"),
+		adv("CVE-2099-0002", "22.04", "nginx", "standard", "1.18.0-6ubuntu14.1", "1.17.10"), // no 1.18.0 listed as affected
 		adv("CVE-2099-0003", "22.04", "openssh", "pro", "1:8.9p1-3ubuntu0.13+esm1", "8.9p1"),
+		// Debian, from the real DEBIAN-CVE-* records in testdata/osv/debian.
+		adv("CVE-2024-6387", "12", "openssh", "standard", "1:9.2p1-2+deb12u3", "9.2p1"),
+		adv("CVE-2024-6387", "13", "openssh", "standard", "1:9.7p1-7"),
+		adv("CVE-2025-26465", "12", "openssh", "standard", "1:9.2p1-2+deb12u5", "9.2p1"),
+		adv("CVE-2025-61984", "12", "openssh", "standard", "1:9.2p1-2+deb12u8", "9.2p1"),
+		adv("CVE-2025-61984", "13", "openssh", "standard", "1:10.0p1-7+deb13u1", "10.0p1"),
+		{AdvisoryID: "OSV-CVE-2007-2243", CVEID: "CVE-2007-2243", Distro: "debian", Release: "13", Channel: "standard",
+			Package: "openssh", Urgency: "unimportant"},
+		adv("CVE-2099-0004", "13", "openssh", "standard", "1:10.2p1-1"), // fixed by a newer upstream
 	},
 }
 
@@ -188,9 +212,67 @@ func TestNoDataCases(t *testing.T) {
 			t.Errorf("%+v: %+v", tc.tg, c)
 		}
 	}
-	c, _ := Resolve(context.Background(), store, Target{Distro: "debian", DistroName: "Debian", Upstream: "9.2p1",
+	c, _ := Resolve(context.Background(), store, Target{Distro: "redhat", DistroName: "Red Hat", Upstream: "8.7p1",
 		Packages: []string{"openssh"}})
 	if c.Status != NoDataSource {
-		t.Errorf("debian without data: %+v", c)
+		t.Errorf("distribution without data: %+v", c)
+	}
+}
+
+func resolveDebian(t *testing.T, tg Target) *Context {
+	t.Helper()
+	tg.Distro, tg.DistroName, tg.Packages = "debian", "Debian", []string{"openssh"}
+	c, err := Resolve(context.Background(), store, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestDebianReleaseFromRevision(t *testing.T) {
+	if r := ReleaseFromRevision("debian", "2+deb12u3"); r != "12" {
+		t.Errorf("deb12u3 -> %q", r)
+	}
+	if r := ReleaseFromRevision("ubuntu", "0ubuntu0.22.04.2"); r != "22.04" {
+		t.Errorf("ubuntu0.22.04 -> %q", r)
+	}
+	// Nmap "9.2p1 Debian 2+deb12u6": the version is absent from the data, but the
+	// revision names the release, which is enough.
+	c := resolveDebian(t, Target{Upstream: "9.2p1", Revision: "2+deb12u6"})
+	if c.Status != Resolved || c.DefinitiveRelease() != "12" || c.Installed != "1:9.2p1-2+deb12u6" ||
+		!strings.Contains(c.Reason, "encodes Debian 12") {
+		t.Fatalf("context: %+v", c)
+	}
+	want := map[string]Status{"CVE-2024-6387": Fixed, "CVE-2025-26465": Fixed, "CVE-2025-61984": Vulnerable}
+	for cve, st := range want {
+		if v := c.Verdict(cve); v.Status != st {
+			t.Errorf("%s: %s (%s)", cve, v.Status, v.Reason)
+		}
+	}
+}
+
+func TestDebianRevisionUnknownUpstreamComparison(t *testing.T) {
+	// Debian 13 OpenSSH 10.0p1 seen as "(Debian)" only.
+	c := resolveDebian(t, Target{Upstream: "10.0p1", ReleaseHint: "13"})
+	if c.Status != Resolved {
+		t.Fatalf("context: %+v", c)
+	}
+	// Fixed in 9.7p1-7 before trixie was released: every 10.0p1 package is newer.
+	if v := c.Verdict("CVE-2024-6387"); v.Status != Fixed || !strings.Contains(v.Reason, "every openssh 10.0p1 package is newer") {
+		t.Errorf("CVE-2024-6387: %+v", v)
+	}
+	// Same upstream, fixed in a later revision: can't tell without the revision.
+	if v := c.Verdict("CVE-2025-61984"); v.Status != FixAvailable {
+		t.Errorf("CVE-2025-61984: %+v", v)
+	}
+	// Fixed only by a newer upstream (10.2p1): every 10.0p1 package is older.
+	if v := c.Verdict("CVE-2099-0004"); v.Status != Vulnerable {
+		t.Errorf("CVE-2099-0004: %+v", v)
+	}
+	if add := c.Additional(map[string]bool{"CVE-2024-6387": true}); len(add) != 1 || add[0].CVE != "CVE-2099-0004" {
+		t.Errorf("definitive findings without a revision: %+v", add)
+	}
+	if v := c.Verdict("CVE-2007-2243"); v.Status != NoFix || !strings.Contains(v.Reason, "rated unimportant") {
+		t.Errorf("unimportant: %+v", v)
 	}
 }

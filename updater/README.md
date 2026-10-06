@@ -22,6 +22,7 @@ make real-db                    # download/refresh feeds, build ./vulndb.sqlite
 | NVD CVE JSON 2.0 yearly feeds (2002–current) | `https://nvd.nist.gov/feeds/json/cve/2.0/` | daily |
 | NVD `modified` feed (changes in the last 8 days) | same | about every 2 hours |
 | Ubuntu security tracker (OSV.dev export, ~770 MB) | `https://osv-vulnerabilities.storage.googleapis.com/Ubuntu/all.zip` | daily |
+| Debian security tracker (OSV.dev export, ~74 MB) | `https://osv-vulnerabilities.storage.googleapis.com/Debian/all.zip` | daily |
 | CISA KEV catalogue | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | when CISA adds entries (typically several times a week) |
 
 How the build uses them:
@@ -63,7 +64,7 @@ returned by a query.
 
 ## Distribution advisories
 
-The Ubuntu OSV export carries, per CVE, per Ubuntu release and per source
+**Ubuntu**'s OSV export carries, per CVE, per Ubuntu release and per source
 package: the fixed version, or none if no fix has been released, and the
 affected package versions.
 
@@ -73,6 +74,18 @@ What the build keeps:
   streams are skipped;
 - only the source packages in `data/distro_packages.json`. The export is
   dominated by kernel packages, which a network scan never sees.
+
+**Debian** comes from per-CVE records (`DEBIAN-CVE-*`) for 12/13/14. Per-advisory
+DSA/DLA records fill only the gaps, mainly Debian 11 LTS; if several cover the
+same CVE, release and package, the highest fixed version is kept.
+
+Unlike Ubuntu's, Debian's affected-version lists can span the whole archive:
+- for fixed entries, only versions older than the fix are kept;
+- no-fix lists are ignored;
+- an unstable fixed version that predates a release is not treated as a
+  package of that release.
+
+Debian's urgency (e.g. `unimportant`) is stored and shown on no-fix verdicts.
 
 Each download is verified against the MD5 the bucket publishes, and only
 re-downloaded when that changes. `--offline-from` re-verifies it. Use

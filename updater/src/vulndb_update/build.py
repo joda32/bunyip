@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, aliases, cpe, kev, nvd, osv
+from . import __version__, aliases, cpe, debversion, kev, nvd, osv
 from .fetch import Feed, OSVExport
 from .jsonstream import ArrayStream
 
@@ -142,39 +142,71 @@ def _load_aliases(conn, rows: list, stats: Stats, log) -> None:
 
 
 def _load_distro(conn, di: DistroInput, package_map: list, stats: Stats, log) -> None:
-    """Load one distribution's advisories for the mapped packages."""
+    """Load one distribution's advisories for the mapped packages.
+
+    Per-CVE records come first. Per-advisory records (Debian DSA/DLA) then
+    fill only CVE/release/package combinations no per-CVE record covers; if
+    several advisories cover one, the highest fixed version is kept (the
+    conservative choice when a later advisory completed an earlier fix).
+    """
     start = time.monotonic()
-    mapped = [r for r in package_map if r.distro == di.distro.name]
+    d = di.distro
+    mapped = [r for r in package_map if r.distro == d.name]
     packages = {r.package for r in mapped}
     conn.execute("BEGIN")
     conn.executemany(
         "INSERT INTO distro_packages (cpe_part, cpe_vendor, cpe_product, distro, package, source)"
         " VALUES (?, ?, ?, ?, ?, ?)",
         [(r.part, r.vendor, r.product, r.distro, r.package, r.source) for r in mapped])
-    rows = withdrawn = 0
-    seen_packages = set()
-    for record in osv.iter_records(di.export.zip_path, di.distro.record_prefix):
-        t = osv.transform(record, di.distro, packages)
+    rows: dict[tuple, osv.AdvisoryRow] = {}
+    versions: set = set()
+    withdrawn = 0
+    for record in osv.iter_records(di.export.zip_path, d.record_prefix):
+        t = osv.transform(record, d, packages, per_cve=True)
         withdrawn += t.withdrawn
-        if not t.rows:
-            continue
-        conn.executemany(
-            "INSERT INTO distro_advisories (source, advisory_id, cve_id, distro, release, channel, codename,"
-            " package, fixed_version, affected_upstreams, modified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [(r.source, r.advisory_id, r.cve_id, r.distro, r.release, r.channel, r.codename, r.package,
-              r.fixed_version, r.affected_upstreams, r.modified_at) for r in t.rows])
-        conn.executemany(
-            "INSERT OR IGNORE INTO distro_package_versions (distro, release, package, version, upstream)"
-            " VALUES (?, ?, ?, ?, ?)",
-            [(v.distro, v.release, v.package, v.version, v.upstream) for v in t.versions])
-        rows += len(t.rows)
-        seen_packages.update(r.package for r in t.rows)
+        versions |= t.versions
+        for r in t.rows:
+            rows[r.key] = r
+    primary = set(rows)
+    if d.advisory_prefixes:
+        for record in osv.iter_records(di.export.zip_path, d.advisory_prefixes):
+            t = osv.transform(record, d, packages, per_cve=False)
+            withdrawn += t.withdrawn
+            versions |= t.versions
+            for r in t.rows:
+                if r.key in primary:
+                    continue
+                old = rows.get(r.key)
+                if old is None or _newer_fix(r.fixed_version, old.fixed_version):
+                    rows[r.key] = r
+    conn.executemany(
+        "INSERT INTO distro_advisories (source, advisory_id, cve_id, distro, release, channel, codename,"
+        " package, fixed_version, affected_upstreams, urgency, modified_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [(r.source, r.advisory_id, r.cve_id, r.distro, r.release, r.channel, r.codename, r.package,
+          r.fixed_version, r.affected_upstreams, r.urgency, r.modified_at) for r in rows.values()])
+    conn.executemany(
+        "INSERT OR IGNORE INTO distro_package_versions (distro, release, package, version, upstream)"
+        " VALUES (?, ?, ?, ?, ?)",
+        [(v.distro, v.release, v.package, v.version, v.upstream) for v in versions])
     conn.execute("COMMIT")
-    stats.distro_rows += rows
+    seen_packages = {r.package for r in rows.values()}
+    stats.distro_rows += len(rows)
     stats.distro_withdrawn += withdrawn
-    stats.unmapped_packages += sorted(f"{di.distro.name}/{p}" for p in packages - seen_packages)
-    log(f"  {di.distro.name} advisories: {rows} rows for {len(seen_packages)} packages "
-        f"({withdrawn} withdrawn records skipped) in {time.monotonic() - start:.1f}s")
+    stats.unmapped_packages += sorted(f"{d.name}/{p}" for p in packages - seen_packages)
+    log(f"  {d.name} advisories: {len(rows)} rows for {len(seen_packages)} packages "
+        f"({len(rows) - len(primary)} from per-advisory records; {withdrawn} withdrawn records skipped) "
+        f"in {time.monotonic() - start:.1f}s")
+
+
+def _newer_fix(a: str | None, b: str | None) -> bool:
+    """Whether fixed version a supersedes b (None = no fix, which wins)."""
+    if a is None or b is None:
+        return a is None and b is not None
+    try:
+        return debversion.compare(a, b) > 0
+    except debversion.DebVersionError:
+        return False
 
 
 def _apply(conn, rec: nvd.Record, stats: Stats) -> None:

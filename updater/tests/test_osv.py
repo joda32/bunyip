@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from conftest import OSV_UBUNTU, REPO, SCHEMA, write_osv_export
+from conftest import OSV_DEBIAN, OSV_UBUNTU, REPO, SCHEMA, write_osv_export
 from vulndb_update import build, fetch, osv
 
 UBUNTU = osv.DISTROS["ubuntu"]
@@ -108,7 +108,7 @@ def test_build_with_ubuntu(sources, tmp_path):
              " AND channel = 'standard' AND package = 'openssh'") == [("1:9.6p1-3ubuntu13.3",)]
     assert q("SELECT COUNT(*) FROM distro_advisories WHERE package = 'gcc-4.7'") == [(0,)]
     assert q("SELECT DISTINCT release FROM distro_package_versions WHERE package = 'openssh' AND upstream = '8.9p1'") == [("22.04",)]
-    assert q("SELECT COUNT(*) FROM distro_packages") == [(len(pm),)]
+    assert q("SELECT COUNT(*) FROM distro_packages") == [(len([r for r in pm if r.distro == "ubuntu"]),)]
     meta = dict(q("SELECT key, value FROM database_metadata"))
     assert meta["distro_sources"] == "ubuntu" and meta["ubuntu_advisories_last_modified"].startswith("Tue, 06 Oct 2026")
     assert "ubuntu/nginx" in stats.unmapped_packages  # mapped, but absent from the small test export
@@ -116,7 +116,7 @@ def test_build_with_ubuntu(sources, tmp_path):
 
 def test_local_osv_verifies_md5(sources):
     assert fetch.local_osv(sources, "Ubuntu") is not None
-    assert fetch.local_osv(sources, "Debian") is None
+    assert fetch.local_osv(sources, "Alpine") is None
     zip_path = sources / "osv-Ubuntu-all.zip"
     zip_path.write_bytes(zip_path.read_bytes() + b"tampered")
     with pytest.raises(fetch.FetchError, match="MD5 mismatch"):
@@ -150,3 +150,68 @@ def test_sync_osv_caches_and_verifies(tmp_path, monkeypatch):
     published["md5"] = ""
     with pytest.raises(fetch.FetchError, match="no MD5"):
         fetch.sync_osv(cache, "Ubuntu", log=lambda *a: None)
+
+
+# --- Debian -----------------------------------------------------------------
+
+DEBIAN = osv.DISTROS["debian"]
+
+
+def debian(rid):
+    return json.loads((OSV_DEBIAN / f"{rid}.json").read_text())
+
+
+def test_debian_per_cve_record():
+    t = osv.transform(debian("DEBIAN-CVE-2024-6387"), DEBIAN, MAPPED)
+    bookworm, trixie = rows_by(t, "12")[0], rows_by(t, "13")[0]
+    assert (bookworm.fixed_version, bookworm.codename) == ("1:9.2p1-2+deb12u3", "bookworm")
+    assert bookworm.affected_upstreams == "9.2p1"
+    # Trixie's fix predates the release: no versions listed, and the fixed
+    # version (an unstable upload) is not recorded as a trixie package.
+    assert trixie.fixed_version == "1:9.7p1-7" and trixie.affected_upstreams == ""
+    assert not any(v.release == "13" for v in t.versions)
+    assert osv.PackageVersion("debian", "12", "openssh", "1:9.2p1-2+deb12u3", "9.2p1") in t.versions
+    assert bookworm.urgency == "not yet assigned"
+
+
+def test_debian_no_fix_versions_ignored():
+    # The no-fix entry lists versions from the whole archive (10.0p1, backports, ...)
+    # which bookworm never shipped; they must not become bookworm data.
+    t = osv.transform(debian("DEBIAN-CVE-2007-2243"), DEBIAN, MAPPED)
+    bookworm = rows_by(t, "12")[0]
+    assert bookworm.fixed_version is None and bookworm.affected_upstreams == ""
+    assert bookworm.urgency == "unimportant"
+    assert t.versions == set()
+
+
+def test_debian_advisory_record_lists_cves():
+    t = osv.transform(debian("DLA-4057-1"), DEBIAN, MAPPED, per_cve=False)
+    bullseye = rows_by(t, "11")[0]
+    assert (bullseye.cve_id, bullseye.fixed_version, bullseye.advisory_id) == \
+        ("CVE-2025-26465", "1:8.4p1-5+deb11u4", "DLA-4057-1")
+    assert bullseye.affected_upstreams == "8.4p1"
+
+
+@pytest.mark.parametrize("eco, want", [("Debian:12", ("12", "standard")), ("Debian:3.1", ("3.1", "standard")),
+                                       ("Ubuntu:24.04:LTS", None)])
+def test_debian_ecosystems(eco, want):
+    assert osv.parse_ecosystem(DEBIAN, eco) == want
+
+
+def test_build_with_debian(sources, tmp_path):
+    out = tmp_path / "v.sqlite"
+    pm = osv.load_package_map(REPO / "data" / "distro_packages.json")
+    stats = build.build(out, SCHEMA.read_text(), fetch.local_feeds(sources), fetch.local_kev(sources),
+                        allow_small=True, log=lambda *a: None, package_map=pm,
+                        distros=[build.DistroInput(DEBIAN, fetch.local_osv(sources, "Debian"))])
+    conn = sqlite3.connect(out)
+    q = lambda sql, *a: conn.execute(sql, a).fetchall()  # noqa: E731
+    # Bookworm comes from the per-CVE record, not DSA-5724-1 (same fix).
+    assert q("SELECT advisory_id, fixed_version FROM distro_advisories WHERE cve_id = 'CVE-2024-6387'"
+             " AND release = '12'") == [("DEBIAN-CVE-2024-6387", "1:9.2p1-2+deb12u3")]
+    # Bullseye is only in DLA-4057-1.
+    assert q("SELECT advisory_id, fixed_version FROM distro_advisories WHERE cve_id = 'CVE-2025-26465'"
+             " AND release = '11'") == [("DLA-4057-1", "1:8.4p1-5+deb11u4")]
+    assert q("SELECT urgency FROM distro_advisories WHERE cve_id = 'CVE-2007-2243' AND release = '12'") == [("unimportant",)]
+    assert q("SELECT DISTINCT release FROM distro_package_versions WHERE package = 'openssh' AND upstream = '9.2p1'") == [("12",)]
+    assert stats.distro_rows > 0

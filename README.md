@@ -21,13 +21,13 @@ exact matching rules are in [`docs/matching.md`](docs/matching.md).
 - Not proof of vulnerability: a version/banner match is a **candidate
   vulnerability**. The version only *appears* to fall in an affected range.
 - Not a patch-state audit. Distribution backports (fixes shipped without
-  changing the upstream version) are evaluated only for Ubuntu, and only as far
-  as the scan shows the installed package version. Results for other
-  distributions can be false positives.
+  changing the upstream version) are evaluated only for Ubuntu and Debian, and
+  only as far as the scan shows the installed package version. Results for
+  other distributions (RHEL, SUSE, Alpine, …) can be false positives.
 - Does not run, download or ship exploit code; it only records that exploit
   references exist.
 
-## Status: milestone 4
+## Status: milestone 5
 
 Implemented:
 - **Query engine (Go):** CPE 2.2/2.3 parsing and normalisation, version
@@ -40,18 +40,18 @@ Implemented:
 - **Identity resolution:** curated aliases map the vendor/product names Nmap
   reports to the names NVD uses (e.g. `mysql:mysql` → `oracle:mysql`).
   Distribution packages (Ubuntu, Debian, RHEL, …) are detected.
-- **Ubuntu security advisories:** for Ubuntu-packaged services, each candidate
-  CVE is checked against Ubuntu's own fix data (FIXED / VULNERABLE /
-  FIX_AVAILABLE / NO_FIX). This removes backport false positives and adds CVEs
-  NVD lacks data for. See [docs/matching.md](docs/matching.md#9-distribution-advisories-internaldistro).
+- **Ubuntu and Debian security advisories:** for distribution-packaged services,
+  each candidate CVE is checked against the distribution's own fix data (FIXED /
+  VULNERABLE / FIX_AVAILABLE / NO_FIX). This removes backport false positives
+  and adds CVEs NVD lacks data for. See [docs/matching.md](docs/matching.md#9-distribution-advisories-internaldistro).
 - **Updater (Python, [`updater/`](updater/README.md)):** builds a real database
-  from the NVD CVE JSON 2.0 feeds, the CISA KEV catalogue, Ubuntu's advisories
-  (OSV.dev export), `data/aliases.json` and `data/distro_packages.json`.
+  from the NVD CVE JSON 2.0 feeds, the CISA KEV catalogue, Ubuntu's and Debian's
+  advisories (OSV.dev exports), `data/aliases.json` and
+  `data/distro_packages.json`.
 
-Not yet: advisories for other distributions (Debian is the obvious next one,
-same OSV format), product-name resolution when no CPE is reported, the CVE List
-as a second source (evaluated and deferred, see
-[docs/data-sources.md](docs/data-sources.md)), and the NSE adapter.
+Not yet: advisories for RPM-based distributions, product-name resolution when
+no CPE is reported, the CVE List as a second source (evaluated and deferred,
+see [docs/data-sources.md](docs/data-sources.md)), and the NSE adapter.
 
 ## Build
 
@@ -244,7 +244,7 @@ Flags on a CVE line mark results to review: `CONDITIONAL` (another condition,
 such as a specific OS, was not evaluated), `ransomware` (known use per KEV), and
 `via alias` (found only through a curated alias identity).
 
-### Ubuntu hosts
+### Ubuntu and Debian hosts
 
 A real scan of an Ubuntu 24.04 machine (`OpenSSH 9.6p1 Ubuntu 3ubuntu13.18`):
 
@@ -262,8 +262,13 @@ Upstream matching alone reported 22 CVEs, including regreSSHion.
 - Three are fixed only in the newer `3ubuntu13.19`, which `apt` on that
   machine confirmed as the pending update.
 
+Debian works the same way. A revision such as `2+deb12u3` pins Debian 12 even
+when that exact version is not in the data. Debian 11 (LTS) fixes come from
+DLA advisories.
+
 Only OpenSSH shows the package revision in its banner. Apache, nginx, Postfix
-and others show only "(Ubuntu)", so their verdicts are about the release:
+and others show only "(Ubuntu)" or "(Debian)", so their verdicts are about the
+release:
 - `FIXED` when no package of that upstream version in the release is affected;
 - `FIX_AVAILABLE` when the fix came in a later package revision, so the host is
   patched only if it is up to date.
@@ -272,6 +277,7 @@ For a single CPE, pass the distribution yourself:
 
 ```bash
 bin/vulndb query --cpe cpe:/a:openbsd:openssh:9.6p1 --distro ubuntu --package-version 1:9.6p1-3ubuntu13.18
+bin/vulndb query --cpe cpe:/a:openbsd:openssh:9.2p1 --distro debian --package-version 1:9.2p1-2+deb12u3
 ```
 
 ## Utility commands
@@ -305,6 +311,10 @@ failed verify), `2` usage error (unknown command or flag, unsupported
   recent CVEs (see above). An empty result is not evidence of no vulnerability.
 - Exploit evidence is limited to references NVD tagged `Exploit`, and none of it
   is verified.
+- Debian 11 (LTS) verdicts exist only for CVEs with a DLA/DSA advisory.
+  Debian's per-CVE data barely covers LTS, so most other CVEs are `NO_DATA`
+  there. On a real bookworm OpenSSH, 26 upstream matches split into FIXED,
+  VULNERABLE and NO_FIX; on bullseye, 24 of 28 are `NO_DATA`.
 - Components that NVD attributes to an operating system are invisible to a
   product CPE. For example, IIS vulnerabilities since about 2017 are listed
   against Windows CPEs, so `cpe:/a:microsoft:internet_information_services:10.0`
@@ -335,7 +345,7 @@ testdata/fixtures/   synthetic test data
 testdata/nvd/        real NVD/KEV records for updater and end-to-end tests
 testdata/contract/   shared Go/Python CPE canonicalisation vectors
 testdata/nmap/       a real Nmap scan and hand-written multi-host samples
-testdata/osv/        real Ubuntu OSV advisory records
+testdata/osv/        real Ubuntu and Debian OSV advisory records
 docs/matching.md     matching semantics
 docs/data-sources.md source coverage measurements and decisions
 ```

@@ -30,6 +30,7 @@ func TestDpkgCompare(t *testing.T) {
 		{"1:6.6p1-2ubuntu2.13+esm4", "1:6.6p1-2ubuntu2.13", 1},
 		{"1.0-1ubuntu1", "1.0-1", 1},
 		{"1.0-1build1", "1.0-1ubuntu1", -1},
+		{"10:1.0", "9:2.0", 1},
 	}
 	var d Dpkg
 	for _, tt := range tests {

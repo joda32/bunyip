@@ -143,3 +143,34 @@ def test_ubuntu_advisories_against_real_records(vulndb_bin, real_db):
     assert old["CVE-2023-38408"] == ("VULNERABLE", False)
     assert old["CVE-2025-61984"] == ("VULNERABLE", True)
     assert report["summary"]["distro_fixed"] == 2 and report["summary"]["distro_only"] == 2
+
+
+def test_debian_advisories_against_real_records(vulndb_bin, real_db):
+    """Real NVD + real Debian OSV records (DEBIAN-CVE-* and DLA-4057-1)."""
+    p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/debian-hosts.xml"),
+                        "--format", "json"], capture_output=True, text=True, check=True)
+    report = json.loads(p.stdout)["report"]
+    bookworm, bullseye = report["hosts"]
+
+    def verdicts(svc):
+        return {v["cve"]: (v["distro"]["status"], v.get("distro_only", False)) for v in svc["result"]["vulnerabilities"]}
+
+    # "+deb12u3" pins Debian 12 even though that exact version is not in the data.
+    assert bookworm["distro_release"] == "12"
+    ssh = bookworm["services"][0]
+    assert ssh["result"]["distro"]["installed_version"] == "1:9.2p1-2+deb12u3"
+    v = verdicts(ssh)
+    assert v["CVE-2024-6387"] == ("FIXED", False)       # fixed in exactly +deb12u3
+    assert v["CVE-2023-38408"] == ("FIXED", False)      # fixed in +deb12u1
+    assert v["CVE-2025-26465"] == ("VULNERABLE", True)  # Debian fixed it in +deb12u5
+    assert v["CVE-2025-61984"] == ("VULNERABLE", True)  # +deb12u8; NVD has no rule
+    assert "CVE-2007-2243" not in v                      # Debian: no fix, "unimportant" -> never added alone
+
+    apache = bookworm["services"][1]
+    assert apache["distro"] == "Debian"
+    assert apache["result"]["distro"]["status"] == "RESOLVED"  # via the host's release (from OpenSSH)
+
+    # Debian 11 (LTS): only the DLA advisory covers it.
+    assert bullseye["distro_release"] == "11"
+    old = verdicts(bullseye["services"][0])
+    assert old["CVE-2025-26465"] == ("VULNERABLE", True)  # DLA-4057-1 fixed it in +deb11u4

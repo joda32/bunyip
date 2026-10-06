@@ -50,6 +50,7 @@ type FixtureDistroAdvisory struct {
 	Package           string `json:"package"`
 	FixedVersion      string `json:"fixed_version"`
 	AffectedUpstreams string `json:"affected_upstreams"`
+	Urgency           string `json:"urgency"`
 }
 
 type FixtureCVE struct {
@@ -218,9 +219,11 @@ INSERT INTO distro_package_versions (distro, release, package, version, upstream
 			channel = "standard"
 		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO distro_advisories (source, advisory_id, cve_id, distro, release, channel, package, fixed_version, affected_upstreams)
-VALUES ('fixture', ?, ?, ?, ?, ?, ?, ?, ?)`,
-			a.AdvisoryID, a.CVEID, a.Distro, a.Release, channel, a.Package, nullStr(a.FixedVersion), a.AffectedUpstreams); err != nil {
+INSERT INTO distro_advisories (source, advisory_id, cve_id, distro, release, channel, package, fixed_version,
+                               affected_upstreams, urgency)
+VALUES ('fixture', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			a.AdvisoryID, a.CVEID, a.Distro, a.Release, channel, a.Package, nullStr(a.FixedVersion), a.AffectedUpstreams,
+			nullStr(a.Urgency)); err != nil {
 			return err
 		}
 	}
