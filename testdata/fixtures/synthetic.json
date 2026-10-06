@@ -1,0 +1,217 @@
+{
+  "metadata": {
+    "dataset": "synthetic-fixture",
+    "database_version": "fixture-1",
+    "notice": "SYNTHETIC TEST DATA. CVE-0000-* identifiers, descriptions, scores, KEV and exploit records are fabricated for testing the matching engine and do not describe real vulnerabilities."
+  },
+  "cves": [
+    {
+      "cve_id": "CVE-0000-0001",
+      "published_at": "2021-10-05T00:00:00Z",
+      "modified_at": "2021-10-20T00:00:00Z",
+      "description": "[SYNTHETIC] Path traversal in Apache HTTP Server. Range: >= 2.4.49 (inclusive lower), < 2.4.51 (exclusive upper). KEV + verified exploit.",
+      "cvss_v3_score": 9.8,
+      "cvss_v3_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "severity": "CRITICAL",
+      "cwe": "CWE-22",
+      "configurations": [
+        {"operator": "OR", "nodes": [{"operator": "OR", "cpe_match": [
+          {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "vulnerable": true,
+           "version_start_including": "2.4.49", "version_end_excluding": "2.4.51"}
+        ]}]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0002",
+      "published_at": "2021-10-05T00:00:00Z",
+      "modified_at": "2021-10-05T00:00:00Z",
+      "description": "[SYNTHETIC] Request smuggling affecting exactly Apache HTTP Server 2.4.49 (exact-version criteria, no range). Unverified exploit reference only.",
+      "cvss_v3_score": 7.5,
+      "cvss_v3_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "severity": "HIGH",
+      "cwe": "CWE-444",
+      "configurations": [
+        {"nodes": [{"cpe_match": [
+          {"criteria": "cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*", "vulnerable": true}
+        ]}]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0003",
+      "published_at": "2021-11-01T00:00:00Z",
+      "modified_at": "2021-11-01T00:00:00Z",
+      "description": "[SYNTHETIC] Information disclosure in Apache HTTP Server. Range: > 2.4.48 (exclusive lower), <= 2.4.50 (inclusive upper). No exploit or KEV evidence.",
+      "cvss_v3_score": 5.3,
+      "cvss_v3_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+      "severity": "MEDIUM",
+      "cwe": "CWE-200",
+      "configurations": [
+        {"nodes": [{"cpe_match": [
+          {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "vulnerable": true,
+           "version_start_excluding": "2.4.48", "version_end_including": "2.4.50"}
+        ]}]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0004",
+      "published_at": "2018-01-01T00:00:00Z",
+      "modified_at": "2018-01-01T00:00:00Z",
+      "description": "[SYNTHETIC] Old Apache HTTP Server issue fixed in 2.4.30 (end excluding only). Should not match 2.4.4x.",
+      "cvss_v3_score": 6.1,
+      "severity": "MEDIUM",
+      "configurations": [
+        {"nodes": [{"cpe_match": [
+          {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "vulnerable": true,
+           "version_end_excluding": "2.4.30"}
+        ]}]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0005",
+      "published_at": "2021-12-01T00:00:00Z",
+      "modified_at": "2021-12-01T00:00:00Z",
+      "description": "[SYNTHETIC] Apache HTTP Server < 2.4.52 only when running on Microsoft Windows (AND configuration with a non-vulnerable platform node).",
+      "cvss_v3_score": 8.1,
+      "severity": "HIGH",
+      "configurations": [
+        {"operator": "AND", "nodes": [
+          {"operator": "OR", "cpe_match": [
+            {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "vulnerable": true,
+             "version_end_excluding": "2.4.52"}
+          ]},
+          {"operator": "OR", "cpe_match": [
+            {"criteria": "cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*", "vulnerable": false}
+          ]}
+        ]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0006",
+      "published_at": "2022-01-01T00:00:00Z",
+      "modified_at": "2022-01-01T00:00:00Z",
+      "description": "[SYNTHETIC] Apache HTTP Server < 2.4.60 on x64 hardware only (criteria sets target_hw; a supplied CPE without target_hw cannot be decided).",
+      "cvss_v3_score": 4.3,
+      "severity": "MEDIUM",
+      "configurations": [
+        {"nodes": [{"cpe_match": [
+          {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:x64:*", "vulnerable": true,
+           "version_end_excluding": "2.4.60"}
+        ]}]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0101",
+      "published_at": "2021-05-25T00:00:00Z",
+      "modified_at": "2021-06-01T00:00:00Z",
+      "description": "[SYNTHETIC] Resolver memory corruption in nginx. Range: >= 1.20.0, <= 1.20.1 (inclusive upper). Exploit evidence, not in KEV.",
+      "cvss_v3_score": 7.7,
+      "severity": "HIGH",
+      "cwe": "CWE-193",
+      "configurations": [
+        {"nodes": [{"cpe_match": [
+          {"criteria": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*", "vulnerable": true,
+           "version_start_including": "1.20.0", "version_end_including": "1.20.1"}
+        ]}]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0102",
+      "published_at": "2016-01-01T00:00:00Z",
+      "modified_at": "2016-01-01T00:00:00Z",
+      "description": "[SYNTHETIC] nginx issue in 1.9.x, fixed in 1.10.0 (tests numeric 1.9 < 1.10 ordering).",
+      "cvss_v3_score": 5.9,
+      "severity": "MEDIUM",
+      "configurations": [
+        {"nodes": [{"cpe_match": [
+          {"criteria": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*", "vulnerable": true,
+           "version_start_including": "1.9.0", "version_end_excluding": "1.10.0"}
+        ]}]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0201",
+      "published_at": "2023-07-19T00:00:00Z",
+      "modified_at": "2023-07-19T00:00:00Z",
+      "description": "[SYNTHETIC] OpenSSH agent forwarding issue. Range: >= 8.5p1, < 9.3p2 (OpenSSH portable p-suffix versions).",
+      "cvss_v3_score": 8.1,
+      "severity": "HIGH",
+      "configurations": [
+        {"nodes": [{"cpe_match": [
+          {"criteria": "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*", "vulnerable": true,
+           "version_start_including": "8.5p1", "version_end_excluding": "9.3p2"}
+        ]}]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0202",
+      "published_at": "2022-03-01T00:00:00Z",
+      "modified_at": "2022-03-01T00:00:00Z",
+      "description": "[SYNTHETIC] OpenSSH 8.9 update p1 expressed NVD-style with the patch level in the update attribute (version 8.9, update p1). Demonstrates the version/update split problem.",
+      "cvss_v3_score": 5.3,
+      "severity": "MEDIUM",
+      "configurations": [
+        {"nodes": [{"cpe_match": [
+          {"criteria": "cpe:2.3:a:openbsd:openssh:8.9:p1:*:*:*:*:*:*", "vulnerable": true}
+        ]}]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0301",
+      "published_at": "2022-05-10T00:00:00Z",
+      "modified_at": "2022-05-10T00:00:00Z",
+      "description": "[SYNTHETIC] Remote code execution in Microsoft IIS 10.0 (exact version). In KEV with known ransomware use; no public exploit evidence recorded.",
+      "cvss_v3_score": 9.8,
+      "severity": "CRITICAL",
+      "cwe": "CWE-787",
+      "configurations": [
+        {"nodes": [{"cpe_match": [
+          {"criteria": "cpe:2.3:a:microsoft:internet_information_services:10.0:*:*:*:*:*:*:*", "vulnerable": true}
+        ]}]}
+      ]
+    },
+    {
+      "cve_id": "CVE-0000-0302",
+      "published_at": "2015-01-01T00:00:00Z",
+      "modified_at": "2015-01-01T00:00:00Z",
+      "description": "[SYNTHETIC] Microsoft IIS issue fixed in 8.5 (end excluding). Should not match IIS 10.0.",
+      "cvss_v3_score": 7.5,
+      "severity": "HIGH",
+      "configurations": [
+        {"nodes": [{"cpe_match": [
+          {"criteria": "cpe:2.3:a:microsoft:internet_information_services:*:*:*:*:*:*:*:*", "vulnerable": true,
+           "version_end_excluding": "8.5"}
+        ]}]}
+      ]
+    }
+  ],
+  "kev": [
+    {"cve_id": "CVE-0000-0001", "vendor_project": "Apache", "product": "HTTP Server",
+     "vulnerability_name": "[SYNTHETIC] Apache HTTP Server Path Traversal",
+     "date_added": "2021-11-03", "due_date": "2021-11-17", "known_ransomware": "Unknown",
+     "notes": "Synthetic fixture entry."},
+    {"cve_id": "CVE-0000-0301", "vendor_project": "Microsoft", "product": "IIS",
+     "vulnerability_name": "[SYNTHETIC] Microsoft IIS RCE",
+     "date_added": "2022-06-01", "due_date": "2022-06-22", "known_ransomware": "Known",
+     "notes": "Synthetic fixture entry."}
+  ],
+  "exploit_evidence": [
+    {"cve_id": "CVE-0000-0001", "source": "exploit-db", "reference": "EDB-ID:00001 (synthetic)",
+     "reference_type": "exploit", "verified": true},
+    {"cve_id": "CVE-0000-0001", "source": "metasploit", "reference": "exploit/multi/http/synthetic_fixture",
+     "reference_type": "module", "verified": true, "metadata": {"rank": "excellent"}},
+    {"cve_id": "CVE-0000-0002", "source": "github", "reference": "https://example.invalid/synthetic/poc-0002",
+     "reference_type": "poc", "verified": false},
+    {"cve_id": "CVE-0000-0101", "source": "exploit-db", "reference": "EDB-ID:00101 (synthetic)",
+     "reference_type": "exploit", "verified": true},
+    {"cve_id": "CVE-0000-0201", "source": "github", "reference": "https://example.invalid/synthetic/poc-0201",
+     "reference_type": "poc", "verified": false}
+  ],
+  "aliases": [
+    {"observed_vendor": "igor_sysoev", "observed_product": "nginx", "canonical_vendor": "f5",
+     "canonical_product": "nginx", "canonical_cpe_prefix": "cpe:2.3:a:f5:nginx",
+     "source": "synthetic-fixture", "confidence": "HIGH"},
+    {"observed_vendor": "", "observed_product": "Apache httpd", "canonical_vendor": "apache",
+     "canonical_product": "http_server", "canonical_cpe_prefix": "cpe:2.3:a:apache:http_server",
+     "source": "synthetic-fixture", "confidence": "HIGH"}
+  ]
+}

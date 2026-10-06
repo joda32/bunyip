@@ -1,0 +1,4 @@
+bin/
+*.sqlite
+.*.building
+graphify-out/

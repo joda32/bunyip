@@ -1,0 +1,233 @@
+package database
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+
+	"offline-vulndb/internal/cpe"
+)
+
+// Fixture is a small, self-contained dataset in a JSON shape that mirrors the
+// NVD configuration tree. It exists so the matching model can be tested
+// without the full NVD dataset; the production database will be built by the
+// separate Python updater.
+type Fixture struct {
+	Metadata        map[string]string `json:"metadata"`
+	CVEs            []FixtureCVE      `json:"cves"`
+	KEV             []FixtureKEV      `json:"kev"`
+	ExploitEvidence []FixtureExploit  `json:"exploit_evidence"`
+	Aliases         []FixtureAlias    `json:"aliases"`
+}
+
+type FixtureCVE struct {
+	CVEID          string          `json:"cve_id"`
+	PublishedAt    string          `json:"published_at"`
+	ModifiedAt     string          `json:"modified_at"`
+	Description    string          `json:"description"`
+	CVSSv3Score    *float64        `json:"cvss_v3_score"`
+	CVSSv3Vector   string          `json:"cvss_v3_vector"`
+	CVSSv4Score    *float64        `json:"cvss_v4_score"`
+	CVSSv4Vector   string          `json:"cvss_v4_vector"`
+	Severity       string          `json:"severity"`
+	CWE            string          `json:"cwe"`
+	Configurations []FixtureConfig `json:"configurations"`
+}
+
+type FixtureConfig struct {
+	Operator string        `json:"operator"` // "AND" or "OR"; default "OR"
+	Nodes    []FixtureNode `json:"nodes"`
+}
+
+type FixtureNode struct {
+	Operator string         `json:"operator"` // "AND" or "OR"; default "OR"
+	Negate   bool           `json:"negate"`
+	CPEMatch []FixtureMatch `json:"cpe_match"`
+}
+
+type FixtureMatch struct {
+	Criteria              string `json:"criteria"`
+	Vulnerable            bool   `json:"vulnerable"`
+	VersionStartIncluding string `json:"version_start_including"`
+	VersionStartExcluding string `json:"version_start_excluding"`
+	VersionEndIncluding   string `json:"version_end_including"`
+	VersionEndExcluding   string `json:"version_end_excluding"`
+}
+
+type FixtureKEV struct {
+	CVEID             string `json:"cve_id"`
+	VendorProject     string `json:"vendor_project"`
+	Product           string `json:"product"`
+	VulnerabilityName string `json:"vulnerability_name"`
+	DateAdded         string `json:"date_added"`
+	DueDate           string `json:"due_date"`
+	KnownRansomware   string `json:"known_ransomware"`
+	Notes             string `json:"notes"`
+}
+
+type FixtureExploit struct {
+	CVEID         string          `json:"cve_id"`
+	Source        string          `json:"source"`
+	Reference     string          `json:"reference"`
+	ReferenceType string          `json:"reference_type"`
+	Verified      bool            `json:"verified"`
+	Metadata      json.RawMessage `json:"metadata"`
+}
+
+type FixtureAlias struct {
+	ObservedVendor     string `json:"observed_vendor"`
+	ObservedProduct    string `json:"observed_product"`
+	CanonicalVendor    string `json:"canonical_vendor"`
+	CanonicalProduct   string `json:"canonical_product"`
+	CanonicalCPEPrefix string `json:"canonical_cpe_prefix"`
+	Source             string `json:"source"`
+	Confidence         string `json:"confidence"`
+}
+
+// LoadFixture reads and strictly decodes a fixture file.
+func LoadFixture(path string) (*Fixture, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	var f Fixture
+	if err := dec.Decode(&f); err != nil {
+		return nil, fmt.Errorf("decoding fixture %s: %w", path, err)
+	}
+	return &f, nil
+}
+
+// ImportFixture loads a fixture into the database in a single transaction.
+// Fixture metadata is recorded, but schema_version cannot be overridden.
+func (s *Store) ImportFixture(ctx context.Context, f *Fixture) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for k, v := range f.Metadata {
+		if k == "schema_version" {
+			return fmt.Errorf("fixture may not set schema_version")
+		}
+		if err := setMetadata(ctx, tx, k, v); err != nil {
+			return err
+		}
+	}
+	for _, c := range f.CVEs {
+		if err := insertCVE(ctx, tx, c); err != nil {
+			return fmt.Errorf("%s: %w", c.CVEID, err)
+		}
+	}
+	for _, k := range f.KEV {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO kev (cve_id, vendor_project, product, vulnerability_name, date_added, due_date, known_ransomware, notes)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			k.CVEID, k.VendorProject, k.Product, k.VulnerabilityName,
+			k.DateAdded, k.DueDate, k.KnownRansomware, k.Notes); err != nil {
+			return fmt.Errorf("kev %s: %w", k.CVEID, err)
+		}
+	}
+	for _, e := range f.ExploitEvidence {
+		var meta any
+		if len(e.Metadata) > 0 {
+			meta = string(e.Metadata)
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO exploit_evidence (cve_id, source, reference, reference_type, verified, metadata_json)
+VALUES (?, ?, ?, ?, ?, ?)`,
+			e.CVEID, e.Source, e.Reference, e.ReferenceType, e.Verified, meta); err != nil {
+			return fmt.Errorf("exploit evidence %s: %w", e.CVEID, err)
+		}
+	}
+	for _, a := range f.Aliases {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO aliases (observed_vendor, observed_product, canonical_vendor, canonical_product, canonical_cpe_prefix, source, confidence)
+VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			a.ObservedVendor, a.ObservedProduct, a.CanonicalVendor, a.CanonicalProduct,
+			a.CanonicalCPEPrefix, a.Source, a.Confidence); err != nil {
+			return fmt.Errorf("alias %s: %w", a.ObservedProduct, err)
+		}
+	}
+	return tx.Commit()
+}
+
+func insertCVE(ctx context.Context, tx *sql.Tx, c FixtureCVE) error {
+	if c.CVEID == "" {
+		return fmt.Errorf("missing cve_id")
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO cves (cve_id, published_at, modified_at, description,
+                  cvss_v3_score, cvss_v3_vector, cvss_v4_score, cvss_v4_vector, severity, cwe)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.CVEID, nullStr(c.PublishedAt), nullStr(c.ModifiedAt), c.Description,
+		c.CVSSv3Score, nullStr(c.CVSSv3Vector), c.CVSSv4Score, nullStr(c.CVSSv4Vector),
+		nullStr(c.Severity), nullStr(c.CWE)); err != nil {
+		return err
+	}
+	for _, cfg := range c.Configurations {
+		res, err := tx.ExecContext(ctx,
+			`INSERT INTO cve_configurations (cve_id, operator) VALUES (?, ?)`,
+			c.CVEID, operatorOrDefault(cfg.Operator))
+		if err != nil {
+			return err
+		}
+		cfgID, _ := res.LastInsertId()
+		for _, node := range cfg.Nodes {
+			res, err := tx.ExecContext(ctx,
+				`INSERT INTO cve_config_nodes (configuration_id, operator, negate) VALUES (?, ?, ?)`,
+				cfgID, operatorOrDefault(node.Operator), node.Negate)
+			if err != nil {
+				return err
+			}
+			nodeID, _ := res.LastInsertId()
+			for _, m := range node.CPEMatch {
+				if err := InsertMatchRule(ctx, tx, c.CVEID, nodeID, m); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// InsertMatchRule validates a criteria string and stores the rule with its
+// derived lookup columns. A node ID of 0 stores the rule without
+// configuration structure.
+func InsertMatchRule(ctx context.Context, e execer, cveID string, nodeID int64, m FixtureMatch) error {
+	crit, err := cpe.ParsePattern(m.Criteria)
+	if err != nil {
+		return fmt.Errorf("criteria %q: %w", m.Criteria, err)
+	}
+	var node any
+	if nodeID != 0 {
+		node = nodeID
+	}
+	_, err = e.ExecContext(ctx, `
+INSERT INTO cve_matches (cve_id, node_id, criteria, criteria_part, criteria_vendor, criteria_product, vulnerable,
+                         version_start_including, version_start_excluding, version_end_including, version_end_excluding)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		cveID, node, m.Criteria, crit.Part, crit.Vendor, crit.Product, m.Vulnerable,
+		nullStr(m.VersionStartIncluding), nullStr(m.VersionStartExcluding),
+		nullStr(m.VersionEndIncluding), nullStr(m.VersionEndExcluding))
+	return err
+}
+
+func operatorOrDefault(op string) string {
+	if op == "" {
+		return "OR"
+	}
+	return op
+}
+
+func nullStr(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
