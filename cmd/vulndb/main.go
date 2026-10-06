@@ -15,6 +15,7 @@ import (
 
 	"offline-vulndb/internal/database"
 	"offline-vulndb/internal/matcher"
+	"offline-vulndb/internal/nmap"
 	"offline-vulndb/internal/output"
 )
 
@@ -39,6 +40,7 @@ Usage:
 
 Commands:
   query --cpe CPE [--format text|json]   find candidate CVEs for a CPE (2.2 or 2.3)
+  nmap FILE [--format text|json]         assess services in Nmap XML output (-oX); FILE "-" = stdin
   info                                   show database provenance and age
   db init [--fixture FILE] [--force]     create a new database (optionally loading a fixture)
   db verify                              check database integrity and consistency
@@ -53,7 +55,11 @@ not prove a target is vulnerable. Distro backported fixes are not evaluated.
 `
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(runWithStdin(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+func run(args []string, stdout, stderr io.Writer) int {
+	return runWithStdin(args, os.Stdin, stdout, stderr)
 }
 
 // globals holds options accepted both before and after the command name.
@@ -72,7 +78,7 @@ type usageError struct{ msg string }
 
 func (e usageError) Error() string { return e.msg }
 
-func run(args []string, stdout, stderr io.Writer) int {
+func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	g := &globals{db: defaultDBPath()}
 	fs := newFlagSet("vulndb", stderr)
 	g.register(fs)
@@ -90,6 +96,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch rest[0] {
 	case "query":
 		err = cmdQuery(ctx, g, rest[1:], stdout, stderr)
+	case "nmap":
+		err = cmdNmap(ctx, g, rest[1:], stdin, stdout, stderr)
 	case "info":
 		err = cmdInfo(ctx, g, rest[1:], stdout, stderr)
 	case "db":
@@ -188,6 +196,75 @@ func cmdQuery(ctx context.Context, g *globals, args []string, stdout, stderr io.
 		return output.WriteJSON(stdout, res, info, g.debug)
 	}
 	return output.WriteText(stdout, res)
+}
+
+// cmdNmap assesses every open, fingerprinted service in an Nmap XML file.
+func cmdNmap(ctx context.Context, g *globals, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	fs := newFlagSet("nmap", stderr)
+	g.register(fs)
+	formatArg := fs.String("format", "text", "output format: text or json")
+	// Allow flags both before and after the file name.
+	var files []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return err
+			}
+			return usageError{err.Error()}
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		files = append(files, fs.Arg(0))
+		args = fs.Args()[1:]
+	}
+	if len(files) != 1 {
+		return usageError{"nmap: exactly one Nmap XML file is required (use - for stdin)"}
+	}
+	format, err := output.ParseFormat(*formatArg)
+	if err != nil {
+		return usageError{err.Error()}
+	}
+
+	in := stdin
+	if files[0] != "-" {
+		f, err := os.Open(files[0])
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		in = f
+	}
+	scan, err := nmap.Parse(in, nmap.DefaultMaxBytes)
+	if err != nil {
+		return err
+	}
+
+	store, err := database.Open(ctx, g.db)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	engine, err := matcher.New(ctx, store)
+	if err != nil {
+		return err
+	}
+	start := time.Now()
+	report, err := nmap.Analyse(ctx, scan, engine)
+	if err != nil {
+		return err
+	}
+	if g.debug {
+		fmt.Fprintf(stderr, "Assessed %d services in %s\n", report.Summary.Assessed, time.Since(start).Round(time.Millisecond))
+	}
+	if format == output.JSON {
+		info, err := databaseInfo(ctx, store)
+		if err != nil {
+			return err
+		}
+		return output.WriteNmapJSON(stdout, report, info)
+	}
+	return output.WriteNmapText(stdout, report)
 }
 
 func databaseInfo(ctx context.Context, s *database.Store) (output.DatabaseInfo, error) {

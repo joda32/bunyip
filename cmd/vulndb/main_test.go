@@ -372,3 +372,139 @@ func TestInfoRealDatasetStaleness(t *testing.T) {
 		t.Errorf("stats missing coverage row:\n%s", s.stdout)
 	}
 }
+
+const sampleScan = "../../testdata/nmap/sample.xml"
+
+func TestNmapText(t *testing.T) {
+	db := initDB(t)
+	r := cli("--db", db, "nmap", sampleScan)
+	if r.code != exitOK {
+		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	}
+	for _, want := range []string{
+		"Hosts up 2, down 1 | open ports 6: assessed 4, unidentified 1, not probed 1",
+		"8 version matches (2 in CISA KEV, 4 with public exploit evidence), 1 undetermined",
+		"192.0.2.20 (web01.example.test)",
+		"22/tcp ssh OpenSSH 8.9p1 Ubuntu 3ubuntu0.10",
+		"Distribution package detected (Ubuntu package 3ubuntu0.10)",
+		"CVE-0000-0001    CRITICAL  CVSS 9.8  exploit:YES KEV:YES MATCH",
+		"[CONDITIONAL]",
+		"cpe:2.3:a:f5:nginx:1.20.1:*:*:*:*:*:*:* [HIGH] (curated alias)",
+		"CVE-0000-0101    HIGH      CVSS 7.7  exploit:YES KEV:NO  MATCH  [via alias, HIGH]",
+		"25/tcp smtp\n    Not assessed: service guessed from port number",
+		`No application CPE reported for "Mystery httpd 1.2"`,
+		"against Microsoft Windows",
+		"[ransomware]",
+		"OS (Nmap guess, not assessed): cpe:/o:microsoft:windows_server_2016",
+	} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("nmap text output missing %q", want)
+		}
+	}
+	if strings.Contains(r.stdout, "3306") || strings.Contains(r.stdout, "192.0.2.22") {
+		t.Error("closed ports and down hosts must not be listed")
+	}
+	if strings.Count(r.stdout, "Matching is based on upstream") != 1 {
+		t.Error("general warnings should appear once")
+	}
+}
+
+func TestNmapJSONFlagsAfterFileAndStdin(t *testing.T) {
+	db := initDB(t)
+	r := cli("nmap", sampleScan, "--format", "json", "--db", db)
+	if r.code != exitOK {
+		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	}
+	var doc struct {
+		OutputVersion string `json:"output_version"`
+		Report        struct {
+			Summary struct {
+				Assessed       int `json:"assessed"`
+				VersionMatches int `json:"version_matches"`
+			} `json:"summary"`
+			Hosts []struct {
+				Address  string `json:"address"`
+				Services []struct {
+					Port       int      `json:"port"`
+					Assessment string   `json:"assessment"`
+					Distro     string   `json:"distro"`
+					Platform   []string `json:"platform_cpes"`
+					Result     *struct {
+						Identities []struct {
+							CPE        string `json:"cpe"`
+							Confidence string `json:"confidence"`
+						} `json:"identities"`
+						Vulnerabilities []struct {
+							CVE             string `json:"cve"`
+							MatchedCPE      string `json:"matched_cpe"`
+							MatchConfidence string `json:"match_confidence"`
+						} `json:"vulnerabilities"`
+					} `json:"result"`
+				} `json:"services"`
+			} `json:"hosts"`
+		} `json:"report"`
+	}
+	if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if doc.OutputVersion != "1" || doc.Report.Summary.Assessed != 4 || doc.Report.Summary.VersionMatches != 8 {
+		t.Errorf("summary: %+v", doc.Report.Summary)
+	}
+	svcs := doc.Report.Hosts[0].Services
+	ssh, nginx := svcs[0], svcs[3]
+	if ssh.Port != 22 || ssh.Distro != "Ubuntu package 3ubuntu0.10" ||
+		len(ssh.Platform) != 1 || ssh.Platform[0] != "cpe:2.3:o:linux:linux_kernel:*:*:*:*:*:*:*:*" {
+		t.Errorf("ssh: %+v", ssh)
+	}
+	if nginx.Port != 443 || len(nginx.Result.Identities) != 2 ||
+		nginx.Result.Vulnerabilities[0].MatchedCPE != "cpe:2.3:a:f5:nginx:1.20.1:*:*:*:*:*:*:*" ||
+		nginx.Result.Vulnerabilities[0].MatchConfidence != "HIGH" {
+		t.Errorf("nginx alias attribution: %+v", nginx.Result)
+	}
+	if svcs[1].Assessment != "NOT_PROBED" || svcs[4].Assessment != "UNIDENTIFIED" || svcs[1].Result != nil {
+		t.Errorf("assessments: %+v %+v", svcs[1], svcs[4])
+	}
+
+	// Same scan from stdin.
+	data, _ := os.ReadFile(sampleScan)
+	var out, errOut bytes.Buffer
+	g := []string{"--db", db, "nmap", "-", "--format", "json"}
+	code := runWithStdin(g, bytes.NewReader(data), &out, &errOut)
+	if code != exitOK || out.String() != r.stdout {
+		t.Errorf("stdin result differs (exit %d): %s", code, errOut.String())
+	}
+}
+
+func TestNmapRealLocalScan(t *testing.T) {
+	db := initDB(t)
+	r := cli("--db", db, "nmap", "../../testdata/nmap/local-ubuntu-ssh.xml")
+	if r.code != exitOK || !strings.Contains(r.stdout, "OpenSSH 9.6p1 Ubuntu 3ubuntu13.18") ||
+		!strings.Contains(r.stdout, "Ubuntu package 3ubuntu13.18") {
+		t.Fatalf("exit %d:\n%s%s", r.code, r.stdout, r.stderr)
+	}
+}
+
+func TestNmapErrors(t *testing.T) {
+	db := initDB(t)
+	dir := t.TempDir()
+	html := filepath.Join(dir, "x.xml")
+	os.WriteFile(html, []byte("<html></html>"), 0o600)
+	tests := []struct {
+		args     []string
+		code     int
+		inStderr string
+	}{
+		{[]string{"--db", db, "nmap"}, exitUsage, "exactly one Nmap XML file"},
+		{[]string{"--db", db, "nmap", "a.xml", "b.xml"}, exitUsage, "exactly one Nmap XML file"},
+		{[]string{"--db", db, "nmap", sampleScan, "--format", "csv"}, exitUsage, "unsupported format"},
+		{[]string{"--db", db, "nmap", filepath.Join(dir, "missing.xml")}, exitError, "no such file"},
+		{[]string{"--db", db, "nmap", html}, exitError, "not an Nmap XML document"},
+		{[]string{"--db", filepath.Join(dir, "none.sqlite"), "nmap", sampleScan}, exitError, "database not found"},
+	}
+	for _, tt := range tests {
+		r := cli(tt.args...)
+		if r.code != tt.code || !strings.Contains(r.stderr, tt.inStderr) {
+			t.Errorf("%v: exit %d stderr %q, want %d %q", tt.args, r.code, r.stderr, tt.code, tt.inStderr)
+		}
+	}
+}

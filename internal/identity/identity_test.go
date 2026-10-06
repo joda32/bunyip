@@ -80,7 +80,7 @@ func TestResolveObservationRealUbuntuSSH(t *testing.T) {
 	if len(res.PlatformCPEs) != 1 || res.PlatformCPEs[0] != "cpe:2.3:o:linux:linux_kernel:*:*:*:*:*:*:*:*" {
 		t.Errorf("OS CPE must be recorded, not queried: %v", res.PlatformCPEs)
 	}
-	if res.Distro != "Ubuntu (package 3ubuntu13.18)" {
+	if res.Distro != "Ubuntu package 3ubuntu13.18" {
 		t.Errorf("distro = %q", res.Distro)
 	}
 	if !strings.Contains(strings.Join(res.Notes, " "), "backported") {
@@ -123,7 +123,7 @@ func TestDetectDistro(t *testing.T) {
 		cpes []string
 		want string
 	}{
-		{Observation{Version: "9.2p1 Debian 2+deb12u3", ExtraInfo: "protocol 2.0"}, nil, "Debian (package 2+deb12u3)"},
+		{Observation{Version: "9.2p1 Debian 2+deb12u3", ExtraInfo: "protocol 2.0"}, nil, "Debian package 2+deb12u3"},
 		{Observation{Version: "2.4.37", ExtraInfo: "Red Hat Enterprise Linux"}, nil, "Red Hat"},
 		{Observation{Version: "2.4.6", ExtraInfo: "CentOS"}, nil, "CentOS"},
 		{Observation{Version: "7.4"}, []string{"cpe:2.3:o:canonical:ubuntu_linux:*:*:*:*:*:*:*:*"}, "Ubuntu"},

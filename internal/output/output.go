@@ -69,7 +69,11 @@ func WriteText(w io.Writer, r *matcher.Result) error {
 	p.f("Product:             %s %s\n", r.Vendor, r.Product)
 	p.f("Version:             %s\n", displayVersion(r.Version))
 	p.f("Normalized CPE:      %s\n", r.NormalizedCPE)
-	p.f("Identity confidence: %s\n\n", r.IdentityConfidence)
+	p.f("Identity confidence: %s\n", r.IdentityConfidence)
+	for _, id := range r.Identities[min(1, len(r.Identities)):] {
+		p.f("Also queried:        %s [%s] (%s)\n", id.CPE, id.Confidence, id.Source)
+	}
+	p.f("\n")
 
 	if len(r.Vulnerabilities) == 0 {
 		p.f("No candidate vulnerabilities found (%d match rules evaluated).\n", r.CandidateRules)
@@ -81,7 +85,11 @@ func WriteText(w io.Writer, r *matcher.Result) error {
 				p.f("\nUndetermined (version applicability UNKNOWN; review manually):\n")
 				shownUnknownHeader = true
 			}
-			writeVuln(p, v)
+			first := ""
+			if len(r.Identities) > 0 {
+				first = r.Identities[0].CPE
+			}
+			writeVuln(p, v, first)
 		}
 	}
 
@@ -94,12 +102,15 @@ func WriteText(w io.Writer, r *matcher.Result) error {
 	return p.err
 }
 
-func writeVuln(p *printer, v matcher.Vulnerability) {
+func writeVuln(p *printer, v matcher.Vulnerability, firstIdentity string) {
 	p.f("\n%-16s %-9s %s\n", v.CVE, orDash(v.Severity), cvssLabel(v))
 	p.f("  Public exploit: %s\n", exploitLabel(v))
 	p.f("  CISA KEV:       %s\n", kevLabel(v))
 	p.f("  Version status: %s\n", v.VersionStatus)
 	p.f("  Confidence:     %s\n", v.MatchConfidence)
+	if v.MatchedCPE != "" && v.MatchedCPE != firstIdentity {
+		p.f("  Matched via:    %s\n", v.MatchedCPE)
+	}
 	if v.Applicability != matcher.Unconditional {
 		p.f("  Applicability:  %s\n", v.Applicability)
 	}
@@ -121,6 +132,10 @@ func WriteDebug(w io.Writer, r *matcher.Result) error {
 	p.f("Product: %s\n", r.Product)
 	p.f("Version: %s\n", displayVersion(r.Version))
 	p.f("Identity confidence: %s\n", r.IdentityConfidence)
+	for _, id := range r.Identities {
+		p.f("Identity: %s [%s] source=%s comparator=%s rules=%d\n", id.CPE, id.Confidence, id.Source,
+			id.Comparator, id.CandidateRules)
+	}
 	p.f("Candidate match rules: %d\n", r.CandidateRules)
 	p.f("Comparator: %s\n", r.Comparator)
 	for i, ev := range r.Evaluations {

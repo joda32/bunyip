@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.94SVN scan initiated Tue Oct  6 15:49:33 2026 as: nmap -sV -Pn -p 22,18080,18081 -oX local-ubuntu-ssh.xml 127.0.0.1 -->
+<nmaprun scanner="nmap" args="nmap -sV -Pn -p 22,18080,18081 -oX local-ubuntu-ssh.xml 127.0.0.1" start="1791272973" startstr="Tue Oct  6 15:49:33 2026" version="7.94SVN" xmloutputversion="1.05">
+<scaninfo type="connect" protocol="tcp" numservices="3" services="22,18080-18081"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<host starttime="1791272973" endtime="1791272979"><status state="up" reason="user-set" reason_ttl="0"/>
+<address addr="127.0.0.1" addrtype="ipv4"/>
+<hostnames>
+<hostname name="localhost" type="PTR"/>
+</hostnames>
+<ports><port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="ssh" product="OpenSSH" version="9.6p1 Ubuntu 3ubuntu13.18" extrainfo="Ubuntu Linux; protocol 2.0" ostype="Linux" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:9.6p1</cpe><cpe>cpe:/o:linux:linux_kernel</cpe></service></port>
+<port protocol="tcp" portid="18080"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="http" product="SimpleHTTPServer" version="0.6" extrainfo="Python 3.12.3" method="probed" conf="10"><cpe>cpe:/a:python:simplehttpserver:0.6</cpe></service></port>
+<port protocol="tcp" portid="18081"><state state="closed" reason="conn-refused" reason_ttl="0"/></port>
+</ports>
+<times srtt="207" rttvar="2864" to="100000"/>
+</host>
+<runstats><finished time="1791272979" timestr="Tue Oct  6 15:49:39 2026" summary="Nmap done at Tue Oct  6 15:49:39 2026; 1 IP address (1 host up) scanned in 6.44 seconds" elapsed="6.44" exit="success"/><hosts up="1" down="0" total="1"/>
+</runstats>
+</nmaprun>

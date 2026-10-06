@@ -61,6 +61,15 @@ const backportWarning = "Matching is based on upstream product/version data. " +
 const coverageWarning = "NVD provides product (CPE) applicability data for only part of recent CVEs; " +
 	"no result does not mean no vulnerability."
 
+const syntheticWarning = "Database contains SYNTHETIC test fixture data, not real vulnerability information."
+
+// IsGeneralWarning reports whether a result warning is about the dataset or
+// method as a whole (rather than one identity), so reports listing many
+// results can show it once.
+func IsGeneralWarning(w string) bool {
+	return w == backportWarning || w == coverageWarning || w == syntheticWarning
+}
+
 // Engine runs queries against an open database.
 type Engine struct {
 	Store    *database.Store
@@ -222,8 +231,7 @@ func (e *Engine) Query(ctx context.Context, cands []identity.Candidate) (*Result
 		return nil, err
 	}
 	if strings.Contains(meta["dataset"], "synthetic") {
-		res.Warnings = append(res.Warnings,
-			"Database contains SYNTHETIC test fixture data, not real vulnerability information.")
+		res.Warnings = append(res.Warnings, syntheticWarning)
 	} else {
 		res.Warnings = append(res.Warnings, coverageWarning)
 	}

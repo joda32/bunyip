@@ -140,7 +140,7 @@ type Observation struct {
 type Resolution struct {
 	Candidates   []Candidate
 	PlatformCPEs []string // OS/hardware CPEs reported with the service, not queried
-	Distro       string   // detected distribution packaging, e.g. "Ubuntu (3ubuntu13.18)"
+	Distro       string   // detected distribution packaging, e.g. "Ubuntu package 3ubuntu13.18"
 	Notes        []string
 }
 
@@ -217,7 +217,7 @@ func DetectDistro(o Observation, platformCPEs []string) string {
 	for _, m := range distroMarkers {
 		if strings.Contains(text, m.marker) {
 			if pkg := packageSuffix(o.Version); pkg != "" {
-				return fmt.Sprintf("%s (package %s)", m.name, pkg)
+				return fmt.Sprintf("%s package %s", m.name, pkg)
 			}
 			return m.name
 		}
