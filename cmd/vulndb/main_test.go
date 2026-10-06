@@ -99,7 +99,7 @@ func TestQueryJSONFromCPE22(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, r.stdout)
 	}
-	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "1" || doc.Database.Dataset != "synthetic-fixture" {
+	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "2" || doc.Database.Dataset != "synthetic-fixture" {
 		t.Errorf("unexpected envelope: %+v", doc)
 	}
 	res := doc.Result
@@ -205,7 +205,7 @@ func TestInfoVerifyStats(t *testing.T) {
 	db := initDB(t)
 
 	r := cli("--db", db, "info")
-	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    1") ||
+	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    2") ||
 		!strings.Contains(r.stdout, "synthetic-fixture") || !strings.Contains(r.stdout, "Data age:") ||
 		!strings.Contains(r.stdout, "CVEs without CPE applicability data: 0 of 12") {
 		t.Errorf("info: exit %d\n%s%s", r.code, r.stdout, r.stderr)

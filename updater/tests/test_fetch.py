@@ -36,7 +36,7 @@ def test_verify_feed(tmp_path):
 
 def test_local_feeds_verifies_and_pairs(sources):
     feeds = fetch.local_feeds(sources)
-    assert sorted(f.name for f in feeds) == ["2002", "2016", "2021", "2023", "2024", "modified"]
+    assert sorted(f.name for f in feeds) == ["2002", "2016", "2021", "2022", "2023", "2024", "2025", "2026", "modified"]
     (sources / "nvdcve-2.0-2016.json.gz").unlink()
     with pytest.raises(fetch.FetchError, match="no matching"):
         fetch.local_feeds(sources)

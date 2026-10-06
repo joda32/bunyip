@@ -106,4 +106,50 @@ CREATE INDEX idx_configurations_cve  ON cve_configurations (cve_id);
 CREATE INDEX idx_exploit_cve         ON exploit_evidence (cve_id);
 CREATE INDEX idx_aliases_observed    ON aliases (observed_vendor, observed_product);
 
-INSERT INTO database_metadata (key, value) VALUES ('schema_version', '1');
+-- Distribution security advisories (from OSV ecosystem exports, e.g. Ubuntu).
+-- One row per CVE x release x channel x source package, as published by the
+-- distribution. A missing row means "no data" (not "not affected").
+CREATE TABLE distro_advisories (
+    id                 INTEGER PRIMARY KEY,
+    source             TEXT NOT NULL,     -- e.g. 'osv:Ubuntu'
+    advisory_id        TEXT NOT NULL,     -- e.g. 'UBUNTU-CVE-2024-6387'
+    cve_id             TEXT NOT NULL,
+    distro             TEXT NOT NULL,     -- e.g. 'ubuntu'
+    release            TEXT NOT NULL,     -- e.g. '24.04'
+    channel            TEXT NOT NULL DEFAULT 'standard' CHECK (channel IN ('standard', 'pro')),
+    codename           TEXT,              -- e.g. 'noble'
+    package            TEXT NOT NULL,     -- source package name
+    fixed_version      TEXT,              -- NULL: affected, no fix released in this channel
+    affected_upstreams TEXT NOT NULL DEFAULT '', -- space-separated upstream versions listed as affected
+    modified_at        TEXT
+);
+
+-- Package versions known per release, for inferring a host's release from
+-- what a scanner observed (e.g. OpenSSH 9.6p1-3ubuntu13.x -> Ubuntu 24.04).
+CREATE TABLE distro_package_versions (
+    distro   TEXT NOT NULL,
+    release  TEXT NOT NULL,
+    package  TEXT NOT NULL,
+    version  TEXT NOT NULL,  -- full Debian version, e.g. '1:9.6p1-3ubuntu13.3'
+    upstream TEXT NOT NULL,  -- e.g. '9.6p1'
+    PRIMARY KEY (distro, package, release, version)
+) WITHOUT ROWID;
+
+-- Curated map from CPE identities to distribution source packages
+-- (data/distro_packages.json), e.g. openbsd:openssh -> ubuntu/openssh.
+CREATE TABLE distro_packages (
+    id          INTEGER PRIMARY KEY,
+    cpe_part    TEXT NOT NULL,
+    cpe_vendor  TEXT NOT NULL,
+    cpe_product TEXT NOT NULL,
+    distro      TEXT NOT NULL,
+    package     TEXT NOT NULL,
+    source      TEXT NOT NULL
+);
+
+CREATE INDEX idx_distro_adv_lookup   ON distro_advisories (distro, package, release, cve_id);
+CREATE INDEX idx_distro_adv_cve      ON distro_advisories (cve_id);
+CREATE INDEX idx_distro_pkgver_up    ON distro_package_versions (distro, package, upstream);
+CREATE INDEX idx_distro_packages_cpe ON distro_packages (cpe_part, cpe_vendor, cpe_product);
+
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '2');

@@ -13,6 +13,10 @@ def do_build(sources, out, allow_small=True):
                        allow_small=allow_small, log=QUIET)
 
 
+# 12 real NVD records: 1 rejected in its yearly feed; the overlay replaces 1,
+# leaves 1 unchanged and rejects 1 previously loaded -> 10 CVEs remain.
+
+
 @pytest.fixture
 def db(sources, tmp_path):
     out = tmp_path / "vulndb.sqlite"
@@ -28,10 +32,8 @@ def scalar(conn, sql, *args):
 
 def test_counts_and_overlay_stats(db):
     conn, stats = db
-    # 7 records: 6 loaded, 1 rejected in its yearly feed. Overlay: 1 replaced,
-    # 1 unchanged, 1 rejected (removing an already-loaded CVE).
-    assert (stats.loaded, stats.replaced, stats.unchanged, stats.rejected) == (6, 1, 1, 2)
-    assert scalar(conn, "SELECT COUNT(*) FROM cves") == 5
+    assert (stats.loaded, stats.replaced, stats.unchanged, stats.rejected) == (11, 1, 1, 2)
+    assert scalar(conn, "SELECT COUNT(*) FROM cves") == 10
     assert scalar(conn, "SELECT COUNT(*) FROM kev") == 3
 
 
@@ -78,13 +80,13 @@ def test_exploit_evidence(db):
 def test_metadata(db):
     conn, _ = db
     meta = dict(conn.execute("SELECT key, value FROM database_metadata"))
-    assert meta["schema_version"] == "1"
+    assert meta["schema_version"] == "2"
     assert meta["dataset"] == "nvd+kev"
     assert meta["nvd_last_modified"] == "2026-10-06T05:00:06Z"  # newest .meta, in UTC
     assert meta["kev_catalog_version"] == "2026.10.04"
-    assert meta["nvd_feeds"] == "2002,2016,2021,2023,2024,modified"
-    assert meta["nvd_cves_total"] == "5"
-    assert meta["nvd_cves_without_configurations"] == "0"
+    assert meta["nvd_feeds"] == "2002,2016,2021,2022,2023,2024,2025,2026,modified"
+    assert meta["nvd_cves_total"] == "10"
+    assert meta["nvd_cves_without_configurations"] == "1"  # CVE-2025-61984 (NVD: Deferred)
     assert meta["nvd_rules_skipped"] == "0"
 
 
@@ -106,7 +108,7 @@ def test_rebuild_replaces_existing(sources, tmp_path):
     out = tmp_path / "vulndb.sqlite"
     out.write_bytes(b"old")
     do_build(sources, out)
-    assert scalar(sqlite3.connect(out), "SELECT COUNT(*) FROM cves") == 5
+    assert scalar(sqlite3.connect(out), "SELECT COUNT(*) FROM cves") == 10
 
 
 def test_feed_order(tmp_path):
@@ -115,4 +117,4 @@ def test_feed_order(tmp_path):
     write_extra.write_text((srcs / "nvdcve-2.0-modified.meta").read_text())
     (srcs / "nvdcve-2.0-recent.json.gz").write_bytes((srcs / "nvdcve-2.0-modified.json.gz").read_bytes())
     names = [f.name for f in build.feed_order(fetch.local_feeds(srcs))]
-    assert names == ["2002", "2016", "2021", "2023", "2024", "modified"]
+    assert names == ["2002", "2016", "2021", "2022", "2023", "2024", "2025", "2026", "modified"]

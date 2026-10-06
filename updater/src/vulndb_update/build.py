@@ -13,14 +13,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, aliases, cpe, kev, nvd
-from .fetch import Feed
+from . import __version__, aliases, cpe, kev, nvd, osv
+from .fetch import Feed, OSVExport
 from .jsonstream import ArrayStream
 
 # Sanity floors for a complete build (NVD has >300k CVEs, KEV >1.7k entries
 # as of 2026). Tests and partial builds pass allow_small=True.
 MIN_CVES = 200_000
 MIN_KEV = 1_000
+MIN_DISTRO_ROWS = 1_000
 DATASET = "nvd+kev"
 
 
@@ -29,7 +30,16 @@ class BuildError(RuntimeError):
 
 
 @dataclass
+class DistroInput:
+    distro: osv.Distro
+    export: OSVExport
+
+
+@dataclass
 class Stats:
+    distro_rows: int = 0
+    distro_withdrawn: int = 0
+    unmapped_packages: list[str] = field(default_factory=list)
     aliases: int = 0
     aliases_without_rules: list[str] = field(default_factory=list)
     loaded: int = 0
@@ -47,13 +57,15 @@ def feed_order(feeds: list[Feed]) -> list[Feed]:
 
 
 def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
-          allow_small: bool = False, log=print, alias_rows: list | None = None) -> Stats:
+          allow_small: bool = False, log=print, alias_rows: list | None = None,
+          distros: list[DistroInput] | None = None, package_map: list | None = None) -> Stats:
     out = Path(out)
     tmp = out.with_name(f".{out.name}.building")
     tmp.unlink(missing_ok=True)
     conn = sqlite3.connect(tmp, isolation_level=None)
     try:
-        stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows or [])
+        stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows or [],
+                       distros or [], package_map or [])
         conn.close()
         os.replace(tmp, out)
         return stats
@@ -63,7 +75,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
         raise
 
 
-def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows) -> Stats:
+def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, distros, package_map) -> Stats:
     # The file is private until renamed, so durability during the load is
     # unnecessary; integrity is checked explicitly before the rename.
     conn.execute("PRAGMA journal_mode = OFF")
@@ -90,8 +102,10 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows) -> S
     log(f"  KEV {catalogue.catalog_version}: {len(catalogue.rows)} entries")
 
     _load_aliases(conn, alias_rows, stats, log)
-    _write_metadata(conn, ordered, catalogue, stats)
-    _self_check(conn, allow_small)
+    for di in distros:
+        _load_distro(conn, di, package_map, stats, log)
+    _write_metadata(conn, ordered, catalogue, stats, distros)
+    _self_check(conn, allow_small, bool(distros))
     conn.execute("ANALYZE")
     return stats
 
@@ -125,6 +139,42 @@ def _load_aliases(conn, rows: list, stats: Stats, log) -> None:
             stats.aliases_without_rules.append(r.canonical_cpe_prefix)
     if rows:
         log(f"  aliases: {len(rows)} loaded, {len(stats.aliases_without_rules)} targets without NVD rules")
+
+
+def _load_distro(conn, di: DistroInput, package_map: list, stats: Stats, log) -> None:
+    """Load one distribution's advisories for the mapped packages."""
+    start = time.monotonic()
+    mapped = [r for r in package_map if r.distro == di.distro.name]
+    packages = {r.package for r in mapped}
+    conn.execute("BEGIN")
+    conn.executemany(
+        "INSERT INTO distro_packages (cpe_part, cpe_vendor, cpe_product, distro, package, source)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        [(r.part, r.vendor, r.product, r.distro, r.package, r.source) for r in mapped])
+    rows = withdrawn = 0
+    seen_packages = set()
+    for record in osv.iter_records(di.export.zip_path, di.distro.record_prefix):
+        t = osv.transform(record, di.distro, packages)
+        withdrawn += t.withdrawn
+        if not t.rows:
+            continue
+        conn.executemany(
+            "INSERT INTO distro_advisories (source, advisory_id, cve_id, distro, release, channel, codename,"
+            " package, fixed_version, affected_upstreams, modified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [(r.source, r.advisory_id, r.cve_id, r.distro, r.release, r.channel, r.codename, r.package,
+              r.fixed_version, r.affected_upstreams, r.modified_at) for r in t.rows])
+        conn.executemany(
+            "INSERT OR IGNORE INTO distro_package_versions (distro, release, package, version, upstream)"
+            " VALUES (?, ?, ?, ?, ?)",
+            [(v.distro, v.release, v.package, v.version, v.upstream) for v in t.versions])
+        rows += len(t.rows)
+        seen_packages.update(r.package for r in t.rows)
+    conn.execute("COMMIT")
+    stats.distro_rows += rows
+    stats.distro_withdrawn += withdrawn
+    stats.unmapped_packages += sorted(f"{di.distro.name}/{p}" for p in packages - seen_packages)
+    log(f"  {di.distro.name} advisories: {rows} rows for {len(seen_packages)} packages "
+        f"({withdrawn} withdrawn records skipped) in {time.monotonic() - start:.1f}s")
 
 
 def _apply(conn, rec: nvd.Record, stats: Stats) -> None:
@@ -188,7 +238,8 @@ def _count(conn, sql: str) -> int:
     return conn.execute(sql).fetchone()[0]
 
 
-def _write_metadata(conn, feeds: list[Feed], catalogue: kev.Catalogue, stats: Stats) -> None:
+def _write_metadata(conn, feeds: list[Feed], catalogue: kev.Catalogue, stats: Stats,
+                    distros: list[DistroInput]) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     meta = {
         "dataset": DATASET,
@@ -205,14 +256,18 @@ def _write_metadata(conn, feeds: list[Feed], catalogue: kev.Catalogue, stats: St
             " (SELECT 1 FROM cve_configurations c WHERE c.cve_id = cves.cve_id)")),
         "nvd_rules_skipped": str(len(stats.skipped_rules)),
         "aliases_loaded": str(stats.aliases),
+        "distro_sources": ",".join(di.distro.name for di in distros),
+        "distro_advisory_rows": str(stats.distro_rows),
     }
+    for di in distros:
+        meta[f"{di.distro.name}_advisories_last_modified"] = di.export.last_modified
     conn.execute("BEGIN")
     conn.executemany("INSERT OR REPLACE INTO database_metadata (key, value) VALUES (?, ?)",
                      list(meta.items()))
     conn.execute("COMMIT")
 
 
-def _self_check(conn, allow_small: bool) -> None:
+def _self_check(conn, allow_small: bool, expect_distro: bool = False) -> None:
     problems = []
     integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
     if integrity != "ok":
@@ -243,5 +298,8 @@ def _self_check(conn, allow_small: bool) -> None:
             problems.append(f"only {n_cves} CVEs loaded (expected >= {MIN_CVES}); incomplete feeds?")
         if n_kev < MIN_KEV:
             problems.append(f"only {n_kev} KEV entries (expected >= {MIN_KEV})")
+        n_distro = _count(conn, "SELECT COUNT(*) FROM distro_advisories")
+        if expect_distro and n_distro < MIN_DISTRO_ROWS:
+            problems.append(f"only {n_distro} distribution advisory rows (expected >= {MIN_DISTRO_ROWS})")
     if problems:
         raise BuildError("self-check failed: " + "; ".join(problems))

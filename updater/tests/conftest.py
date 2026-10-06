@@ -1,7 +1,9 @@
+import base64
 import copy
 import gzip
 import hashlib
 import json
+import zipfile
 import socket
 import urllib.request
 from pathlib import Path
@@ -11,6 +13,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 SCHEMA = REPO / "schema" / "schema.sql"
 NVD_DATA = REPO / "testdata" / "nvd"
+OSV_UBUNTU = REPO / "testdata" / "osv" / "ubuntu"
 KEV_FILE = "known_exploited_vulnerabilities.json"
 
 
@@ -77,7 +80,20 @@ def make_sources(directory: Path) -> Path:
         write_feed(directory, year, items, last_modified="2026-10-05T03:00:00-04:00")
     write_feed(directory, "modified", overlay_records())
     (directory / KEV_FILE).write_bytes((NVD_DATA / KEV_FILE).read_bytes())
+    write_osv_export(directory, "Ubuntu", sorted(OSV_UBUNTU.glob("*.json")))
     return directory
+
+
+def write_osv_export(directory: Path, ecosystem: str, records: list[Path]) -> None:
+    """Assemble an OSV ecosystem export (all.zip) and its MD5 meta file the way
+    the updater caches downloads from osv-vulnerabilities.storage.googleapis.com."""
+    zip_path = directory / f"osv-{ecosystem}-all.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+        for p in records:
+            z.writestr(p.name, p.read_text())
+    md5 = base64.b64encode(hashlib.md5(zip_path.read_bytes()).digest()).decode()
+    (directory / f"osv-{ecosystem}-all.meta.json").write_text(
+        json.dumps({"md5": md5, "last_modified": "Tue, 06 Oct 2026 05:17:52 GMT"}))
 
 
 @pytest.fixture

@@ -46,7 +46,7 @@ def query(bin_, db, cpe):
 
 def test_apache_2_4_49(vulndb_bin, real_db):
     v = query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.49")
-    assert set(v) == {"CVE-2021-41773", "CVE-2021-42013", "CVE-2021-44790"}
+    assert set(v) == {"CVE-2021-41773", "CVE-2021-42013", "CVE-2021-44790", "CVE-2022-26377"}
     a = v["CVE-2021-41773"]
     assert a["version_status"] == "MATCH" and a["match_confidence"] == "EXACT"
     assert a["known_exploited"] is True and a["public_exploit"] is True
@@ -58,9 +58,10 @@ def test_apache_2_4_49(vulndb_bin, real_db):
 
 
 def test_apache_2_4_50_and_2_4_51(vulndb_bin, real_db):
-    assert set(query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.50")) == {"CVE-2021-42013", "CVE-2021-44790"}
-    assert set(query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.51")) == {"CVE-2021-44790"}
-    assert query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.52") == {}
+    assert set(query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.50")) == {"CVE-2021-42013", "CVE-2021-44790", "CVE-2022-26377"}
+    assert set(query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.51")) == {"CVE-2021-44790", "CVE-2022-26377"}
+    assert set(query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.52")) == {"CVE-2022-26377"}
+    assert query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.54") == {}
 
 
 def test_openssh_version_update_split(vulndb_bin, real_db):
@@ -83,7 +84,7 @@ def test_and_configuration_is_conditional(vulndb_bin, real_db):
 
 def test_stats_reflect_rejections(vulndb_bin, real_db):
     p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "db", "stats"], capture_output=True, text=True, check=True)
-    assert "cves                          5" in p.stdout
+    assert "cves                         10" in p.stdout
 
 
 def test_go_verify_and_info(vulndb_bin, real_db):

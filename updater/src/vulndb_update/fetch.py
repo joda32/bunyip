@@ -6,8 +6,10 @@ NVD feeds are verified against the sha256 in their .meta file (which NVD
 computes over the *uncompressed* JSON) before being accepted into the cache.
 """
 
+import base64
 import gzip
 import hashlib
+import json
 import time
 import urllib.parse
 import urllib.request
@@ -20,7 +22,8 @@ from . import __version__
 NVD_FEED_BASE = "https://nvd.nist.gov/feeds/json/cve/2.0/"
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 KEV_FILE = "known_exploited_vulnerabilities.json"
-ALLOWED_HOSTS = {"nvd.nist.gov", "www.cisa.gov"}
+OSV_BASE = "https://osv-vulnerabilities.storage.googleapis.com/"
+ALLOWED_HOSTS = {"nvd.nist.gov", "www.cisa.gov", "osv-vulnerabilities.storage.googleapis.com"}
 FIRST_FEED_YEAR = 2002  # the 2002 feed also holds 1999-2001 CVEs
 MAX_DOWNLOAD_BYTES = 1 << 30
 TIMEOUT_SECONDS = 120
@@ -180,3 +183,73 @@ def local_kev(directory: Path) -> Path:
         raise FetchError(f"{path} not found")
     return path
 
+
+# --- OSV ecosystem exports ---------------------------------------------------
+
+@dataclass
+class OSVExport:
+    ecosystem: str
+    zip_path: Path
+    md5: str            # base64, as published in the bucket's x-goog-hash header
+    last_modified: str  # HTTP Last-Modified of the export
+
+
+def _osv_paths(directory: Path, ecosystem: str) -> tuple[Path, Path]:
+    return directory / f"osv-{ecosystem}-all.zip", directory / f"osv-{ecosystem}-all.meta.json"
+
+
+def _md5_b64(path: Path) -> str:
+    h = hashlib.md5()
+    with open(path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            h.update(chunk)
+    return base64.b64encode(h.digest()).decode()
+
+
+def _head(url: str) -> dict[str, str]:
+    _check_url(url)
+    req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+        _check_url(resp.geturl())
+        md5 = ""
+        for h in resp.headers.get_all("x-goog-hash") or []:
+            if h.startswith("md5="):
+                md5 = h[4:]
+        return {"md5": md5, "last_modified": resp.headers.get("Last-Modified", "")}
+
+
+def sync_osv(cache: Path, ecosystem: str, log=print) -> OSVExport:
+    """Bring a cached OSV ecosystem export up to date. The export is only
+    downloaded again when the bucket's published MD5 changes, and every
+    download must match that MD5."""
+    cache.mkdir(parents=True, exist_ok=True)
+    url = f"{OSV_BASE}{ecosystem}/all.zip"
+    zip_path, meta_path = _osv_paths(cache, ecosystem)
+    head = _head(url)
+    if not head["md5"]:
+        raise FetchError(f"{url}: no MD5 published; refusing unverifiable download")
+    cached = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    if cached.get("md5") == head["md5"] and zip_path.exists():
+        log(f"  OSV {ecosystem}: unchanged")
+    else:
+        log(f"  OSV {ecosystem}: downloading")
+        download(url, zip_path, log)
+        if _md5_b64(zip_path) != head["md5"]:
+            zip_path.unlink(missing_ok=True)
+            raise FetchError(f"{url}: MD5 mismatch with published x-goog-hash")
+        meta_path.write_text(json.dumps(head))
+    return OSVExport(ecosystem, zip_path, head["md5"], head["last_modified"])
+
+
+def local_osv(directory: Path, ecosystem: str) -> OSVExport | None:
+    """Use an already-downloaded export (offline rebuild), verified against
+    its recorded MD5. Returns None if the directory has no such export."""
+    zip_path, meta_path = _osv_paths(directory, ecosystem)
+    if not zip_path.exists():
+        return None
+    if not meta_path.exists():
+        raise FetchError(f"{zip_path.name} has no {meta_path.name} with its MD5")
+    meta = json.loads(meta_path.read_text())
+    if _md5_b64(zip_path) != meta.get("md5"):
+        raise FetchError(f"{zip_path.name}: MD5 mismatch with {meta_path.name}")
+    return OSVExport(ecosystem, zip_path, meta["md5"], meta.get("last_modified", ""))
