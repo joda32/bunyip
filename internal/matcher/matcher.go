@@ -54,6 +54,11 @@ var ErrInsufficientIdentity = errors.New("insufficient identity information")
 const backportWarning = "Matching is based on upstream product/version data. " +
 	"Linux distribution backported security fixes are not evaluated."
 
+// Warning shown for real datasets: since April 2026 NVD adds CPE
+// applicability data to only a minority of new CVEs.
+const coverageWarning = "NVD provides product (CPE) applicability data for only part of recent CVEs; " +
+	"no result does not mean no vulnerability."
+
 // Engine runs queries against an open database.
 type Engine struct {
 	Store      *database.Store
@@ -173,6 +178,8 @@ func (e *Engine) QueryCPE(ctx context.Context, input string) (*Result, error) {
 	if strings.Contains(meta["dataset"], "synthetic") {
 		res.Warnings = append(res.Warnings,
 			"Database contains SYNTHETIC test fixture data, not real vulnerability information.")
+	} else {
+		res.Warnings = append(res.Warnings, coverageWarning)
 	}
 	return res, nil
 }

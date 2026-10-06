@@ -159,6 +159,9 @@ type TableCount struct {
 type Stats struct {
 	FileBytes int64
 	Tables    []TableCount
+	// CVEsWithoutConfigurations counts CVEs that have no applicability data
+	// at all, so no CPE query can ever return them.
+	CVEsWithoutConfigurations int64
 }
 
 // Stats returns row counts for every required table and the file size.
@@ -175,5 +178,11 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		}
 		st.Tables = append(st.Tables, TableCount{t, n})
 	}
+	n, err := s.count(ctx, `SELECT COUNT(*) FROM cves
+		WHERE NOT EXISTS (SELECT 1 FROM cve_configurations c WHERE c.cve_id = cves.cve_id)`)
+	if err != nil {
+		return st, err
+	}
+	st.CVEsWithoutConfigurations = n
 	return st, nil
 }

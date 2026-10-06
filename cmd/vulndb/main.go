@@ -25,8 +25,12 @@ const (
 	exitUsage = 2 // bad command line
 )
 
-// staleAfter is the database age after which `info` warns.
-const staleAfter = 30 * 24 * time.Hour
+// Data age after which `info` warns. Real source data is judged by the NVD
+// feed timestamp; databases without one (e.g. fixtures) by creation time.
+const (
+	staleAfterSource  = 7 * 24 * time.Hour
+	staleAfterCreated = 30 * 24 * time.Hour
+)
 
 const usage = `Offline VulnDB - offline CPE to candidate CVE correlation
 
@@ -216,16 +220,10 @@ func cmdInfo(ctx context.Context, g *globals, args []string, stdout, stderr io.W
 	fmt.Fprintf(stdout, "Schema version:    %s\n", m["schema_version"])
 	fmt.Fprintf(stdout, "Database version:  %s\n", m["database_version"])
 	fmt.Fprintf(stdout, "Created at:        %s\n", m["created_at"])
-	if created, err := time.Parse(time.RFC3339, m["created_at"]); err == nil {
-		age := time.Since(created)
-		fmt.Fprintf(stdout, "Age:               %d days\n", int(age.Hours()/24))
-		if age > staleAfter {
-			fmt.Fprintf(stdout, "WARNING: database is older than %d days; vulnerability data may be stale.\n",
-				int(staleAfter.Hours()/24))
-		}
-	}
+	reportAge(stdout, m)
 	// Any other metadata (source timestamps, dataset, notices) in stable order.
-	shown := map[string]bool{"schema_version": true, "database_version": true, "created_at": true}
+	shown := map[string]bool{"schema_version": true, "database_version": true, "created_at": true,
+		"nvd_last_modified": true}
 	var keys []string
 	for k := range m {
 		if !shown[k] {
@@ -239,6 +237,49 @@ func cmdInfo(ctx context.Context, g *globals, args []string, stdout, stderr io.W
 	if strings.Contains(m["dataset"], "synthetic") {
 		fmt.Fprintln(stdout, "WARNING: this database contains SYNTHETIC test data, not real vulnerability information.")
 	}
+	return reportCoverage(ctx, store, stdout)
+}
+
+// reportAge prints how old the data is and warns when it is stale. The NVD
+// feed timestamp is preferred because it reflects the data itself, not
+// when the database file happened to be built.
+func reportAge(w io.Writer, m map[string]string) {
+	key, limit := "created_at", staleAfterCreated
+	if m["nvd_last_modified"] != "" {
+		key, limit = "nvd_last_modified", staleAfterSource
+		fmt.Fprintf(w, "NVD data as of:    %s\n", m["nvd_last_modified"])
+	}
+	t, err := time.Parse(time.RFC3339, m[key])
+	if err != nil {
+		fmt.Fprintf(w, "WARNING: cannot parse %s %q; data age unknown.\n", key, m[key])
+		return
+	}
+	age := time.Since(t)
+	fmt.Fprintf(w, "Data age:          %d days\n", int(age.Hours()/24))
+	if age > limit {
+		fmt.Fprintf(w, "WARNING: data is older than %d days; vulnerability data may be stale.\n",
+			int(limit.Hours()/24))
+	}
+}
+
+// reportCoverage shows how many CVEs carry no applicability data and can
+// therefore never be returned by a CPE query.
+func reportCoverage(ctx context.Context, store *database.Store, w io.Writer) error {
+	st, err := store.Stats(ctx)
+	if err != nil {
+		return err
+	}
+	var total int64
+	for _, t := range st.Tables {
+		if t.Table == "cves" {
+			total = t.Rows
+		}
+	}
+	if total == 0 {
+		return nil
+	}
+	fmt.Fprintf(w, "CVEs without CPE applicability data: %d of %d (%.1f%%) - these can never match a query\n",
+		st.CVEsWithoutConfigurations, total, 100*float64(st.CVEsWithoutConfigurations)/float64(total))
 	return nil
 }
 
@@ -361,5 +402,6 @@ func cmdDBStats(ctx context.Context, g *globals, args []string, stdout, stderr i
 	for _, t := range st.Tables {
 		fmt.Fprintf(stdout, "  %-20s %10d\n", t.Table, t.Rows)
 	}
+	fmt.Fprintf(stdout, "  %-20s %10d\n", "cves w/o config", st.CVEsWithoutConfigurations)
 	return nil
 }

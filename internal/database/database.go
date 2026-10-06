@@ -78,8 +78,8 @@ func (s *Store) initSchema(ctx context.Context) error {
 	if _, err := tx.ExecContext(ctx, schema.SQL); err != nil {
 		return err
 	}
+	// schema_version comes from schema.sql itself; checkSchema validates it.
 	meta := map[string]string{
-		"schema_version":   SchemaVersion,
 		"database_version": "0",
 		"created_at":       time.Now().UTC().Format(time.RFC3339),
 	}

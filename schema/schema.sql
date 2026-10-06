@@ -1,7 +1,8 @@
 -- Offline VulnDB SQLite schema.
 --
--- The schema version is recorded in database_metadata('schema_version') and
--- must match database.SchemaVersion in the query engine.
+-- The schema version is set at the end of this file, so every database
+-- builder (the Go CLI and the Python updater) gets it from one place. It must
+-- match database.SchemaVersion in the query engine.
 
 -- Foreign keys are enforced by the connection (PRAGMA foreign_keys = ON).
 
@@ -104,3 +105,5 @@ CREATE INDEX idx_config_nodes_config ON cve_config_nodes (configuration_id);
 CREATE INDEX idx_configurations_cve  ON cve_configurations (cve_id);
 CREATE INDEX idx_exploit_cve         ON exploit_evidence (cve_id);
 CREATE INDEX idx_aliases_observed    ON aliases (observed_vendor, observed_product);
+
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '1');

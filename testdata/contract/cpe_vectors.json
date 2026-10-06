@@ -1,0 +1,29 @@
+{
+  "comment": "Shared Go/Python contract: CPE 2.3 match criteria -> canonical part/vendor/product used for the cve_matches lookup columns. Both internal/cpe (Go) and updater/src/vulndb_update/cpe.py (Python) must agree with every vector. error=true means the criteria must be rejected.",
+  "vectors": [
+    {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "part": "a", "vendor": "apache", "product": "http_server"},
+    {"criteria": "cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*", "part": "a", "vendor": "apache", "product": "http_server"},
+    {"criteria": "cpe:2.3:a:openbsd:openssh:9.3:p1:*:*:*:*:*:*", "part": "a", "vendor": "openbsd", "product": "openssh"},
+    {"criteria": "cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*", "part": "o", "vendor": "microsoft", "product": "windows"},
+    {"criteria": "cpe:2.3:h:cisco:asa_5505:-:*:*:*:*:*:*:*", "part": "h", "vendor": "cisco", "product": "asa_5505"},
+    {"criteria": "CPE:2.3:A:Apache:HTTP_Server:*:*:*:*:*:*:*:*", "part": "a", "vendor": "apache", "product": "http_server"},
+    {"criteria": "cpe:2.3:a:adobe:air_sdk_\\&_compiler:*:*:*:*:*:*:*:*", "part": "a", "vendor": "adobe", "product": "air_sdk_\\&_compiler"},
+    {"criteria": "cpe:2.3:a:1c:1c\\:enterprise:8.0:*:*:*:*:*:*:*", "part": "a", "vendor": "1c", "product": "1c\\:enterprise"},
+    {"criteria": "cpe:2.3:a:microsoft:\\.net_framework:4.8:*:*:*:*:*:*:*", "part": "a", "vendor": "microsoft", "product": ".net_framework"},
+    {"criteria": "cpe:2.3:a:x:\\-:1.0:*:*:*:*:*:*:*", "part": "a", "vendor": "x", "product": "\\-"},
+    {"criteria": "cpe:2.3:a:foo:bar\\!:1.0:*:*:*:*:*:*:*", "part": "a", "vendor": "foo", "product": "bar\\!"},
+    {"criteria": "cpe:2.3:a:foo\\\\bar:baz:*:*:*:*:*:*:*:*", "part": "a", "vendor": "foo\\\\bar", "product": "baz"},
+    {"criteria": "cpe:2.3:a:vendor:product*:*:*:*:*:*:*:*:*", "part": "a", "vendor": "vendor", "product": "product*"},
+    {"criteria": "cpe:2.3:a:vendor:pr?duct:*:*:*:*:*:*:*:*", "part": "a", "vendor": "vendor", "product": "pr?duct"},
+    {"criteria": "cpe:2.3:a:adobe:flash_player:*:*:*:*:*:chrome:*:*", "part": "a", "vendor": "adobe", "product": "flash_player"},
+    {"criteria": "  cpe:2.3:a:nginx:nginx:1.20.0:*:*:*:*:*:*:*  ", "part": "a", "vendor": "nginx", "product": "nginx"},
+
+    {"criteria": "", "error": true},
+    {"criteria": "cpe:2.3:a:apache:http_server:2.4.49", "error": true},
+    {"criteria": "cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*:*", "error": true},
+    {"criteria": "cpe:2.3:x:apache:http_server:*:*:*:*:*:*:*:*", "error": true},
+    {"criteria": "cpe:2.3:a::http_server:*:*:*:*:*:*:*:*", "error": true},
+    {"criteria": "cpe:2.3:a:apache:http server:*:*:*:*:*:*:*:*", "error": true},
+    {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:\\", "error": true}
+  ]
+}

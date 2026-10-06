@@ -206,7 +206,8 @@ func TestInfoVerifyStats(t *testing.T) {
 
 	r := cli("--db", db, "info")
 	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    1") ||
-		!strings.Contains(r.stdout, "synthetic-fixture") || !strings.Contains(r.stdout, "Age:") {
+		!strings.Contains(r.stdout, "synthetic-fixture") || !strings.Contains(r.stdout, "Data age:") ||
+		!strings.Contains(r.stdout, "CVEs without CPE applicability data: 0 of 12") {
 		t.Errorf("info: exit %d\n%s%s", r.code, r.stdout, r.stderr)
 	}
 
@@ -329,5 +330,45 @@ func TestBinary(t *testing.T) {
 		t.Error("malformed CPE exited 0")
 	} else if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != exitError {
 		t.Errorf("malformed CPE exit = %v, want %d", err, exitError)
+	}
+}
+
+// TestInfoRealDatasetStaleness uses a non-synthetic dataset with an old NVD
+// timestamp: staleness must be judged from the source data, not the build
+// time, and queries must carry the NVD coverage warning.
+func TestInfoRealDatasetStaleness(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "real.sqlite")
+	fx := filepath.Join(dir, "real.json")
+	os.WriteFile(fx, []byte(`{
+	  "metadata": {"dataset": "nvd+kev", "nvd_last_modified": "2026-01-01T00:00:00Z"},
+	  "cves": [{"cve_id": "CVE-0000-0001", "description": "no configurations"}]
+	}`), 0o600)
+	if r := cli("--db", db, "db", "init", "--fixture", fx); r.code != exitOK {
+		t.Fatal(r.stderr)
+	}
+
+	r := cli("--db", db, "info")
+	for _, want := range []string{
+		"NVD data as of:    2026-01-01T00:00:00Z",
+		"WARNING: data is older than 7 days",
+		"CVEs without CPE applicability data: 1 of 1 (100.0%)",
+	} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("info missing %q:\n%s", want, r.stdout)
+		}
+	}
+	if strings.Contains(r.stdout, "SYNTHETIC") {
+		t.Error("real dataset labelled synthetic")
+	}
+
+	q := cli("--db", db, "query", "--cpe", "cpe:/a:apache:http_server:2.4.49")
+	if !strings.Contains(q.stdout, "no result does not") {
+		t.Errorf("coverage warning missing:\n%s", q.stdout)
+	}
+
+	s := cli("--db", db, "db", "stats")
+	if !strings.Contains(s.stdout, "cves w/o config") {
+		t.Errorf("stats missing coverage row:\n%s", s.stdout)
 	}
 }

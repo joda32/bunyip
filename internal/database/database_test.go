@@ -308,3 +308,17 @@ func hasStatus(checks []Check, name string, st CheckStatus) bool {
 func openRW(path string) (*sql.DB, error) {
 	return sql.Open("sqlite", dsn(path, "rw"))
 }
+
+// TestSchemaFileVersion guards against schema.sql and SchemaVersion drifting:
+// Create takes the version from schema.sql, Open enforces SchemaVersion.
+func TestSchemaFileVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v.sqlite")
+	s, err := Create(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if _, err := Open(context.Background(), path); err != nil {
+		t.Fatalf("schema.sql version does not match SchemaVersion: %v", err)
+	}
+}
