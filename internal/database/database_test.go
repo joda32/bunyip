@@ -147,7 +147,7 @@ func TestCandidateRules(t *testing.T) {
 		t.Errorf("unexpected rule for 0001: %+v", r1)
 	}
 	r5 := byCVE["CVE-0000-0005"]
-	if !r5.HasNode || r5.ConfigOperator != "AND" || r5.ConfigNodeCount != 2 || r5.NodeRuleCount != 1 {
+	if !r5.HasNode || r5.ConfigOperator != "AND" || !r5.AndConfigSiblings || r5.AndNodeSiblings {
 		t.Errorf("unexpected configuration context for 0005: %+v", r5)
 	}
 

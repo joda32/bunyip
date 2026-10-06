@@ -149,10 +149,10 @@ func conditionality(r database.MatchRule) (bool, string) {
 	if r.NodeNegate {
 		return true, "rule is in a negated configuration node"
 	}
-	if r.ConfigOperator == "AND" && r.ConfigNodeCount > 1 {
+	if r.AndConfigSiblings {
 		return true, "configuration requires other conditions as well (AND), e.g. a specific platform; these were not evaluated"
 	}
-	if r.NodeOperator == "AND" && r.NodeRuleCount > 1 {
+	if r.AndNodeSiblings {
 		return true, "configuration node requires several CPEs together (AND); the others were not evaluated"
 	}
 	return false, ""

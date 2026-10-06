@@ -19,12 +19,17 @@ type MatchRule struct {
 
 	// Configuration context. HasNode is false for rules imported without
 	// configuration structure, which are treated as standalone.
-	HasNode         bool
-	NodeOperator    string // "AND" or "OR"
-	NodeNegate      bool
-	NodeRuleCount   int    // rules in the same node
-	ConfigOperator  string // "AND" or "OR"
-	ConfigNodeCount int    // nodes in the same configuration
+	HasNode        bool
+	NodeOperator   string // "AND" or "OR"
+	NodeNegate     bool
+	ConfigOperator string // "AND" or "OR"
+	// AndNodeSiblings: the rule's node is AND and contains other rules.
+	// AndConfigSiblings: the configuration is AND and contains other nodes.
+	// Only existence matters to the matcher, so these are EXISTS checks
+	// rather than counts (counting is quadratic on huge nodes such as
+	// linux_kernel's).
+	AndNodeSiblings   bool
+	AndConfigSiblings bool
 }
 
 // CandidateRules returns vulnerable match rules whose criteria share the
@@ -36,10 +41,11 @@ SELECT m.id, m.cve_id, m.criteria, m.vulnerable,
        COALESCE(m.version_start_including, ''), COALESCE(m.version_start_excluding, ''),
        COALESCE(m.version_end_including, ''),   COALESCE(m.version_end_excluding, ''),
        n.id IS NOT NULL,
-       COALESCE(n.operator, 'OR'), COALESCE(n.negate, 0),
-       (SELECT COUNT(*) FROM cve_matches m2 WHERE m2.node_id = n.id),
-       COALESCE(c.operator, 'OR'),
-       (SELECT COUNT(*) FROM cve_config_nodes n2 WHERE n2.configuration_id = c.id)
+       COALESCE(n.operator, 'OR'), COALESCE(n.negate, 0), COALESCE(c.operator, 'OR'),
+       COALESCE(n.operator = 'AND' AND EXISTS
+           (SELECT 1 FROM cve_matches m2 WHERE m2.node_id = n.id AND m2.id <> m.id), 0),
+       COALESCE(c.operator = 'AND' AND EXISTS
+           (SELECT 1 FROM cve_config_nodes n2 WHERE n2.configuration_id = c.id AND n2.id <> n.id), 0)
 FROM cve_matches m
 LEFT JOIN cve_config_nodes   n ON n.id = m.node_id
 LEFT JOIN cve_configurations c ON c.id = n.configuration_id
@@ -57,8 +63,8 @@ ORDER BY m.cve_id, m.id`
 		if err := rows.Scan(&r.ID, &r.CVEID, &r.Criteria, &r.Vulnerable,
 			&r.Range.StartIncluding, &r.Range.StartExcluding,
 			&r.Range.EndIncluding, &r.Range.EndExcluding,
-			&r.HasNode, &r.NodeOperator, &r.NodeNegate, &r.NodeRuleCount,
-			&r.ConfigOperator, &r.ConfigNodeCount); err != nil {
+			&r.HasNode, &r.NodeOperator, &r.NodeNegate, &r.ConfigOperator,
+			&r.AndNodeSiblings, &r.AndConfigSiblings); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

@@ -26,15 +26,18 @@ exact matching rules are in [`docs/matching.md`](docs/matching.md).
 - Does not run, download or ship exploit code; it only records that exploit
   references exist.
 
-## Status: milestone 1
+## Status: milestone 2
 
-Implemented: CPE 2.2/2.3 parsing and normalisation, generic version
-comparator, range evaluation (MATCH / NO_MATCH / UNKNOWN), NVD configuration
-structure (AND/OR) awareness, KEV and exploit enrichment, text and JSON
-output, debug trace, database init/verify/stats, synthetic fixture dataset.
+Implemented:
+- **Query engine (Go):** CPE 2.2/2.3 parsing and normalisation, a generic version
+  comparator, range evaluation (MATCH / NO_MATCH / UNKNOWN), awareness of NVD
+  AND/OR configuration structure, KEV and exploit enrichment, text and JSON
+  output, a debug trace, and `db init/verify/stats`.
+- **Updater (Python, [`updater/`](updater/README.md)):** builds a real database
+  from the NVD CVE JSON 2.0 feeds and the CISA KEV catalogue.
 
-Not yet: real NVD/KEV data (Python updater), Nmap XML input, product-name /
-alias resolution, distro advisories, NSE adapter.
+Not yet: CVE List / CISA Vulnrichment as a second source, Nmap XML input,
+product-name/alias resolution, distro advisories, and the NSE adapter.
 
 ## Build
 
@@ -43,11 +46,25 @@ Requires Go 1.27+. No CGO; the result is one static binary.
 ```bash
 make build          # -> bin/vulndb
 make test           # go test ./...  (no network access needed)
+make venv           # Python venv for the updater (stdlib-only) + pytest
+make test-all       # Go tests + updater tests, incl. real-data end-to-end test
 ```
 
-## Create the fixture database
+## Build a real database (Internet-connected machine)
 
-The only data available in milestone 1 is a small **synthetic** fixture
+```bash
+make real-db        # NVD feeds + CISA KEV -> ./vulndb.sqlite (feeds cached in .cache/feeds)
+```
+
+Copy `vulndb.sqlite` and `bin/vulndb` into the restricted network.
+- `vulndb info` shows how old the NVD data is, and warns after 7 days.
+- It also shows how many CVEs have no CPE applicability data. Since April 2026
+  NVD adds that data to only a minority of new CVEs, so recent vulnerabilities
+  are under-represented. See [`updater/README.md`](updater/README.md).
+
+## Create the synthetic fixture database
+
+For development and tests there is a small **synthetic** fixture
 (`testdata/fixtures/synthetic.json`). Its CVE IDs (`CVE-0000-*`), scores, KEV
 and exploit entries are made up so tests are deterministic. They do not
 describe real vulnerabilities, and the CLI warns whenever this data is loaded.
@@ -178,7 +195,7 @@ With `--debug`, a rule-by-rule trace goes to stderr and the JSON gains a
 ## Utility commands
 
 ```bash
-bin/vulndb info        # schema/database version, creation time, age, dataset; warns if stale (>30 days) or synthetic
+bin/vulndb info        # versions, NVD data age, KEV version, coverage; warns if stale or synthetic
 bin/vulndb db verify   # SQLite integrity, foreign keys, criteria re-parse vs index columns
 bin/vulndb db stats    # row counts and file size
 ```
@@ -200,7 +217,19 @@ failed verify), `2` usage error (unknown command or flag, unsupported
 - AND/negated NVD configurations are flagged, not evaluated, because one CPE
   can't satisfy several conditions.
 - Distro backports are not evaluated (see above).
-- No real vulnerability data until the updater (next milestone) exists.
+- NVD is currently the only applicability source, and it covers only part of
+  recent CVEs (see above). An empty result is not evidence of no vulnerability.
+- Exploit evidence is limited to references NVD tagged `Exploit`, and none of it
+  is verified.
+- Components that NVD attributes to an operating system are invisible to a
+  product CPE. For example, IIS vulnerabilities since about 2017 are listed
+  against Windows CPEs, so `cpe:/a:microsoft:internet_information_services:10.0`
+  finds none of them.
+- Products with enormous rule sets are slow. `linux_kernel` has 163k rules and a
+  query takes about 1.6 s, versus 10–30 ms for typical services.
+- NVD itself contains a handful of malformed criteria (e.g. unescaped
+  parentheses in Cisco IOS versions). They are skipped and counted in
+  `nvd_rules_skipped`.
 
 ## Layout
 
@@ -212,6 +241,9 @@ internal/database/   SQLite access, schema checks, verify/stats, fixture import
 internal/matcher/    rule evaluation, per-CVE aggregation, enrichment, ordering
 internal/output/     text and JSON rendering
 schema/schema.sql    database schema (embedded in the binary)
+updater/             Python updater: NVD + KEV -> vulndb.sqlite
 testdata/fixtures/   synthetic test data
+testdata/nvd/        real NVD/KEV records for updater and end-to-end tests
+testdata/contract/   shared Go/Python CPE canonicalisation vectors
 docs/matching.md     matching semantics
 ```
