@@ -32,6 +32,42 @@ numbers change quickly.
   New fields appear over time (e.g. `forensicTriage`); unknown fields are
   ignored.
 
+## Ubuntu security tracker via OSV.dev (in use)
+
+Export: `osv-vulnerabilities.storage.googleapis.com/Ubuntu/all.zip`.
+- 770 MB; 7.8 GB uncompressed; MD5 published in `x-goog-hash`.
+- 69,712 records: 61,497 per-CVE (`UBUNTU-CVE-*`) covering 60,912 CVEs, plus
+  per-USN records; 3,648 withdrawn.
+
+Ecosystems:
+- standard releases `Ubuntu:<rel>:LTS` and interim releases `Ubuntu:25.10`;
+- `Ubuntu:Pro:<rel>:LTS` (ESM);
+- FIPS, Realtime and Nvidia-BlueField streams, which are not used.
+
+Semantics:
+- One `fixed` event per release, or none: affected, no fix released.
+- `versions` lists the affected package versions.
+- About 80% of affected entries have no fix. These are dominated by kernel
+  packages, and also include not-yet-triaged CVEs, because OSV does not
+  distinguish "needed" from "needs-triage".
+- Releases that are not affected are absent.
+
+Network-visible packages: of Nmap's probes, **only OpenSSH exposes the
+distribution package revision** (`9.6p1 Ubuntu 3ubuntu13.18`). Apache, nginx,
+BIND, Postfix, ProFTPD, Dovecot and others expose only "(Ubuntu)".
+
+In the build: 16,547 rows for the 75 mapped packages that have data; about 5 MB
+of database.
+
+Real result on an Ubuntu 24.04 host (OpenSSH `3ubuntu13.18`): 22 upstream
+matches became 6.
+- 16 are fixed in the installed package, including CVE-2024-6387.
+- 3 are VULNERABLE: fixed in `3ubuntu13.19`, which `apt` on the host confirmed
+  as the pending update.
+
+Other OSV.dev exports in the same format: Debian (74 MB), Red Hat, Rocky
+Linux, AlmaLinux, SUSE and Alpine.
+
 ## CVE List V5 / CISA Vulnrichment (evaluated, deferred)
 
 Source: `github.com/CVEProject/cvelistV5` releases. There is a daily

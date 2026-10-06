@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"offline-vulndb/internal/distro"
 	"offline-vulndb/internal/matcher"
 	"offline-vulndb/internal/version"
 )
@@ -73,14 +74,26 @@ func WriteText(w io.Writer, r *matcher.Result) error {
 	for _, id := range r.Identities[min(1, len(r.Identities)):] {
 		p.f("Also queried:        %s [%s] (%s)\n", id.CPE, id.Confidence, id.Source)
 	}
+	if d := r.Distro; d != nil {
+		p.f("Distribution:        %s\n", wrap(distroContextLabel(r), 21, 100))
+	}
 	p.f("\n")
 
 	if len(r.Vulnerabilities) == 0 {
 		p.f("No candidate vulnerabilities found (%d match rules evaluated).\n", r.CandidateRules)
 	} else {
-		p.f("Candidate vulnerabilities: %d version match, %d undetermined\n", r.MatchCount, r.UnknownCount)
+		p.f("Candidate vulnerabilities: %d version match, %d undetermined", r.MatchCount, r.UnknownCount)
+		if r.Distro != nil {
+			p.f(", %d fixed in the distribution package", r.DistroFixedCount)
+		}
+		p.f("\n")
 		shownUnknownHeader := false
+		var fixed []string
 		for _, v := range r.Vulnerabilities {
+			if v.Distro != nil && v.Distro.Status == distro.Fixed {
+				fixed = append(fixed, v.CVE)
+				continue
+			}
 			if v.VersionStatus != version.Match && !shownUnknownHeader {
 				p.f("\nUndetermined (version applicability UNKNOWN; review manually):\n")
 				shownUnknownHeader = true
@@ -90,6 +103,10 @@ func WriteText(w io.Writer, r *matcher.Result) error {
 				first = r.Identities[0].CPE
 			}
 			writeVuln(p, v, first)
+		}
+		if len(fixed) > 0 {
+			p.f("\nFixed in the %s package (upstream version matches, fix backported):\n  %s\n",
+				r.Distro.Target.DistroName, wrap(strings.Join(fixed, ", "), 2, 100))
 		}
 	}
 
@@ -102,11 +119,33 @@ func WriteText(w io.Writer, r *matcher.Result) error {
 	return p.err
 }
 
+// distroContextLabel describes the resolved distribution release/package.
+func distroContextLabel(r *matcher.Result) string {
+	d := r.Distro
+	s := fmt.Sprintf("%s: %s", d.Target.DistroName, d.Status)
+	if d.Package != "" {
+		s += fmt.Sprintf(" (%s %s", d.Package, strings.Join(d.Releases, ", "))
+		if d.Installed != "" {
+			s += ", installed " + d.Installed
+		}
+		s += ")"
+	}
+	return s + " - " + d.Reason
+}
+
 func writeVuln(p *printer, v matcher.Vulnerability, firstIdentity string) {
 	p.f("\n%-16s %-9s %s\n", v.CVE, orDash(v.Severity), cvssLabel(v))
 	p.f("  Public exploit: %s\n", exploitLabel(v))
 	p.f("  CISA KEV:       %s\n", kevLabel(v))
 	p.f("  Version status: %s\n", v.VersionStatus)
+	if d := v.Distro; d != nil {
+		label := string(d.Status)
+		if v.DistroOnly {
+			label += " (found only via " + d.Distro + " advisory data)"
+		}
+		p.f("  %-15s %s\n", d.Distro+":", label)
+		p.f("                  %s\n", wrap(d.Reason, 18, 100))
+	}
 	p.f("  Confidence:     %s\n", v.MatchConfidence)
 	if v.MatchedCPE != "" && v.MatchedCPE != firstIdentity {
 		p.f("  Matched via:    %s\n", v.MatchedCPE)

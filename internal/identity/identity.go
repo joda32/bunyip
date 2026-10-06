@@ -22,6 +22,7 @@ import (
 
 	"offline-vulndb/internal/cpe"
 	"offline-vulndb/internal/database"
+	"offline-vulndb/internal/version"
 )
 
 // Confidence classifies how certain a software identity is.
@@ -127,6 +128,10 @@ func Notes(cands []Candidate) []string {
 	return out
 }
 
+// BackportNotePrefix starts the note attached to distribution-packaged
+// services; reports drop it once distribution advisories were evaluated.
+const BackportNotePrefix = "Distribution package detected"
+
 // Observation is a service as reported by a discovery tool.
 type Observation struct {
 	Product   string
@@ -139,9 +144,27 @@ type Observation struct {
 // Resolution is the outcome of resolving an Observation.
 type Resolution struct {
 	Candidates   []Candidate
-	PlatformCPEs []string // OS/hardware CPEs reported with the service, not queried
-	Distro       string   // detected distribution packaging, e.g. "Ubuntu package 3ubuntu13.18"
+	PlatformCPEs []string   // OS/hardware CPEs reported with the service, not queried
+	Distro       DistroInfo // detected distribution packaging (zero value: none)
 	Notes        []string
+}
+
+// DistroInfo describes distribution packaging evident from an observation.
+type DistroInfo struct {
+	Name     string // display name, e.g. "Ubuntu"
+	Key      string // advisory data key, e.g. "ubuntu"
+	Revision string // Debian package revision when visible, e.g. "3ubuntu13.18"
+}
+
+// Detected reports whether any distribution packaging was seen.
+func (d DistroInfo) Detected() bool { return d.Name != "" }
+
+// Label is a short description, e.g. "Ubuntu package 3ubuntu13.18".
+func (d DistroInfo) Label() string {
+	if d.Revision != "" {
+		return d.Name + " package " + d.Revision
+	}
+	return d.Name
 }
 
 // ResolveObservation derives candidate identities from a reported service.
@@ -169,57 +192,62 @@ func (r *Resolver) ResolveObservation(o Observation, source string) Resolution {
 			strings.TrimSpace(o.Product+" "+o.Version)))
 	}
 	res.Distro = DetectDistro(o, res.PlatformCPEs)
-	if res.Distro != "" {
+	if res.Distro.Detected() {
 		res.Notes = append(res.Notes, fmt.Sprintf(
-			"Distribution package detected (%s): the vendor may have backported security fixes without "+
-				"changing the upstream version, so upstream-version matches may be false positives.", res.Distro))
+			BackportNotePrefix+" (%s): the vendor may have backported security fixes without "+
+				"changing the upstream version, so upstream-version matches may be false positives.", res.Distro.Label()))
 	}
 	res.Notes = append(res.Notes, Notes(res.Candidates)...)
 	return res
 }
 
 // distroMarkers maps lower-case markers in version/extra-info text to a
-// distribution name. Order matters: the first match wins.
-var distroMarkers = []struct{ marker, name string }{
-	{"ubuntu", "Ubuntu"},
-	{"debian", "Debian"},
-	{"deb1", "Debian"}, // e.g. OpenSSH "9.2p1 Debian 2+deb12u3"
-	{"red hat", "Red Hat"},
-	{"rhel", "Red Hat"},
-	{"centos", "CentOS"},
-	{"rocky", "Rocky Linux"},
-	{"almalinux", "AlmaLinux"},
-	{"fedora", "Fedora"},
-	{"suse", "SUSE"},
-	{"alpine", "Alpine"},
-	{"freebsd", "FreeBSD"},
-	{".el7", "Red Hat"}, {".el8", "Red Hat"}, {".el9", "Red Hat"},
+// distribution. Order matters: the first match wins.
+var distroMarkers = []struct{ marker, name, key string }{
+	{"ubuntu", "Ubuntu", "ubuntu"},
+	{"debian", "Debian", "debian"},
+	{"deb1", "Debian", "debian"}, // e.g. OpenSSH "9.2p1 Debian 2+deb12u3"
+	{"red hat", "Red Hat", "redhat"},
+	{"rhel", "Red Hat", "redhat"},
+	{"centos", "CentOS", "centos"},
+	{"rocky", "Rocky Linux", "rocky"},
+	{"almalinux", "AlmaLinux", "almalinux"},
+	{"fedora", "Fedora", "fedora"},
+	{"suse", "SUSE", "suse"},
+	{"alpine", "Alpine", "alpine"},
+	{"freebsd", "FreeBSD", "freebsd"},
+	{".el7", "Red Hat", "redhat"}, {".el8", "Red Hat", "redhat"}, {".el9", "Red Hat", "redhat"},
 }
 
-// distroCPEs maps OS CPE vendor:product prefixes to a distribution name.
-var distroCPEs = map[string]string{
-	"canonical:ubuntu_linux":       "Ubuntu",
-	"debian:debian_linux":          "Debian",
-	"redhat:enterprise_linux":      "Red Hat",
-	"redhat:linux":                 "Red Hat",
-	"centos:centos":                "CentOS",
-	"fedoraproject:fedora":         "Fedora",
-	"suse:linux_enterprise_server": "SUSE",
-	"opensuse:opensuse":            "openSUSE",
-	"alpinelinux:alpine_linux":     "Alpine",
-	"freebsd:freebsd":              "FreeBSD",
+// distroCPEs maps OS CPE vendor:product to a distribution.
+var distroCPEs = map[string]struct{ name, key string }{
+	"canonical:ubuntu_linux":       {"Ubuntu", "ubuntu"},
+	"debian:debian_linux":          {"Debian", "debian"},
+	"redhat:enterprise_linux":      {"Red Hat", "redhat"},
+	"redhat:linux":                 {"Red Hat", "redhat"},
+	"centos:centos":                {"CentOS", "centos"},
+	"fedoraproject:fedora":         {"Fedora", "fedora"},
+	"suse:linux_enterprise_server": {"SUSE", "suse"},
+	"opensuse:opensuse":            {"openSUSE", "opensuse"},
+	"alpinelinux:alpine_linux":     {"Alpine", "alpine"},
+	"freebsd:freebsd":              {"FreeBSD", "freebsd"},
 }
+
+// dpkgDistros use Debian package versions, so a visible revision can be
+// compared with advisory fixed versions.
+var dpkgDistros = map[string]bool{"ubuntu": true, "debian": true}
 
 // DetectDistro reports distribution packaging evident from the service's
-// version/extra-info text or its OS CPEs. It returns "" when none is seen.
-func DetectDistro(o Observation, platformCPEs []string) string {
+// version/extra-info text or its OS CPEs.
+func DetectDistro(o Observation, platformCPEs []string) DistroInfo {
 	text := strings.ToLower(o.Version + " " + o.ExtraInfo)
 	for _, m := range distroMarkers {
 		if strings.Contains(text, m.marker) {
-			if pkg := packageSuffix(o.Version); pkg != "" {
-				return fmt.Sprintf("%s package %s", m.name, pkg)
+			d := DistroInfo{Name: m.name, Key: m.key}
+			if rev := packageSuffix(o.Version); rev != "" && dpkgDistros[m.key] && validRevision(rev) {
+				d.Revision = rev
 			}
-			return m.name
+			return d
 		}
 	}
 	for _, raw := range platformCPEs {
@@ -227,11 +255,11 @@ func DetectDistro(o Observation, platformCPEs []string) string {
 		if err != nil {
 			continue
 		}
-		if name, ok := distroCPEs[c.Vendor+":"+c.Product]; ok {
-			return name
+		if d, ok := distroCPEs[c.Vendor+":"+c.Product]; ok {
+			return DistroInfo{Name: d.name, Key: d.key}
 		}
 	}
-	return ""
+	return DistroInfo{}
 }
 
 // packageSuffix returns the distribution part of a version string such as
@@ -242,4 +270,9 @@ func packageSuffix(v string) string {
 		return f[len(f)-1]
 	}
 	return ""
+}
+
+func validRevision(rev string) bool {
+	_, err := version.ParseDeb("0-" + rev)
+	return err == nil
 }

@@ -15,10 +15,22 @@
       "severity": "CRITICAL",
       "cwe": "CWE-22",
       "configurations": [
-        {"operator": "OR", "nodes": [{"operator": "OR", "cpe_match": [
-          {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "vulnerable": true,
-           "version_start_including": "2.4.49", "version_end_excluding": "2.4.51"}
-        ]}]}
+        {
+          "operator": "OR",
+          "nodes": [
+            {
+              "operator": "OR",
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*",
+                  "vulnerable": true,
+                  "version_start_including": "2.4.49",
+                  "version_end_excluding": "2.4.51"
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -31,9 +43,18 @@
       "severity": "HIGH",
       "cwe": "CWE-444",
       "configurations": [
-        {"nodes": [{"cpe_match": [
-          {"criteria": "cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*", "vulnerable": true}
-        ]}]}
+        {
+          "nodes": [
+            {
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*",
+                  "vulnerable": true
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -46,10 +67,20 @@
       "severity": "MEDIUM",
       "cwe": "CWE-200",
       "configurations": [
-        {"nodes": [{"cpe_match": [
-          {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "vulnerable": true,
-           "version_start_excluding": "2.4.48", "version_end_including": "2.4.50"}
-        ]}]}
+        {
+          "nodes": [
+            {
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*",
+                  "vulnerable": true,
+                  "version_start_excluding": "2.4.48",
+                  "version_end_including": "2.4.50"
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -60,10 +91,19 @@
       "cvss_v3_score": 6.1,
       "severity": "MEDIUM",
       "configurations": [
-        {"nodes": [{"cpe_match": [
-          {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "vulnerable": true,
-           "version_end_excluding": "2.4.30"}
-        ]}]}
+        {
+          "nodes": [
+            {
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*",
+                  "vulnerable": true,
+                  "version_end_excluding": "2.4.30"
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -74,15 +114,30 @@
       "cvss_v3_score": 8.1,
       "severity": "HIGH",
       "configurations": [
-        {"operator": "AND", "nodes": [
-          {"operator": "OR", "cpe_match": [
-            {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "vulnerable": true,
-             "version_end_excluding": "2.4.52"}
-          ]},
-          {"operator": "OR", "cpe_match": [
-            {"criteria": "cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*", "vulnerable": false}
-          ]}
-        ]}
+        {
+          "operator": "AND",
+          "nodes": [
+            {
+              "operator": "OR",
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*",
+                  "vulnerable": true,
+                  "version_end_excluding": "2.4.52"
+                }
+              ]
+            },
+            {
+              "operator": "OR",
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*",
+                  "vulnerable": false
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -93,10 +148,19 @@
       "cvss_v3_score": 4.3,
       "severity": "MEDIUM",
       "configurations": [
-        {"nodes": [{"cpe_match": [
-          {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:x64:*", "vulnerable": true,
-           "version_end_excluding": "2.4.60"}
-        ]}]}
+        {
+          "nodes": [
+            {
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:x64:*",
+                  "vulnerable": true,
+                  "version_end_excluding": "2.4.60"
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -108,10 +172,20 @@
       "severity": "HIGH",
       "cwe": "CWE-193",
       "configurations": [
-        {"nodes": [{"cpe_match": [
-          {"criteria": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*", "vulnerable": true,
-           "version_start_including": "1.20.0", "version_end_including": "1.20.1"}
-        ]}]}
+        {
+          "nodes": [
+            {
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
+                  "vulnerable": true,
+                  "version_start_including": "1.20.0",
+                  "version_end_including": "1.20.1"
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -122,10 +196,20 @@
       "cvss_v3_score": 5.9,
       "severity": "MEDIUM",
       "configurations": [
-        {"nodes": [{"cpe_match": [
-          {"criteria": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*", "vulnerable": true,
-           "version_start_including": "1.9.0", "version_end_excluding": "1.10.0"}
-        ]}]}
+        {
+          "nodes": [
+            {
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
+                  "vulnerable": true,
+                  "version_start_including": "1.9.0",
+                  "version_end_excluding": "1.10.0"
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -136,10 +220,20 @@
       "cvss_v3_score": 8.1,
       "severity": "HIGH",
       "configurations": [
-        {"nodes": [{"cpe_match": [
-          {"criteria": "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*", "vulnerable": true,
-           "version_start_including": "8.5p1", "version_end_excluding": "9.3p2"}
-        ]}]}
+        {
+          "nodes": [
+            {
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:openbsd:openssh:*:*:*:*:*:*:*:*",
+                  "vulnerable": true,
+                  "version_start_including": "8.5p1",
+                  "version_end_excluding": "9.3p2"
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -150,9 +244,18 @@
       "cvss_v3_score": 5.3,
       "severity": "MEDIUM",
       "configurations": [
-        {"nodes": [{"cpe_match": [
-          {"criteria": "cpe:2.3:a:openbsd:openssh:8.9:p1:*:*:*:*:*:*", "vulnerable": true}
-        ]}]}
+        {
+          "nodes": [
+            {
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:openbsd:openssh:8.9:p1:*:*:*:*:*:*",
+                  "vulnerable": true
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -164,9 +267,18 @@
       "severity": "CRITICAL",
       "cwe": "CWE-787",
       "configurations": [
-        {"nodes": [{"cpe_match": [
-          {"criteria": "cpe:2.3:a:microsoft:internet_information_services:10.0:*:*:*:*:*:*:*", "vulnerable": true}
-        ]}]}
+        {
+          "nodes": [
+            {
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:microsoft:internet_information_services:10.0:*:*:*:*:*:*:*",
+                  "vulnerable": true
+                }
+              ]
+            }
+          ]
+        }
       ]
     },
     {
@@ -177,41 +289,172 @@
       "cvss_v3_score": 7.5,
       "severity": "HIGH",
       "configurations": [
-        {"nodes": [{"cpe_match": [
-          {"criteria": "cpe:2.3:a:microsoft:internet_information_services:*:*:*:*:*:*:*:*", "vulnerable": true,
-           "version_end_excluding": "8.5"}
-        ]}]}
+        {
+          "nodes": [
+            {
+              "cpe_match": [
+                {
+                  "criteria": "cpe:2.3:a:microsoft:internet_information_services:*:*:*:*:*:*:*:*",
+                  "vulnerable": true,
+                  "version_end_excluding": "8.5"
+                }
+              ]
+            }
+          ]
+        }
       ]
+    },
+    {
+      "cve_id": "CVE-0000-0203",
+      "published_at": "2026-09-01T00:00:00Z",
+      "modified_at": "2026-09-01T00:00:00Z",
+      "description": "[SYNTHETIC] OpenSSH issue with NO NVD applicability data; Ubuntu fixed it in 22.04 at 1:8.9p1-3ubuntu0.12 (found only via distribution advisories).",
+      "cvss_v3_score": 7.1,
+      "severity": "HIGH",
+      "configurations": []
     }
   ],
   "kev": [
-    {"cve_id": "CVE-0000-0001", "vendor_project": "Apache", "product": "HTTP Server",
-     "vulnerability_name": "[SYNTHETIC] Apache HTTP Server Path Traversal",
-     "date_added": "2021-11-03", "due_date": "2021-11-17", "known_ransomware": "Unknown",
-     "notes": "Synthetic fixture entry."},
-    {"cve_id": "CVE-0000-0301", "vendor_project": "Microsoft", "product": "IIS",
-     "vulnerability_name": "[SYNTHETIC] Microsoft IIS RCE",
-     "date_added": "2022-06-01", "due_date": "2022-06-22", "known_ransomware": "Known",
-     "notes": "Synthetic fixture entry."}
+    {
+      "cve_id": "CVE-0000-0001",
+      "vendor_project": "Apache",
+      "product": "HTTP Server",
+      "vulnerability_name": "[SYNTHETIC] Apache HTTP Server Path Traversal",
+      "date_added": "2021-11-03",
+      "due_date": "2021-11-17",
+      "known_ransomware": "Unknown",
+      "notes": "Synthetic fixture entry."
+    },
+    {
+      "cve_id": "CVE-0000-0301",
+      "vendor_project": "Microsoft",
+      "product": "IIS",
+      "vulnerability_name": "[SYNTHETIC] Microsoft IIS RCE",
+      "date_added": "2022-06-01",
+      "due_date": "2022-06-22",
+      "known_ransomware": "Known",
+      "notes": "Synthetic fixture entry."
+    }
   ],
   "exploit_evidence": [
-    {"cve_id": "CVE-0000-0001", "source": "exploit-db", "reference": "EDB-ID:00001 (synthetic)",
-     "reference_type": "exploit", "verified": true},
-    {"cve_id": "CVE-0000-0001", "source": "metasploit", "reference": "exploit/multi/http/synthetic_fixture",
-     "reference_type": "module", "verified": true, "metadata": {"rank": "excellent"}},
-    {"cve_id": "CVE-0000-0002", "source": "github", "reference": "https://example.invalid/synthetic/poc-0002",
-     "reference_type": "poc", "verified": false},
-    {"cve_id": "CVE-0000-0101", "source": "exploit-db", "reference": "EDB-ID:00101 (synthetic)",
-     "reference_type": "exploit", "verified": true},
-    {"cve_id": "CVE-0000-0201", "source": "github", "reference": "https://example.invalid/synthetic/poc-0201",
-     "reference_type": "poc", "verified": false}
+    {
+      "cve_id": "CVE-0000-0001",
+      "source": "exploit-db",
+      "reference": "EDB-ID:00001 (synthetic)",
+      "reference_type": "exploit",
+      "verified": true
+    },
+    {
+      "cve_id": "CVE-0000-0001",
+      "source": "metasploit",
+      "reference": "exploit/multi/http/synthetic_fixture",
+      "reference_type": "module",
+      "verified": true,
+      "metadata": {
+        "rank": "excellent"
+      }
+    },
+    {
+      "cve_id": "CVE-0000-0002",
+      "source": "github",
+      "reference": "https://example.invalid/synthetic/poc-0002",
+      "reference_type": "poc",
+      "verified": false
+    },
+    {
+      "cve_id": "CVE-0000-0101",
+      "source": "exploit-db",
+      "reference": "EDB-ID:00101 (synthetic)",
+      "reference_type": "exploit",
+      "verified": true
+    },
+    {
+      "cve_id": "CVE-0000-0201",
+      "source": "github",
+      "reference": "https://example.invalid/synthetic/poc-0201",
+      "reference_type": "poc",
+      "verified": false
+    }
   ],
   "aliases": [
-    {"observed_vendor": "igor_sysoev", "observed_product": "nginx", "canonical_vendor": "f5",
-     "canonical_product": "nginx", "canonical_cpe_prefix": "cpe:2.3:a:f5:nginx",
-     "source": "synthetic-fixture", "confidence": "HIGH"},
-    {"observed_vendor": "", "observed_product": "Apache httpd", "canonical_vendor": "apache",
-     "canonical_product": "http_server", "canonical_cpe_prefix": "cpe:2.3:a:apache:http_server",
-     "source": "synthetic-fixture", "confidence": "HIGH"}
+    {
+      "observed_vendor": "igor_sysoev",
+      "observed_product": "nginx",
+      "canonical_vendor": "f5",
+      "canonical_product": "nginx",
+      "canonical_cpe_prefix": "cpe:2.3:a:f5:nginx",
+      "source": "synthetic-fixture",
+      "confidence": "HIGH"
+    },
+    {
+      "observed_vendor": "",
+      "observed_product": "Apache httpd",
+      "canonical_vendor": "apache",
+      "canonical_product": "http_server",
+      "canonical_cpe_prefix": "cpe:2.3:a:apache:http_server",
+      "source": "synthetic-fixture",
+      "confidence": "HIGH"
+    }
+  ],
+  "distro_packages": [
+    {
+      "cpe": "a:openbsd:openssh",
+      "distro": "ubuntu",
+      "package": "openssh"
+    },
+    {
+      "cpe": "a:apache:http_server",
+      "distro": "ubuntu",
+      "package": "apache2"
+    }
+  ],
+  "distro_package_versions": [
+    {
+      "distro": "ubuntu",
+      "release": "22.04",
+      "package": "openssh",
+      "version": "1:8.9p1-3ubuntu0.1"
+    },
+    {
+      "distro": "ubuntu",
+      "release": "22.04",
+      "package": "openssh",
+      "version": "1:8.9p1-3ubuntu0.10"
+    },
+    {
+      "distro": "ubuntu",
+      "release": "22.04",
+      "package": "apache2",
+      "version": "2.4.52-1ubuntu4.1"
+    }
+  ],
+  "distro_advisories": [
+    {
+      "advisory_id": "SYNTHETIC-UBUNTU-0201",
+      "cve_id": "CVE-0000-0201",
+      "distro": "ubuntu",
+      "release": "22.04",
+      "package": "openssh",
+      "fixed_version": "1:8.9p1-3ubuntu0.5",
+      "affected_upstreams": "8.9p1"
+    },
+    {
+      "advisory_id": "SYNTHETIC-UBUNTU-0202",
+      "cve_id": "CVE-0000-0202",
+      "distro": "ubuntu",
+      "release": "22.04",
+      "package": "openssh",
+      "fixed_version": "",
+      "affected_upstreams": "8.9p1"
+    },
+    {
+      "advisory_id": "SYNTHETIC-UBUNTU-0203",
+      "cve_id": "CVE-0000-0203",
+      "distro": "ubuntu",
+      "release": "22.04",
+      "package": "openssh",
+      "fixed_version": "1:8.9p1-3ubuntu0.12",
+      "affected_upstreams": "8.9p1"
+    }
   ]
 }

@@ -257,7 +257,8 @@ func TestStats(t *testing.T) {
 	for _, tc := range st.Tables {
 		counts[tc.Table] = tc.Rows
 	}
-	if counts["cves"] != 12 || counts["kev"] != 2 || counts["exploit_evidence"] != 5 || counts["aliases"] != 2 {
+	if counts["cves"] != 13 || counts["kev"] != 2 || counts["exploit_evidence"] != 5 || counts["aliases"] != 2 ||
+		counts["distro_advisories"] != 3 || counts["distro_packages"] != 2 {
 		t.Errorf("unexpected counts: %v", counts)
 	}
 	if st.FileBytes == 0 {

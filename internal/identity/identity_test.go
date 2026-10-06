@@ -80,8 +80,9 @@ func TestResolveObservationRealUbuntuSSH(t *testing.T) {
 	if len(res.PlatformCPEs) != 1 || res.PlatformCPEs[0] != "cpe:2.3:o:linux:linux_kernel:*:*:*:*:*:*:*:*" {
 		t.Errorf("OS CPE must be recorded, not queried: %v", res.PlatformCPEs)
 	}
-	if res.Distro != "Ubuntu package 3ubuntu13.18" {
-		t.Errorf("distro = %q", res.Distro)
+	if res.Distro != (DistroInfo{Name: "Ubuntu", Key: "ubuntu", Revision: "3ubuntu13.18"}) ||
+		res.Distro.Label() != "Ubuntu package 3ubuntu13.18" {
+		t.Errorf("distro = %+v", res.Distro)
 	}
 	if !strings.Contains(strings.Join(res.Notes, " "), "backported") {
 		t.Errorf("missing backport note: %v", res.Notes)
@@ -106,8 +107,8 @@ func TestResolveObservationEdgeCases(t *testing.T) {
 	if len(iis.Candidates) != 1 || !strings.Contains(strings.Join(iis.Notes, " "), "against Microsoft Windows") {
 		t.Errorf("IIS note missing: %+v", iis)
 	}
-	if iis.Distro != "" {
-		t.Errorf("Windows is not a backporting distro here: %q", iis.Distro)
+	if iis.Distro.Detected() {
+		t.Errorf("Windows is not a backporting distro here: %+v", iis.Distro)
 	}
 
 	alias := r.ResolveObservation(Observation{Product: "nginx", Version: "1.20.0",
@@ -129,9 +130,10 @@ func TestDetectDistro(t *testing.T) {
 		{Observation{Version: "7.4"}, []string{"cpe:2.3:o:canonical:ubuntu_linux:*:*:*:*:*:*:*:*"}, "Ubuntu"},
 		{Observation{Version: "9.8p1", ExtraInfo: "protocol 2.0"}, nil, ""},
 		{Observation{Version: "2.4.49"}, []string{"cpe:2.3:o:linux:linux_kernel:*:*:*:*:*:*:*:*"}, ""},
+		{Observation{Version: "8.0.33-0ubuntu0.22.04.2 Ubuntu weird!rev"}, nil, "Ubuntu"}, // invalid revision ignored
 	}
 	for _, tt := range tests {
-		if got := DetectDistro(tt.o, tt.cpes); got != tt.want {
+		if got := DetectDistro(tt.o, tt.cpes).Label(); got != tt.want {
 			t.Errorf("DetectDistro(%+v, %v) = %q, want %q", tt.o, tt.cpes, got, tt.want)
 		}
 	}

@@ -84,7 +84,7 @@ func BenchmarkQueryLargeDB(b *testing.B) {
 	for _, c := range cases {
 		b.Run(c.name, func(b *testing.B) {
 			for b.Loop() {
-				if _, err := e.QueryCPE(context.Background(), c.cpe); err != nil {
+				if _, err := e.QueryCPE(context.Background(), c.cpe, nil); err != nil {
 					b.Fatal(err)
 				}
 			}

@@ -171,6 +171,7 @@ Version applicability is reported separately as `version_status`.
 
 ## 8. Ordering
 
+0. CVEs the distribution package has fixed (section 9) last
 1. version MATCH before UNKNOWN
 2. CISA KEV **and** public exploit
 3. KEV
@@ -179,3 +180,53 @@ Version applicability is reported separately as `version_status`.
 6. unconditional before conditional
 7. identity confidence, higher first
 8. CVE ID
+
+## 9. Distribution advisories (`internal/distro`)
+
+Upstream version matching cannot see fixes a distribution has backported into
+its own packages. When a service shows distribution packaging (e.g. Nmap's
+`OpenSSH 9.6p1 Ubuntu 3ubuntu13.18`, `Apache httpd 2.4.52 (Ubuntu)`), each
+candidate CVE is also evaluated against that distribution's security
+advisories. Ubuntu is supported, from the OSV.dev export of Ubuntu's tracker.
+
+**Package.** The candidate CPEs map to distribution source packages through
+the curated `distro_packages` table (`data/distro_packages.json`), e.g.
+`openbsd:openssh` → `openssh` and `postgresql:postgresql` → `postgresql-14`.
+
+**Release.** Inferred from the published package versions:
+- with the package revision visible, a release that published exactly
+  `<upstream>-<revision>` is preferred;
+- otherwise, any release that shipped the observed upstream version;
+- in `vulndb nmap`, a release established from an exact package version on a
+  host (usually from OpenSSH) is used as a hint for that host's other
+  services;
+- several candidate releases → `AMBIGUOUS`. A verdict is given only when all
+  candidate releases agree.
+
+**Verdict per CVE** (`distro.status`):
+
+| Status | When |
+|---|---|
+| `FIXED` | revision visible and installed ≥ fixed version; or revision not visible and no package of the observed upstream version in that release is listed as affected |
+| `VULNERABLE` | revision visible and installed < fixed version (including fixes only in Ubuntu Pro/ESM, for a standard host) |
+| `FIX_AVAILABLE` | revision not visible; the release fixed it in a later package revision. Patched only if the host is up to date |
+| `NO_FIX` | the release is listed as affected with no fix released. This includes CVEs still awaiting triage |
+| `NO_DATA` | no row for the CVE/package/release (usually not affected, or not yet assessed); unmapped product; no data for that distribution; or ambiguous releases that disagree |
+
+`FIXED` results stay in the output, but they are excluded from match counts
+and listed separately ("fixed in the Ubuntu package").
+
+**Distribution-only findings.** With the installed version known and a single
+release, any advisory whose fixed version is newer than the installed package
+is reported as a `VULNERABLE` finding (`distro_only: true`), even when NVD has
+no matching rule. `NO_FIX` rows never add findings on their own: Ubuntu marks
+new CVEs as affected before triage.
+
+**Channels.** Rows come from standard releases and Ubuntu Pro (ESM). An
+installed revision containing `esm` uses Pro rows; otherwise standard rows,
+falling back to Pro when the release has only those. FIPS, Realtime and
+vendor-kernel streams are not loaded.
+
+Version comparison uses the dpkg algorithm (`version.Dpkg`: epoch, upstream,
+revision, `~` sorting first). The installed epoch is taken from the
+distribution's own versions of the package.

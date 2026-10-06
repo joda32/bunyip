@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"offline-vulndb/internal/database"
+	"offline-vulndb/internal/identity"
 	"offline-vulndb/internal/matcher"
 	"offline-vulndb/internal/nmap"
 	"offline-vulndb/internal/output"
+	"offline-vulndb/internal/version"
 )
 
 // Exit codes.
@@ -40,6 +42,7 @@ Usage:
 
 Commands:
   query --cpe CPE [--format text|json]   find candidate CVEs for a CPE (2.2 or 2.3)
+        [--distro ubuntu [--package-version VER]]  also evaluate distribution advisories
   nmap FILE [--format text|json]         assess services in Nmap XML output (-oX); FILE "-" = stdin
   info                                   show database provenance and age
   db init [--fixture FILE] [--force]     create a new database (optionally loading a fixture)
@@ -156,6 +159,8 @@ func cmdQuery(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	g.register(fs)
 	cpeArg := fs.String("cpe", "", "CPE 2.3 formatted string or CPE 2.2 URI")
 	formatArg := fs.String("format", "text", "output format: text or json")
+	distroArg := fs.String("distro", "", "distribution the software was installed from (ubuntu)")
+	pkgVerArg := fs.String("package-version", "", "installed distribution package version, e.g. 1:9.6p1-3ubuntu13.18")
 	if err := parseSub(fs, args); err != nil {
 		return err
 	}
@@ -165,6 +170,10 @@ func cmdQuery(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	}
 	if strings.TrimSpace(*cpeArg) == "" {
 		return usageError{"query: --cpe is required"}
+	}
+	din, err := distroInput(*distroArg, *pkgVerArg)
+	if err != nil {
+		return usageError{err.Error()}
 	}
 
 	store, err := database.Open(ctx, g.db)
@@ -178,7 +187,7 @@ func cmdQuery(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	if err != nil {
 		return err
 	}
-	res, err := engine.QueryCPE(ctx, *cpeArg)
+	res, err := engine.QueryCPE(ctx, *cpeArg, din)
 	if err != nil {
 		return err
 	}
@@ -265,6 +274,31 @@ func cmdNmap(ctx context.Context, g *globals, args []string, stdin io.Reader, st
 		return output.WriteNmapJSON(stdout, report, info)
 	}
 	return output.WriteNmapText(stdout, report)
+}
+
+// distroInput builds the distribution context for `query`. The package
+// version's revision (after the last '-') is what advisories compare against.
+func distroInput(name, pkgVersion string) (*matcher.DistroInput, error) {
+	if name == "" {
+		if pkgVersion != "" {
+			return nil, errors.New("query: --package-version requires --distro")
+		}
+		return nil, nil
+	}
+	names := map[string]string{"ubuntu": "Ubuntu"}
+	display, ok := names[strings.ToLower(name)]
+	if !ok {
+		return nil, fmt.Errorf("query: unsupported --distro %q (supported: ubuntu)", name)
+	}
+	info := identity.DistroInfo{Name: display, Key: strings.ToLower(name)}
+	if pkgVersion != "" {
+		v, err := version.ParseDeb(pkgVersion)
+		if err != nil || v.Revision == "" {
+			return nil, fmt.Errorf("query: --package-version %q must be a Debian version with a revision", pkgVersion)
+		}
+		info.Revision = v.Revision
+	}
+	return &matcher.DistroInput{Info: info}, nil
 }
 
 func databaseInfo(ctx context.Context, s *database.Store) (output.DatabaseInfo, error) {

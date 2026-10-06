@@ -20,13 +20,14 @@ exact matching rules are in [`docs/matching.md`](docs/matching.md).
 - Not a vulnerability scanner: it never touches a target.
 - Not proof of vulnerability: a version/banner match is a **candidate
   vulnerability**. The version only *appears* to fall in an affected range.
-- Does not evaluate Linux distribution backported fixes yet. Ubuntu, Debian,
-  RHEL, etc. often patch while keeping the upstream version string, so
-  upstream-based matches on distro packages can be false positives.
+- Not a patch-state audit. Distribution backports (fixes shipped without
+  changing the upstream version) are evaluated only for Ubuntu, and only as far
+  as the scan shows the installed package version. Results for other
+  distributions can be false positives.
 - Does not run, download or ship exploit code; it only records that exploit
   references exist.
 
-## Status: milestone 3
+## Status: milestone 4
 
 Implemented:
 - **Query engine (Go):** CPE 2.2/2.3 parsing and normalisation, version
@@ -38,14 +39,19 @@ Implemented:
   service in Nmap `-oX` output.
 - **Identity resolution:** curated aliases map the vendor/product names Nmap
   reports to the names NVD uses (e.g. `mysql:mysql` → `oracle:mysql`).
-  Distribution packages (Ubuntu, Debian, RHEL, …) are detected and flagged.
+  Distribution packages (Ubuntu, Debian, RHEL, …) are detected.
+- **Ubuntu security advisories:** for Ubuntu-packaged services, each candidate
+  CVE is checked against Ubuntu's own fix data (FIXED / VULNERABLE /
+  FIX_AVAILABLE / NO_FIX). This removes backport false positives and adds CVEs
+  NVD lacks data for. See [docs/matching.md](docs/matching.md#9-distribution-advisories-internaldistro).
 - **Updater (Python, [`updater/`](updater/README.md)):** builds a real database
-  from the NVD CVE JSON 2.0 feeds, the CISA KEV catalogue and
-  `data/aliases.json`.
+  from the NVD CVE JSON 2.0 feeds, the CISA KEV catalogue, Ubuntu's advisories
+  (OSV.dev export), `data/aliases.json` and `data/distro_packages.json`.
 
-Not yet: product-name resolution when no CPE is reported, the CVE List as a
-second source (evaluated and deferred, see [docs/data-sources.md](docs/data-sources.md)), distro advisories, and the
-NSE adapter.
+Not yet: advisories for other distributions (Debian is the obvious next one,
+same OSV format), product-name resolution when no CPE is reported, the CVE List
+as a second source (evaluated and deferred, see
+[docs/data-sources.md](docs/data-sources.md)), and the NSE adapter.
 
 ## Build
 
@@ -175,7 +181,7 @@ compatibility:
       }
     ],
     "warnings": [
-      "Matching is based on upstream product/version data. Linux distribution backported security fixes are not evaluated.",
+      "Matching is based on upstream product/version data. Distribution backported security fixes are only evaluated where a distribution verdict is shown (currently Ubuntu).",
       "Database contains SYNTHETIC test fixture data, not real vulnerability information."
     ]
   }
@@ -238,6 +244,36 @@ Flags on a CVE line mark results to review: `CONDITIONAL` (another condition,
 such as a specific OS, was not evaluated), `ransomware` (known use per KEV), and
 `via alias` (found only through a curated alias identity).
 
+### Ubuntu hosts
+
+A real scan of an Ubuntu 24.04 machine (`OpenSSH 9.6p1 Ubuntu 3ubuntu13.18`):
+
+```text
+  Distribution release (from an exact package version on this host): 24.04
+  22/tcp ssh OpenSSH 9.6p1 Ubuntu 3ubuntu13.18
+    Distribution: Ubuntu: RESOLVED (openssh 24.04, installed 1:9.6p1-3ubuntu13.18) - ...
+    CVE-2026-73282   MEDIUM    CVSS 4.8  exploit:NO  KEV:NO  MATCH  [Ubuntu: VULNERABLE]
+    ...
+    + 16 fixed in the Ubuntu package: CVE-2024-6387, CVE-2026-60002, ...
+```
+
+Upstream matching alone reported 22 CVEs, including regreSSHion.
+- Ubuntu's data shows 16 of them fixed in the installed package.
+- Three are fixed only in the newer `3ubuntu13.19`, which `apt` on that
+  machine confirmed as the pending update.
+
+Only OpenSSH shows the package revision in its banner. Apache, nginx, Postfix
+and others show only "(Ubuntu)", so their verdicts are about the release:
+- `FIXED` when no package of that upstream version in the release is affected;
+- `FIX_AVAILABLE` when the fix came in a later package revision, so the host is
+  patched only if it is up to date.
+
+For a single CPE, pass the distribution yourself:
+
+```bash
+bin/vulndb query --cpe cpe:/a:openbsd:openssh:9.6p1 --distro ubuntu --package-version 1:9.6p1-3ubuntu13.18
+```
+
 ## Utility commands
 
 ```bash
@@ -287,16 +323,19 @@ internal/cpe/        CPE 2.2/2.3 parsing, normalisation, attribute matching
 internal/version/    comparator interface, generic comparator, range evaluation
 internal/database/   SQLite access, schema checks, verify/stats, fixture import
 internal/identity/   candidate identities: aliases, platform CPEs, distro detection
+internal/distro/     distribution advisory verdicts (release inference, dpkg comparison)
 internal/matcher/    rule evaluation, per-CVE aggregation, enrichment, ordering
 internal/nmap/       Nmap XML parser and scan assessment
 internal/output/     text and JSON rendering
 data/aliases.json    curated vendor/product aliases (loaded into the database)
+data/distro_packages.json  curated CPE -> distribution source package map
 schema/schema.sql    database schema (embedded in the binary)
 updater/             Python updater: NVD + KEV -> vulndb.sqlite
 testdata/fixtures/   synthetic test data
 testdata/nvd/        real NVD/KEV records for updater and end-to-end tests
 testdata/contract/   shared Go/Python CPE canonicalisation vectors
-testdata/nmap/       a real Nmap scan and a hand-written multi-host sample
+testdata/nmap/       a real Nmap scan and hand-written multi-host samples
+testdata/osv/        real Ubuntu OSV advisory records
 docs/matching.md     matching semantics
 docs/data-sources.md source coverage measurements and decisions
 ```

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<!-- HAND-WRITTEN test input in the Nmap 7.94 -oX format: two Ubuntu 22.04 hosts.
+     Service lines follow Nmap's real OpenSSH (Ubuntu) and Apache httpd (Ubuntu) probe output. -->
+<nmaprun scanner="nmap" args="nmap -sV -oX ubuntu-hosts.xml 192.0.2.30-31" start="1791272973" startstr="Tue Oct  6 15:49:33 2026" version="7.94SVN" xmloutputversion="1.05">
+<host><status state="up" reason="echo-reply" reason_ttl="63"/>
+<address addr="192.0.2.30" addrtype="ipv4"/>
+<hostnames><hostname name="patched.example.test" type="PTR"/></hostnames>
+<ports>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="ssh" product="OpenSSH" version="8.9p1 Ubuntu 3ubuntu0.10" extrainfo="Ubuntu Linux; protocol 2.0" ostype="Linux" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:8.9p1</cpe><cpe>cpe:/o:linux:linux_kernel</cpe></service></port>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="http" product="Apache httpd" version="2.4.52" extrainfo="(Ubuntu)" method="probed" conf="10"><cpe>cpe:/a:apache:http_server:2.4.52</cpe></service></port>
+</ports>
+</host>
+<host><status state="up" reason="echo-reply" reason_ttl="63"/>
+<address addr="192.0.2.31" addrtype="ipv4"/>
+<hostnames><hostname name="stale.example.test" type="PTR"/></hostnames>
+<ports>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="ssh" product="OpenSSH" version="8.9p1 Ubuntu 3ubuntu0.1" extrainfo="Ubuntu Linux; protocol 2.0" ostype="Linux" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:8.9p1</cpe><cpe>cpe:/o:linux:linux_kernel</cpe></service></port>
+</ports>
+</host>
+<runstats><finished time="1791272999" timestr="Tue Oct  6 15:49:59 2026" elapsed="26.00" exit="success"/><hosts up="2" down="0" total="2"/></runstats>
+</nmaprun>

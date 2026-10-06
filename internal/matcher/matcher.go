@@ -25,6 +25,7 @@ import (
 
 	"offline-vulndb/internal/cpe"
 	"offline-vulndb/internal/database"
+	"offline-vulndb/internal/distro"
 	"offline-vulndb/internal/identity"
 	"offline-vulndb/internal/version"
 )
@@ -53,8 +54,8 @@ const (
 var ErrInsufficientIdentity = errors.New("insufficient identity information")
 
 // Warning shown on every result until distro advisory data is supported.
-const backportWarning = "Matching is based on upstream product/version data. " +
-	"Linux distribution backported security fixes are not evaluated."
+const backportWarning = "Matching is based on upstream product/version data. Distribution backported " +
+	"security fixes are only evaluated where a distribution verdict is shown (currently Ubuntu)."
 
 // Warning shown for real datasets: since April 2026 NVD adds CPE
 // applicability data to only a minority of new CVEs.
@@ -72,18 +73,64 @@ func IsGeneralWarning(w string) bool {
 
 // Engine runs queries against an open database.
 type Engine struct {
-	Store    *database.Store
-	Resolver *identity.Resolver
+	Store      *database.Store
+	Resolver   *identity.Resolver
+	distroPkgs map[string][]database.DistroPackage // keyed by part:vendor:product
 }
 
-// New returns an Engine using the aliases stored in the database. Version
-// comparators are chosen per product (see version.For).
+// New returns an Engine using the aliases and distribution package map
+// stored in the database. Version comparators are chosen per product (see
+// version.For).
 func New(ctx context.Context, store *database.Store) (*Engine, error) {
 	aliases, err := store.Aliases(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{Store: store, Resolver: identity.NewResolver(aliases)}, nil
+	pkgs, err := store.DistroPackages(ctx)
+	if err != nil {
+		return nil, err
+	}
+	e := &Engine{Store: store, Resolver: identity.NewResolver(aliases), distroPkgs: map[string][]database.DistroPackage{}}
+	for _, p := range pkgs {
+		k := p.Part + ":" + p.Vendor + ":" + p.Product
+		e.distroPkgs[k] = append(e.distroPkgs[k], p)
+	}
+	return e, nil
+}
+
+// DistroInput describes distribution packaging observed for the queried
+// software, so distribution advisories can be evaluated.
+type DistroInput struct {
+	Info        identity.DistroInfo
+	ReleaseHint string // release established from other evidence on the same host
+}
+
+// distroTarget maps the candidate identities to distribution source packages.
+func (e *Engine) distroTarget(cands []identity.Candidate, in *DistroInput) (distro.Target, bool) {
+	if in == nil || !in.Info.Detected() || in.Info.Key == "" || !cpe.IsSpecific(cands[0].CPE.Version) {
+		return distro.Target{}, false
+	}
+	t := distro.Target{Distro: in.Info.Key, DistroName: in.Info.Name, Upstream: cpe.Unescape(cands[0].CPE.Version),
+		Revision: in.Info.Revision, ReleaseHint: in.ReleaseHint}
+	for _, c := range cands {
+		for _, p := range e.distroPkgs[c.CPE.Part+":"+c.CPE.Vendor+":"+c.CPE.Product] {
+			if p.Distro == in.Info.Key && !slices.Contains(t.Packages, p.Package) {
+				t.Packages = append(t.Packages, p.Package)
+			}
+		}
+	}
+	return t, true
+}
+
+// ResolveDistro resolves the distribution release/package for candidates
+// without running a full query (used to share a host's release between its
+// services). It returns nil when no distribution packaging was observed.
+func (e *Engine) ResolveDistro(ctx context.Context, cands []identity.Candidate, in *DistroInput) (*distro.Context, error) {
+	t, ok := e.distroTarget(cands, in)
+	if !ok {
+		return nil, nil
+	}
+	return distro.Resolve(ctx, e.Store, t)
 }
 
 // Result is the full outcome of one query.
@@ -98,8 +145,10 @@ type Result struct {
 	Comparator         string           `json:"comparator"`
 	Identities         []IdentityResult `json:"identities"`
 	CandidateRules     int              `json:"candidate_rules"`
-	MatchCount         int              `json:"match_count"`
-	UnknownCount       int              `json:"unknown_count"`
+	MatchCount         int              `json:"match_count"`        // version MATCH, excluding distro-FIXED
+	UnknownCount       int              `json:"unknown_count"`      // version UNKNOWN, excluding distro-FIXED
+	DistroFixedCount   int              `json:"distro_fixed_count"` // fixed in the distribution package
+	Distro             *distro.Context  `json:"distro,omitempty"`
 	Vulnerabilities    []Vulnerability  `json:"vulnerabilities"`
 	Warnings           []string         `json:"warnings"`
 	Evaluations        []RuleEvaluation `json:"-"` // every rule, for --debug
@@ -117,30 +166,35 @@ type IdentityResult struct {
 
 // Vulnerability is one candidate CVE with enrichment and explanation.
 type Vulnerability struct {
-	CVE             string         `json:"cve"`
-	Description     string         `json:"description"`
-	CVSS            *float64       `json:"cvss"`
-	CVSSVersion     string         `json:"cvss_version,omitempty"`
-	CVSSVector      string         `json:"cvss_vector,omitempty"`
-	CVSSv3Score     *float64       `json:"cvss_v3_score"`
-	CVSSv4Score     *float64       `json:"cvss_v4_score"`
-	Severity        string         `json:"severity"`
-	CWE             string         `json:"cwe,omitempty"`
-	PublishedAt     string         `json:"published_at,omitempty"`
-	PublicExploit   bool           `json:"public_exploit"`
-	ExploitSources  []string       `json:"exploit_sources"`
-	ExploitEvidence []Evidence     `json:"exploit_evidence"`
-	KnownExploited  bool           `json:"known_exploited"`
-	KnownRansomware bool           `json:"known_ransomware"`
-	KEVDateAdded    string         `json:"kev_date_added,omitempty"`
-	MatchConfidence Confidence     `json:"match_confidence"`
-	MatchedCPE      string         `json:"matched_cpe"`
-	VersionStatus   version.Status `json:"version_status"`
-	Applicability   Applicability  `json:"applicability"`
-	MatchReason     string         `json:"match_reason"`
-	MatchedRules    []MatchedRule  `json:"matched_rules"`
-	Warnings        []string       `json:"warnings,omitempty"`
+	CVE             string          `json:"cve"`
+	Description     string          `json:"description"`
+	CVSS            *float64        `json:"cvss"`
+	CVSSVersion     string          `json:"cvss_version,omitempty"`
+	CVSSVector      string          `json:"cvss_vector,omitempty"`
+	CVSSv3Score     *float64        `json:"cvss_v3_score"`
+	CVSSv4Score     *float64        `json:"cvss_v4_score"`
+	Severity        string          `json:"severity"`
+	CWE             string          `json:"cwe,omitempty"`
+	PublishedAt     string          `json:"published_at,omitempty"`
+	PublicExploit   bool            `json:"public_exploit"`
+	ExploitSources  []string        `json:"exploit_sources"`
+	ExploitEvidence []Evidence      `json:"exploit_evidence"`
+	KnownExploited  bool            `json:"known_exploited"`
+	KnownRansomware bool            `json:"known_ransomware"`
+	KEVDateAdded    string          `json:"kev_date_added,omitempty"`
+	MatchConfidence Confidence      `json:"match_confidence"`
+	MatchedCPE      string          `json:"matched_cpe"`
+	VersionStatus   version.Status  `json:"version_status"`
+	Applicability   Applicability   `json:"applicability"`
+	MatchReason     string          `json:"match_reason"`
+	MatchedRules    []MatchedRule   `json:"matched_rules"`
+	Distro          *distro.Verdict `json:"distro,omitempty"`
+	DistroOnly      bool            `json:"distro_only,omitempty"` // found only via distribution advisories
+	Warnings        []string        `json:"warnings,omitempty"`
 }
+
+// distroFixed reports whether distribution data shows the CVE fixed.
+func (v Vulnerability) distroFixed() bool { return v.Distro != nil && v.Distro.Status == distro.Fixed }
 
 // Evidence is a public exploit reference.
 type Evidence struct {
@@ -160,7 +214,7 @@ type MatchedRule struct {
 
 // QueryCPE runs a query for a supplied CPE string (2.2 or 2.3 binding),
 // including curated alias identities for it.
-func (e *Engine) QueryCPE(ctx context.Context, input string) (*Result, error) {
+func (e *Engine) QueryCPE(ctx context.Context, input string, in *DistroInput) (*Result, error) {
 	c, err := cpe.Parse(input)
 	if err != nil {
 		return nil, err
@@ -168,7 +222,7 @@ func (e *Engine) QueryCPE(ctx context.Context, input string) (*Result, error) {
 	if !cpe.IsSpecific(c.Vendor) || !cpe.IsSpecific(c.Product) {
 		return nil, fmt.Errorf("%w: CPE %s must name a specific vendor and product", ErrInsufficientIdentity, c)
 	}
-	res, err := e.Query(ctx, e.Resolver.ResolveCPE(c, "supplied"))
+	res, err := e.Query(ctx, e.Resolver.ResolveCPE(c, "supplied"), in)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +233,7 @@ func (e *Engine) QueryCPE(ctx context.Context, input string) (*Result, error) {
 // Query looks up a list of candidate identities. The first candidate is the
 // observed identity and populates the top-level identity fields; results
 // from all candidates are merged per CVE.
-func (e *Engine) Query(ctx context.Context, cands []identity.Candidate) (*Result, error) {
+func (e *Engine) Query(ctx context.Context, cands []identity.Candidate, in *DistroInput) (*Result, error) {
 	if len(cands) == 0 {
 		return nil, fmt.Errorf("%w: no candidate identities", ErrInsufficientIdentity)
 	}
@@ -218,9 +272,15 @@ func (e *Engine) Query(ctx context.Context, cands []identity.Candidate) (*Result
 	if err := e.buildVulnerabilities(ctx, res); err != nil {
 		return nil, err
 	}
+	if err := e.applyDistro(ctx, res, cands, in); err != nil {
+		return nil, err
+	}
+	res.count()
 	sortVulnerabilities(res.Vulnerabilities)
 
-	res.Warnings = append(res.Warnings, backportWarning)
+	if res.Distro == nil || (res.Distro.Status != distro.Resolved && res.Distro.Status != distro.Ambiguous) {
+		res.Warnings = append(res.Warnings, backportWarning)
+	}
 	if res.IdentityConfidence != Exact {
 		res.Warnings = append(res.Warnings,
 			"Supplied CPE has no specific version; version-dependent results are UNKNOWN.")
@@ -270,6 +330,26 @@ func (e *Engine) buildVulnerabilities(ctx context.Context, res *Result) error {
 		return nil
 	}
 
+	vs := make([]Vulnerability, 0, len(ids))
+	for _, id := range ids {
+		vs = append(vs, aggregate(id, byCVE[id]))
+	}
+	if err := e.enrichAll(ctx, vs); err != nil {
+		return err
+	}
+	res.Vulnerabilities = append(res.Vulnerabilities, vs...)
+	return nil
+}
+
+// enrichAll adds CVE details, KEV and exploit evidence to vulnerabilities.
+func (e *Engine) enrichAll(ctx context.Context, vs []Vulnerability) error {
+	if len(vs) == 0 {
+		return nil
+	}
+	ids := make([]string, len(vs))
+	for i, v := range vs {
+		ids[i] = v.CVE
+	}
 	cves, err := e.Store.CVEs(ctx, ids)
 	if err != nil {
 		return err
@@ -282,18 +362,58 @@ func (e *Engine) buildVulnerabilities(ctx context.Context, res *Result) error {
 	if err != nil {
 		return err
 	}
-
-	for _, id := range ids {
-		v := aggregate(id, byCVE[id])
-		enrich(&v, cves[id], kev, exploits[id])
-		if v.VersionStatus == version.Match {
-			res.MatchCount++
-		} else {
-			res.UnknownCount++
-		}
-		res.Vulnerabilities = append(res.Vulnerabilities, v)
+	for i := range vs {
+		enrich(&vs[i], cves[vs[i].CVE], kev, exploits[vs[i].CVE])
 	}
 	return nil
+}
+
+// applyDistro annotates every result with the distribution advisory verdict
+// and adds definitive findings that only the distribution data reveals.
+func (e *Engine) applyDistro(ctx context.Context, res *Result, cands []identity.Candidate, in *DistroInput) error {
+	dc, err := e.ResolveDistro(ctx, cands, in)
+	if err != nil || dc == nil {
+		return err
+	}
+	res.Distro = dc
+	known := map[string]bool{}
+	for i := range res.Vulnerabilities {
+		v := dc.Verdict(res.Vulnerabilities[i].CVE)
+		res.Vulnerabilities[i].Distro = &v
+		known[res.Vulnerabilities[i].CVE] = true
+	}
+	var extra []Vulnerability
+	for _, d := range dc.Additional(known) {
+		d := d
+		extra = append(extra, Vulnerability{
+			CVE: d.CVE, VersionStatus: version.Match, Applicability: Unconditional,
+			MatchConfidence: cands[0].Confidence, Distro: &d, DistroOnly: true,
+			ExploitSources: []string{}, ExploitEvidence: []Evidence{},
+			MatchReason: fmt.Sprintf("%s advisory %s: %s. NVD has no applicability rule matching this version.",
+				d.Distro, d.Advisory, d.Reason),
+		})
+	}
+	if err := e.enrichAll(ctx, extra); err != nil {
+		return err
+	}
+	res.Vulnerabilities = append(res.Vulnerabilities, extra...)
+	return nil
+}
+
+// count fills the summary counters. CVEs a distribution has fixed in the
+// observed package are counted separately, not as matches.
+func (r *Result) count() {
+	r.MatchCount, r.UnknownCount, r.DistroFixedCount = 0, 0, 0
+	for _, v := range r.Vulnerabilities {
+		switch {
+		case v.distroFixed():
+			r.DistroFixedCount++
+		case v.VersionStatus == version.Match:
+			r.MatchCount++
+		default:
+			r.UnknownCount++
+		}
+	}
 }
 
 // aggregate combines the non-NO_MATCH rule evaluations of one CVE, across
@@ -419,6 +539,9 @@ func enrich(v *Vulnerability, c database.CVE, kev map[string]database.KEVEntry, 
 func sortVulnerabilities(vs []Vulnerability) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		a, b := vs[i], vs[j]
+		if x, y := a.distroFixed(), b.distroFixed(); x != y {
+			return y
+		}
 		if x, y := a.VersionStatus == version.Match, b.VersionStatus == version.Match; x != y {
 			return x
 		}

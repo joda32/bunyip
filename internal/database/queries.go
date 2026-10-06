@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 
 	"offline-vulndb/internal/version"
@@ -240,6 +241,113 @@ FROM aliases ORDER BY id`)
 		if f := strings.Split(prefix, ":"); len(f) >= 3 && f[0] == "cpe" && f[1] == "2.3" {
 			a.Part = f[2]
 		}
+		out = append(out, a)
+	}
+	return out, wrapQueryErr(rows.Err())
+}
+
+// DistroPackage maps a CPE identity to a distribution source package.
+type DistroPackage struct {
+	Part, Vendor, Product string
+	Distro, Package       string
+}
+
+// DistroPackages loads the curated CPE -> source package map (small table).
+func (s *Store) DistroPackages(ctx context.Context) ([]DistroPackage, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT cpe_part, cpe_vendor, cpe_product, distro, package FROM distro_packages ORDER BY id`)
+	if err != nil {
+		return nil, wrapQueryErr(err)
+	}
+	defer rows.Close()
+	var out []DistroPackage
+	for rows.Next() {
+		var p DistroPackage
+		if err := rows.Scan(&p.Part, &p.Vendor, &p.Product, &p.Distro, &p.Package); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, wrapQueryErr(rows.Err())
+}
+
+// HasDistroData reports whether any advisories for the distribution are loaded.
+func (s *Store) HasDistroData(ctx context.Context, distro string) (bool, error) {
+	var one int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM distro_advisories WHERE distro = ? LIMIT 1`, distro).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, wrapQueryErr(err)
+}
+
+// PackageVersion is a package version known to have shipped in a release.
+type PackageVersion struct {
+	Release, Package, Version string
+}
+
+// PackageVersionsByUpstream returns known versions of the given packages
+// whose upstream part equals upstream, across all releases.
+func (s *Store) PackageVersionsByUpstream(ctx context.Context, distro string, packages []string, upstream string) ([]PackageVersion, error) {
+	if len(packages) == 0 {
+		return nil, nil
+	}
+	args := []any{distro, upstream}
+	for _, p := range packages {
+		args = append(args, p)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT release, package, version FROM distro_package_versions
+WHERE distro = ? AND upstream = ? AND package IN (`+placeholders(len(packages))+`)
+ORDER BY release, package, version`, args...)
+	if err != nil {
+		return nil, wrapQueryErr(err)
+	}
+	defer rows.Close()
+	var out []PackageVersion
+	for rows.Next() {
+		var v PackageVersion
+		if err := rows.Scan(&v.Release, &v.Package, &v.Version); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, wrapQueryErr(rows.Err())
+}
+
+// DistroAdvisory is one distribution advisory row.
+type DistroAdvisory struct {
+	AdvisoryID        string
+	CVEID             string
+	Distro            string
+	Release           string
+	Channel           string
+	Codename          string
+	Package           string
+	FixedVersion      string // "" when no fix has been released
+	AffectedUpstreams []string
+}
+
+// DistroAdvisories returns every advisory row for a package in a release.
+func (s *Store) DistroAdvisories(ctx context.Context, distro, pkg, release string) ([]DistroAdvisory, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT advisory_id, cve_id, distro, release, channel, COALESCE(codename, ''), package,
+       COALESCE(fixed_version, ''), affected_upstreams
+FROM distro_advisories WHERE distro = ? AND package = ? AND release = ?
+ORDER BY cve_id, channel`, distro, pkg, release)
+	if err != nil {
+		return nil, wrapQueryErr(err)
+	}
+	defer rows.Close()
+	var out []DistroAdvisory
+	for rows.Next() {
+		var a DistroAdvisory
+		var ups string
+		if err := rows.Scan(&a.AdvisoryID, &a.CVEID, &a.Distro, &a.Release, &a.Channel, &a.Codename,
+			&a.Package, &a.FixedVersion, &ups); err != nil {
+			return nil, err
+		}
+		a.AffectedUpstreams = strings.Fields(ups)
 		out = append(out, a)
 	}
 	return out, wrapQueryErr(rows.Err())

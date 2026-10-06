@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"offline-vulndb/internal/cpe"
+	"offline-vulndb/internal/version"
 )
 
 // Fixture is a small, self-contained dataset in a JSON shape that mirrors the
@@ -16,11 +18,38 @@ import (
 // without the full NVD dataset; the production database will be built by the
 // separate Python updater.
 type Fixture struct {
-	Metadata        map[string]string `json:"metadata"`
-	CVEs            []FixtureCVE      `json:"cves"`
-	KEV             []FixtureKEV      `json:"kev"`
-	ExploitEvidence []FixtureExploit  `json:"exploit_evidence"`
-	Aliases         []FixtureAlias    `json:"aliases"`
+	Metadata        map[string]string       `json:"metadata"`
+	CVEs            []FixtureCVE            `json:"cves"`
+	KEV             []FixtureKEV            `json:"kev"`
+	ExploitEvidence []FixtureExploit        `json:"exploit_evidence"`
+	Aliases         []FixtureAlias          `json:"aliases"`
+	DistroPackages  []FixtureDistroPackage  `json:"distro_packages"`
+	DistroVersions  []FixtureDistroVersion  `json:"distro_package_versions"`
+	DistroAdvisory  []FixtureDistroAdvisory `json:"distro_advisories"`
+}
+
+type FixtureDistroPackage struct {
+	CPE     string `json:"cpe"` // part:vendor:product
+	Distro  string `json:"distro"`
+	Package string `json:"package"`
+}
+
+type FixtureDistroVersion struct {
+	Distro  string `json:"distro"`
+	Release string `json:"release"`
+	Package string `json:"package"`
+	Version string `json:"version"`
+}
+
+type FixtureDistroAdvisory struct {
+	AdvisoryID        string `json:"advisory_id"`
+	CVEID             string `json:"cve_id"`
+	Distro            string `json:"distro"`
+	Release           string `json:"release"`
+	Channel           string `json:"channel"`
+	Package           string `json:"package"`
+	FixedVersion      string `json:"fixed_version"`
+	AffectedUpstreams string `json:"affected_upstreams"`
 }
 
 type FixtureCVE struct {
@@ -154,7 +183,48 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			return fmt.Errorf("alias %s: %w", a.ObservedProduct, err)
 		}
 	}
+	if err := importDistro(ctx, tx, f); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+func importDistro(ctx context.Context, tx *sql.Tx, f *Fixture) error {
+	for _, p := range f.DistroPackages {
+		bits := strings.Split(p.CPE, ":")
+		if len(bits) != 3 {
+			return fmt.Errorf("distro package cpe %q must be part:vendor:product", p.CPE)
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO distro_packages (cpe_part, cpe_vendor, cpe_product, distro, package, source) VALUES (?, ?, ?, ?, ?, 'fixture')`,
+			bits[0], bits[1], bits[2], p.Distro, p.Package); err != nil {
+			return err
+		}
+	}
+	for _, v := range f.DistroVersions {
+		dv, err := version.ParseDeb(v.Version)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO distro_package_versions (distro, release, package, version, upstream) VALUES (?, ?, ?, ?, ?)`,
+			v.Distro, v.Release, v.Package, v.Version, dv.Upstream); err != nil {
+			return err
+		}
+	}
+	for _, a := range f.DistroAdvisory {
+		channel := a.Channel
+		if channel == "" {
+			channel = "standard"
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO distro_advisories (source, advisory_id, cve_id, distro, release, channel, package, fixed_version, affected_upstreams)
+VALUES ('fixture', ?, ?, ?, ?, ?, ?, ?, ?)`,
+			a.AdvisoryID, a.CVEID, a.Distro, a.Release, channel, a.Package, nullStr(a.FixedVersion), a.AffectedUpstreams); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func insertCVE(ctx context.Context, tx *sql.Tx, c FixtureCVE) error {

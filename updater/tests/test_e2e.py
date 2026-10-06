@@ -106,8 +106,40 @@ def test_nmap_sample_against_real_records(vulndb_bin, real_db):
     assert apache["CVE-2021-41773"]["known_exploited"] is True
     ssh = svcs[22]
     assert ssh["distro"] == "Ubuntu package 3ubuntu0.10"
-    assert any("backported" in n for n in ssh["notes"])
-    assert {v["cve"]: v["version_status"] for v in ssh["result"]["vulnerabilities"]}["CVE-2023-38408"] == "MATCH"
+    # Ubuntu advisories were evaluated, so the generic backport caveat is replaced by verdicts.
+    assert ssh["result"]["distro"]["status"] == "RESOLVED"
+    assert not any("backported" in n for n in ssh.get("notes", []))
+    v38408 = next(v for v in ssh["result"]["vulnerabilities"] if v["cve"] == "CVE-2023-38408")
+    assert v38408["version_status"] == "MATCH" and v38408["distro"]["status"] == "FIXED"
     iis = report["hosts"][1]["services"][0]
-    assert any("against Microsoft Windows" in n for n in iis["notes"])
+    assert any("against Microsoft Windows" in n for n in iis.get("notes", []))
     assert report["summary"]["not_probed"] == 1 and report["summary"]["unidentified"] == 1
+
+
+def test_ubuntu_advisories_against_real_records(vulndb_bin, real_db):
+    """Real NVD + real Ubuntu OSV records: backport-aware verdicts per host."""
+    p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/ubuntu-hosts.xml"),
+                        "--format", "json"], capture_output=True, text=True, check=True)
+    report = json.loads(p.stdout)["report"]
+    patched, stale = report["hosts"]
+
+    def verdicts(svc):
+        return {v["cve"]: (v["distro"]["status"], v.get("distro_only", False)) for v in svc["result"]["vulnerabilities"]}
+
+    assert patched["distro_release"] == "22.04"
+    ssh = verdicts(patched["services"][0])
+    assert ssh["CVE-2024-6387"] == ("FIXED", False)        # regreSSHion: Ubuntu fixed it in exactly 0.10
+    assert ssh["CVE-2023-38408"] == ("FIXED", False)       # fixed in 0.3
+    assert ssh["CVE-2025-61984"] == ("VULNERABLE", True)   # NVD has no rule; Ubuntu fixed it later, in 0.14
+    assert "CVE-2016-20012" not in ssh                     # Ubuntu "no fix" alone never adds a finding
+    assert not any(n.startswith("Distribution package detected") for n in patched["services"][0].get("notes", []))
+
+    apache = patched["services"][1]
+    assert apache["result"]["distro"]["status"] == "RESOLVED"
+    assert verdicts(apache)["CVE-2022-26377"] == ("FIX_AVAILABLE", False)  # revision not visible for Apache
+
+    old = verdicts(stale["services"][0])
+    assert old["CVE-2024-6387"] == ("VULNERABLE", False)
+    assert old["CVE-2023-38408"] == ("VULNERABLE", False)
+    assert old["CVE-2025-61984"] == ("VULNERABLE", True)
+    assert report["summary"]["distro_fixed"] == 2 and report["summary"]["distro_only"] == 2

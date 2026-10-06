@@ -210,7 +210,7 @@ func TestQueryFixtureScenarios(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r, err := e.QueryCPE(context.Background(), tt.cpe)
+			r, err := e.QueryCPE(context.Background(), tt.cpe, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -242,7 +242,7 @@ func TestQueryFixtureScenarios(t *testing.T) {
 
 func TestQueryEnrichment(t *testing.T) {
 	e := fixtureEngine(t)
-	r, err := e.QueryCPE(context.Background(), "cpe:/a:apache:http_server:2.4.49")
+	r, err := e.QueryCPE(context.Background(), "cpe:/a:apache:http_server:2.4.49", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func TestQueryEnrichment(t *testing.T) {
 		t.Errorf("0005 should be conditional with a warning: %+v", v5)
 	}
 
-	iis, err := e.QueryCPE(context.Background(), "cpe:/a:microsoft:internet_information_services:10.0")
+	iis, err := e.QueryCPE(context.Background(), "cpe:/a:microsoft:internet_information_services:10.0", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestQueryEnrichment(t *testing.T) {
 
 func TestQueryOrdering(t *testing.T) {
 	e := fixtureEngine(t)
-	r, err := e.QueryCPE(context.Background(), "cpe:/a:apache:http_server:2.4.49")
+	r, err := e.QueryCPE(context.Background(), "cpe:/a:apache:http_server:2.4.49", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestQueryOrdering(t *testing.T) {
 
 func TestQueryWarnings(t *testing.T) {
 	e := fixtureEngine(t)
-	r, err := e.QueryCPE(context.Background(), "cpe:/a:apache:http_server:2.4.49")
+	r, err := e.QueryCPE(context.Background(), "cpe:/a:apache:http_server:2.4.49", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +334,7 @@ func TestQueryErrors(t *testing.T) {
 		{"cpe:2.3:a:apache:-:2.4.49:*:*:*:*:*:*:*", ErrInsufficientIdentity},
 	}
 	for _, tt := range tests {
-		_, err := e.QueryCPE(context.Background(), tt.in)
+		_, err := e.QueryCPE(context.Background(), tt.in, nil)
 		if !errors.Is(err, tt.want) {
 			t.Errorf("QueryCPE(%q) error = %v, want %v", tt.in, err, tt.want)
 		}
@@ -371,7 +371,7 @@ func TestEvaluateRuleOpenSSHJoin(t *testing.T) {
 
 func TestQueryAliasIdentity(t *testing.T) {
 	e := fixtureEngine(t)
-	r, err := e.QueryCPE(context.Background(), "cpe:/a:igor_sysoev:nginx:1.20.1")
+	r, err := e.QueryCPE(context.Background(), "cpe:/a:igor_sysoev:nginx:1.20.1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +391,7 @@ func TestQueryAliasIdentity(t *testing.T) {
 
 func TestQueryComparatorPerProduct(t *testing.T) {
 	e := fixtureEngine(t)
-	r, err := e.QueryCPE(context.Background(), "cpe:/a:openbsd:openssh:8.9p1")
+	r, err := e.QueryCPE(context.Background(), "cpe:/a:openbsd:openssh:8.9p1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

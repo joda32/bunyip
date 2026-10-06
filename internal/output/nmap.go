@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"offline-vulndb/internal/distro"
 	"offline-vulndb/internal/matcher"
 	"offline-vulndb/internal/nmap"
 	"offline-vulndb/internal/version"
@@ -34,6 +35,10 @@ func WriteNmapText(w io.Writer, r *nmap.Report) error {
 		s.HostsUp, s.HostsDown, s.OpenPorts, s.Assessed, s.Unidentified, s.NotProbed)
 	p.f("Candidate vulnerabilities: %d version matches (%d in CISA KEV, %d with public exploit evidence), %d undetermined\n",
 		s.VersionMatches, s.KnownExploited, s.PublicExploit, s.Undetermined)
+	if s.DistroFixed > 0 || s.DistroOnly > 0 {
+		p.f("Distribution advisories: %d upstream matches already fixed in the installed/released package, "+
+			"%d findings only the distribution data shows\n", s.DistroFixed, s.DistroOnly)
+	}
 
 	for _, h := range r.Hosts {
 		p.f("\n%s", h.Address)
@@ -43,6 +48,9 @@ func WriteNmapText(w io.Writer, r *nmap.Report) error {
 		p.f("\n")
 		if len(h.OSCPEs) > 0 {
 			p.f("  OS (Nmap guess, not assessed): %s\n", strings.Join(h.OSCPEs, ", "))
+		}
+		if h.DistroRelease != "" {
+			p.f("  Distribution release (from an exact package version on this host): %s\n", h.DistroRelease)
 		}
 		if len(h.Services) == 0 {
 			p.f("  no open ports\n")
@@ -87,8 +95,16 @@ func writeServiceText(p *printer, sr nmap.ServiceReport) {
 	if sr.Result == nil {
 		return
 	}
+	if d := sr.Result.Distro; d != nil {
+		p.f("    Distribution: %s\n", wrap(distroContextLabel(sr.Result), 18, 100))
+	}
 	unknown := 0
+	var fixed []string
 	for _, v := range sr.Result.Vulnerabilities {
+		if v.Distro != nil && v.Distro.Status == distro.Fixed {
+			fixed = append(fixed, v.CVE)
+			continue
+		}
 		if v.VersionStatus != version.Match {
 			unknown++
 			continue
@@ -98,6 +114,10 @@ func writeServiceText(p *printer, sr nmap.ServiceReport) {
 	}
 	if unknown > 0 {
 		p.f("    + %d undetermined (version could not be evaluated; see --format json)\n", unknown)
+	}
+	if len(fixed) > 0 {
+		p.f("    + %d fixed in the %s package: %s\n", len(fixed), sr.Result.Distro.Target.DistroName,
+			wrap(strings.Join(fixed, ", "), 6, 100))
 	}
 	if len(sr.Result.Vulnerabilities) == 0 {
 		p.f("    No candidate vulnerabilities found\n")
@@ -122,6 +142,13 @@ func yesNo(b bool) string {
 // ransomware use, or a match found only through a less certain identity.
 func flags(v matcher.Vulnerability, r *matcher.Result) string {
 	var f []string
+	if d := v.Distro; d != nil && d.Status != distro.NoData {
+		label := d.Distro + ": " + string(d.Status)
+		if v.DistroOnly {
+			label += ", advisory only"
+		}
+		f = append(f, label)
+	}
 	if v.KnownRansomware {
 		f = append(f, "ransomware")
 	}

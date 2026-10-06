@@ -21,6 +21,7 @@ make real-db                    # download/refresh feeds, build ./vulndb.sqlite
 |---|---|---|
 | NVD CVE JSON 2.0 yearly feeds (2002–current) | `https://nvd.nist.gov/feeds/json/cve/2.0/` | daily |
 | NVD `modified` feed (changes in the last 8 days) | same | about every 2 hours |
+| Ubuntu security tracker (OSV.dev export, ~770 MB) | `https://osv-vulnerabilities.storage.googleapis.com/Ubuntu/all.zip` | daily |
 | CISA KEV catalogue | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | when CISA adds entries (typically several times a week) |
 
 How the build uses them:
@@ -60,6 +61,24 @@ returned by a query.
   the exploit works.
 - **KEV:** every catalogue entry; unknown new fields are ignored.
 
+## Distribution advisories
+
+The Ubuntu OSV export carries, per CVE, per Ubuntu release and per source
+package: the fixed version, or none if no fix has been released, and the
+affected package versions.
+
+What the build keeps:
+- per-CVE records (`UBUNTU-CVE-*`), skipping the 3,647 withdrawn ones;
+- standard releases and Ubuntu Pro (ESM); FIPS, Realtime and vendor-kernel
+  streams are skipped;
+- only the source packages in `data/distro_packages.json`. The export is
+  dominated by kernel packages, which a network scan never sees.
+
+Each download is verified against the MD5 the bucket publishes, and only
+re-downloaded when that changes. `--offline-from` re-verifies it. Use
+`--no-distro` to build without it. Mapped packages with no advisories are
+reported at the end of a build.
+
 ## Aliases
 
 `data/aliases.json` lists hand-reviewed aliases from identities that Nmap
@@ -90,6 +109,8 @@ renames or acquisitions to `aliases`, and record false matches under
 
 - Downloads use HTTPS only and only from `nvd.nist.gov` and `www.cisa.gov`
   (redirects included). Each file is size-capped and retried with backoff.
+- Downloads also come from `osv-vulnerabilities.storage.googleapis.com`; OSV
+  exports must match the bucket's published MD5.
 - Every NVD feed is checked against the sha256 and size in its `.meta` file
   (computed over the uncompressed JSON) before it is cached or used, including
   with `--offline-from`.

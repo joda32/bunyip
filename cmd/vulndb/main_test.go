@@ -49,7 +49,7 @@ func TestQueryText(t *testing.T) {
 		"CISA KEV:       YES",
 		"Version status: MATCH",
 		"Match reason:   Exact supplied CPE matched vulnerability criteria",
-		"backported security",
+		"Distribution backported",
 		"SYNTHETIC",
 	} {
 		if !strings.Contains(r.stdout, want) {
@@ -207,7 +207,7 @@ func TestInfoVerifyStats(t *testing.T) {
 	r := cli("--db", db, "info")
 	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    2") ||
 		!strings.Contains(r.stdout, "synthetic-fixture") || !strings.Contains(r.stdout, "Data age:") ||
-		!strings.Contains(r.stdout, "CVEs without CPE applicability data: 0 of 12") {
+		!strings.Contains(r.stdout, "CVEs without CPE applicability data: 1 of 13") {
 		t.Errorf("info: exit %d\n%s%s", r.code, r.stdout, r.stderr)
 	}
 
@@ -383,10 +383,15 @@ func TestNmapText(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Hosts up 2, down 1 | open ports 6: assessed 4, unidentified 1, not probed 1",
-		"8 version matches (2 in CISA KEV, 4 with public exploit evidence), 1 undetermined",
+		"8 version matches (2 in CISA KEV, 3 with public exploit evidence), 1 undetermined",
+		"Distribution advisories: 1 upstream matches already fixed in the installed/released package, 1 findings only",
+		"Distribution release (from an exact package version on this host): 22.04",
+		"installed 1:8.9p1-3ubuntu0.10",
+		"CVE-0000-0203    HIGH      CVSS 7.1  exploit:NO  KEV:NO  MATCH  [Ubuntu: VULNERABLE, advisory only]",
+		"[Ubuntu: NO_FIX]",
+		"+ 1 fixed in the Ubuntu package: CVE-0000-0201",
 		"192.0.2.20 (web01.example.test)",
 		"22/tcp ssh OpenSSH 8.9p1 Ubuntu 3ubuntu0.10",
-		"Distribution package detected (Ubuntu package 3ubuntu0.10)",
 		"CVE-0000-0001    CRITICAL  CVSS 9.8  exploit:YES KEV:YES MATCH",
 		"[CONDITIONAL]",
 		"cpe:2.3:a:f5:nginx:1.20.1:*:*:*:*:*:*:* [HIGH] (curated alias)",
@@ -505,6 +510,71 @@ func TestNmapErrors(t *testing.T) {
 		r := cli(tt.args...)
 		if r.code != tt.code || !strings.Contains(r.stderr, tt.inStderr) {
 			t.Errorf("%v: exit %d stderr %q, want %d %q", tt.args, r.code, r.stderr, tt.code, tt.inStderr)
+		}
+	}
+}
+
+func TestQueryDistro(t *testing.T) {
+	db := initDB(t)
+	r := cli("--db", db, "query", "--cpe", "cpe:/a:openbsd:openssh:8.9p1", "--distro", "ubuntu",
+		"--package-version", "1:8.9p1-3ubuntu0.10")
+	if r.code != exitOK {
+		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	}
+	for _, want := range []string{
+		"Distribution:        Ubuntu: RESOLVED (openssh 22.04, installed 1:8.9p1-3ubuntu0.10)",
+		"1 fixed in the distribution package",
+		"Fixed in the Ubuntu package (upstream version matches, fix backported):\n  CVE-0000-0201",
+		"Ubuntu:         VULNERABLE (found only via Ubuntu advisory data)",
+		"Ubuntu:         NO_FIX",
+	} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("missing %q in:\n%s", want, r.stdout)
+		}
+	}
+	if strings.Contains(r.stdout, "Matching is based on upstream") {
+		t.Error("backport warning shown although distribution advisories were evaluated")
+	}
+
+	// Without the revision: release inferred from the upstream version.
+	r = cli("--db", db, "query", "--cpe", "cpe:/a:openbsd:openssh:8.9p1", "--distro", "ubuntu", "--format", "json")
+	var doc struct {
+		Result struct {
+			Distro struct {
+				Status   string   `json:"status"`
+				Releases []string `json:"releases"`
+			} `json:"distro"`
+			Vulnerabilities []struct {
+				CVE    string `json:"cve"`
+				Distro struct {
+					Status string `json:"status"`
+				} `json:"distro"`
+				DistroOnly bool `json:"distro_only"`
+			} `json:"vulnerabilities"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, v := range doc.Result.Vulnerabilities {
+		got[v.CVE] = v.Distro.Status
+		if v.DistroOnly {
+			t.Errorf("%s: no distro-only findings without a package revision", v.CVE)
+		}
+	}
+	if doc.Result.Distro.Status != "RESOLVED" || got["CVE-0000-0201"] != "FIX_AVAILABLE" || got["CVE-0000-0202"] != "NO_FIX" {
+		t.Errorf("revision unknown: %+v %v", doc.Result.Distro, got)
+	}
+
+	for _, bad := range [][]string{
+		{"--distro", "gentoo"},
+		{"--package-version", "1:8.9p1-3ubuntu0.10"},
+		{"--distro", "ubuntu", "--package-version", "8.9p1"},
+	} {
+		args := append([]string{"--db", db, "query", "--cpe", "cpe:/a:openbsd:openssh:8.9p1"}, bad...)
+		if r := cli(args...); r.code != exitUsage {
+			t.Errorf("%v: exit %d, want usage error", bad, r.code)
 		}
 	}
 }
