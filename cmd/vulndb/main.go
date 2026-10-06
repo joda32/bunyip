@@ -231,8 +231,15 @@ func cmdInfo(ctx context.Context, g *globals, args []string, stdout, stderr io.W
 		}
 	}
 	sort.Strings(keys)
+	width := 0
 	for _, k := range keys {
-		fmt.Fprintf(stdout, "%-18s %s\n", k+":", m[k])
+		width = max(width, len(k)+1)
+	}
+	if len(keys) > 0 {
+		fmt.Fprintln(stdout, "Source metadata:")
+	}
+	for _, k := range keys {
+		fmt.Fprintf(stdout, "  %-*s %s\n", width, k+":", m[k])
 	}
 	if strings.Contains(m["dataset"], "synthetic") {
 		fmt.Fprintln(stdout, "WARNING: this database contains SYNTHETIC test data, not real vulnerability information.")

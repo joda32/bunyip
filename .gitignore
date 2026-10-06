@@ -2,3 +2,7 @@ bin/
 *.sqlite
 .*.building
 graphify-out/
+.venv/
+.cache/
+__pycache__/
+*.egg-info/

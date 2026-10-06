@@ -1,0 +1,223 @@
+"""Build a fresh Offline VulnDB SQLite database from verified source files.
+
+The database is written to a temporary ".<name>.building" file next to the
+target, self-checked, and only then renamed over the target, so a failed or
+interrupted build never replaces a working database.
+"""
+
+import gzip
+import os
+import sqlite3
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+from . import __version__, cpe, kev, nvd
+from .fetch import Feed
+from .jsonstream import ArrayStream
+
+# Sanity floors for a complete build (NVD has >300k CVEs, KEV >1.7k entries
+# as of 2026). Tests and partial builds pass allow_small=True.
+MIN_CVES = 200_000
+MIN_KEV = 1_000
+DATASET = "nvd+kev"
+
+
+class BuildError(RuntimeError):
+    """Raised when the database fails a self-check."""
+
+
+@dataclass
+class Stats:
+    loaded: int = 0
+    replaced: int = 0
+    unchanged: int = 0
+    rejected: int = 0
+    skipped_rules: list[str] = field(default_factory=list)
+
+
+def feed_order(feeds: list[Feed]) -> list[Feed]:
+    """Yearly feeds in year order, then the modified feed as an overlay.
+    Other feeds (e.g. "recent") are ignored: "modified" is a superset."""
+    yearly = sorted((f for f in feeds if f.name.isdigit()), key=lambda f: int(f.name))
+    return yearly + [f for f in feeds if f.name == "modified"]
+
+
+def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
+          allow_small: bool = False, log=print) -> Stats:
+    out = Path(out)
+    tmp = out.with_name(f".{out.name}.building")
+    tmp.unlink(missing_ok=True)
+    conn = sqlite3.connect(tmp, isolation_level=None)
+    try:
+        stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log)
+        conn.close()
+        os.replace(tmp, out)
+        return stats
+    except BaseException:
+        conn.close()
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _build(conn, schema_sql, feeds, kev_path, allow_small, log) -> Stats:
+    # The file is private until renamed, so durability during the load is
+    # unnecessary; integrity is checked explicitly before the rename.
+    conn.execute("PRAGMA journal_mode = OFF")
+    conn.execute("PRAGMA synchronous = OFF")
+    conn.execute("PRAGMA temp_store = MEMORY")
+    conn.execute("PRAGMA cache_size = -262144")
+    conn.executescript(schema_sql)
+
+    stats = Stats()
+    ordered = feed_order(feeds)
+    if not ordered:
+        raise BuildError("no NVD feeds to load")
+    for feed in ordered:
+        _load_feed(conn, feed, stats, log)
+
+    catalogue = kev.load(kev_path)
+    conn.execute("BEGIN")
+    conn.executemany(
+        "INSERT INTO kev (cve_id, vendor_project, product, vulnerability_name, date_added, due_date,"
+        " known_ransomware, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [(r.cve_id, r.vendor_project, r.product, r.vulnerability_name, r.date_added, r.due_date,
+          r.known_ransomware, r.notes) for r in catalogue.rows])
+    conn.execute("COMMIT")
+    log(f"  KEV {catalogue.catalog_version}: {len(catalogue.rows)} entries")
+
+    _write_metadata(conn, ordered, catalogue, stats)
+    _self_check(conn, allow_small)
+    conn.execute("ANALYZE")
+    return stats
+
+
+def _load_feed(conn, feed: Feed, stats: Stats, log) -> None:
+    start, count = time.monotonic(), 0
+    with gzip.open(feed.gz_path, "rt", encoding="utf-8") as f:
+        conn.execute("BEGIN")
+        for item in ArrayStream(f, "vulnerabilities"):
+            _apply(conn, nvd.transform(item), stats)
+            count += 1
+        conn.execute("COMMIT")
+    log(f"  {feed.gz_path.name}: {count} records in {time.monotonic() - start:.1f}s")
+
+
+def _apply(conn, rec: nvd.Record, stats: Stats) -> None:
+    """Insert a record, replacing an older copy (the modified-feed overlay) and
+    removing CVEs that have since been rejected."""
+    row = conn.execute("SELECT modified_at FROM cves WHERE cve_id = ?", (rec.cve_id,)).fetchone()
+    if rec.rejected:
+        if row:
+            _delete(conn, rec.cve_id)
+        stats.rejected += 1
+        return
+    if row:
+        if (row[0] or "") >= (rec.modified_at or ""):
+            stats.unchanged += 1
+            return
+        _delete(conn, rec.cve_id)
+        stats.replaced += 1
+    else:
+        stats.loaded += 1
+    stats.skipped_rules.extend(rec.skipped_rules)
+    _insert(conn, rec)
+
+
+def _delete(conn, cve_id: str) -> None:
+    conn.execute("DELETE FROM cve_matches WHERE cve_id = ?", (cve_id,))
+    conn.execute("DELETE FROM cve_config_nodes WHERE configuration_id IN"
+                 " (SELECT id FROM cve_configurations WHERE cve_id = ?)", (cve_id,))
+    conn.execute("DELETE FROM cve_configurations WHERE cve_id = ?", (cve_id,))
+    conn.execute("DELETE FROM exploit_evidence WHERE cve_id = ? AND source = ?",
+                 (cve_id, nvd.EXPLOIT_SOURCE))
+    conn.execute("DELETE FROM cves WHERE cve_id = ?", (cve_id,))
+
+
+def _insert(conn, r: nvd.Record) -> None:
+    conn.execute(
+        "INSERT INTO cves (cve_id, published_at, modified_at, description, cvss_v3_score, cvss_v3_vector,"
+        " cvss_v4_score, cvss_v4_vector, severity, cwe) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (r.cve_id, r.published_at, r.modified_at, r.description, r.cvss_v3_score, r.cvss_v3_vector,
+         r.cvss_v4_score, r.cvss_v4_vector, r.severity, r.cwe))
+    for cfg in r.configurations:
+        cfg_id = conn.execute("INSERT INTO cve_configurations (cve_id, operator) VALUES (?, ?)",
+                              (r.cve_id, cfg.operator)).lastrowid
+        for node in cfg.nodes:
+            node_id = conn.execute(
+                "INSERT INTO cve_config_nodes (configuration_id, operator, negate) VALUES (?, ?, ?)",
+                (cfg_id, node.operator, int(node.negate))).lastrowid
+            conn.executemany(
+                "INSERT INTO cve_matches (cve_id, node_id, criteria, criteria_part, criteria_vendor,"
+                " criteria_product, vulnerable, version_start_including, version_start_excluding,"
+                " version_end_including, version_end_excluding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [(r.cve_id, node_id, m.criteria, m.part, m.vendor, m.product, int(m.vulnerable),
+                  m.start_including, m.start_excluding, m.end_including, m.end_excluding)
+                 for m in node.matches])
+    conn.executemany(
+        "INSERT INTO exploit_evidence (cve_id, source, reference, reference_type, verified, metadata_json)"
+        " VALUES (?, ?, ?, 'exploit-reference', 0, ?)",
+        [(r.cve_id, nvd.EXPLOIT_SOURCE, e.reference, e.metadata_json) for e in r.exploits])
+
+
+def _count(conn, sql: str) -> int:
+    return conn.execute(sql).fetchone()[0]
+
+
+def _write_metadata(conn, feeds: list[Feed], catalogue: kev.Catalogue, stats: Stats) -> None:
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    meta = {
+        "dataset": DATASET,
+        "database_version": now,
+        "created_at": now,
+        "updater_version": __version__,
+        "nvd_last_modified": max(f.meta.last_modified_utc() for f in feeds),
+        "nvd_feeds": ",".join(f.name for f in feeds),
+        "kev_catalog_version": catalogue.catalog_version,
+        "kev_date_released": catalogue.date_released,
+        "nvd_cves_total": str(_count(conn, "SELECT COUNT(*) FROM cves")),
+        "nvd_cves_without_configurations": str(_count(conn,
+            "SELECT COUNT(*) FROM cves WHERE NOT EXISTS"
+            " (SELECT 1 FROM cve_configurations c WHERE c.cve_id = cves.cve_id)")),
+        "nvd_rules_skipped": str(len(stats.skipped_rules)),
+    }
+    conn.execute("BEGIN")
+    conn.executemany("INSERT OR REPLACE INTO database_metadata (key, value) VALUES (?, ?)",
+                     list(meta.items()))
+    conn.execute("COMMIT")
+
+
+def _self_check(conn, allow_small: bool) -> None:
+    problems = []
+    integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+    if integrity != "ok":
+        problems.append(f"integrity_check: {integrity}")
+    fk = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if fk:
+        problems.append(f"{len(fk)} foreign key violations, e.g. {fk[0]}")
+    if not conn.execute("SELECT 1 FROM database_metadata WHERE key = 'schema_version'").fetchone():
+        problems.append("schema_version metadata missing")
+
+    # Mirror of the Go `db verify` check: lookup columns must agree with criteria.
+    bad = 0
+    for row_id, criteria, part, vendor, product in conn.execute(
+            "SELECT id, criteria, criteria_part, criteria_vendor, criteria_product FROM cve_matches"):
+        try:
+            ok = cpe.lookup_key(criteria) == (part, vendor, product)
+        except cpe.CPEError:
+            ok = False
+        if not ok:
+            bad += 1
+    if bad:
+        problems.append(f"{bad} match rules whose lookup columns disagree with their criteria")
+
+    if not allow_small:
+        n_cves = _count(conn, "SELECT COUNT(*) FROM cves")
+        n_kev = _count(conn, "SELECT COUNT(*) FROM kev")
+        if n_cves < MIN_CVES:
+            problems.append(f"only {n_cves} CVEs loaded (expected >= {MIN_CVES}); incomplete feeds?")
+        if n_kev < MIN_KEV:
+            problems.append(f"only {n_kev} KEV entries (expected >= {MIN_KEV})")
+    if problems:
+        raise BuildError("self-check failed: " + "; ".join(problems))

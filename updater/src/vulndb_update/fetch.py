@@ -1,0 +1,182 @@
+"""Download and verify source data.
+
+Security boundary: this is the only module that touches the network. Only
+HTTPS URLs on allow-listed hosts are fetched, downloads are size-capped, and
+NVD feeds are verified against the sha256 in their .meta file (which NVD
+computes over the *uncompressed* JSON) before being accepted into the cache.
+"""
+
+import gzip
+import hashlib
+import time
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+from . import __version__
+
+NVD_FEED_BASE = "https://nvd.nist.gov/feeds/json/cve/2.0/"
+KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+KEV_FILE = "known_exploited_vulnerabilities.json"
+ALLOWED_HOSTS = {"nvd.nist.gov", "www.cisa.gov"}
+FIRST_FEED_YEAR = 2002  # the 2002 feed also holds 1999-2001 CVEs
+MAX_DOWNLOAD_BYTES = 1 << 30
+TIMEOUT_SECONDS = 120
+RETRIES = 4
+USER_AGENT = f"offline-vulndb-updater/{__version__}"
+
+
+class FetchError(RuntimeError):
+    """Raised when a download fails or does not verify."""
+
+
+@dataclass
+class Meta:
+    last_modified: str  # RFC 3339 as published, e.g. 2026-10-06T01:00:06-04:00
+    size: int           # uncompressed bytes
+    sha256: str         # of the uncompressed JSON, lower-case hex
+
+    def last_modified_utc(self) -> str:
+        return datetime.fromisoformat(self.last_modified).astimezone(timezone.utc) \
+            .strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@dataclass
+class Feed:
+    name: str      # e.g. "2021" or "modified"
+    gz_path: Path
+    meta: Meta
+
+
+def feed_basename(name: str) -> str:
+    return f"nvdcve-2.0-{name}"
+
+
+def parse_meta(text: str) -> Meta:
+    fields = {}
+    for line in text.splitlines():
+        key, sep, value = line.strip().partition(":")
+        if sep:
+            fields[key] = value
+    try:
+        return Meta(fields["lastModifiedDate"], int(fields["size"]), fields["sha256"].lower())
+    except (KeyError, ValueError) as e:
+        raise FetchError(f"malformed .meta file: {e}") from None
+
+
+def verify_feed(gz_path: Path, meta: Meta) -> None:
+    """Check a feed's decompressed size and sha256 against its .meta."""
+    h, size = hashlib.sha256(), 0
+    with gzip.open(gz_path, "rb") as f:
+        while chunk := f.read(1 << 20):
+            h.update(chunk)
+            size += len(chunk)
+    if size != meta.size or h.hexdigest() != meta.sha256:
+        raise FetchError(f"{gz_path.name}: checksum/size mismatch with .meta "
+                         f"(got {size} bytes sha256 {h.hexdigest()}, want {meta.size} {meta.sha256})")
+
+
+def _check_url(url: str) -> None:
+    u = urllib.parse.urlsplit(url)
+    if u.scheme != "https" or u.hostname not in ALLOWED_HOSTS:
+        raise FetchError(f"refusing to fetch {url}: only HTTPS on {sorted(ALLOWED_HOSTS)}")
+
+
+def download(url: str, dest: Path, log=print) -> None:
+    """Download url to dest atomically, with retries and a size cap."""
+    _check_url(url)
+    part = dest.with_name(dest.name + ".part")
+    for attempt in range(1, RETRIES + 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+                _check_url(resp.geturl())  # also covers redirects
+                total = 0
+                with open(part, "wb") as out:
+                    while chunk := resp.read(1 << 20):
+                        total += len(chunk)
+                        if total > MAX_DOWNLOAD_BYTES:
+                            raise FetchError(f"{url}: exceeds {MAX_DOWNLOAD_BYTES} bytes")
+                        out.write(chunk)
+            part.replace(dest)
+            return
+        except FetchError:
+            part.unlink(missing_ok=True)
+            raise
+        except OSError as e:  # URLError, HTTPError, timeouts
+            part.unlink(missing_ok=True)
+            if attempt == RETRIES:
+                raise FetchError(f"{url}: {e}") from e
+            wait = 2 ** attempt
+            log(f"  retry {attempt}/{RETRIES - 1} for {url} in {wait}s: {e}")
+            time.sleep(wait)
+
+
+def feed_names(now: datetime | None = None) -> list[str]:
+    year = (now or datetime.now(timezone.utc)).year
+    return [str(y) for y in range(FIRST_FEED_YEAR, year + 1)] + ["modified"]
+
+
+def sync_nvd(cache: Path, names: list[str], log=print) -> list[Feed]:
+    """Bring cached NVD feeds up to date. A feed is re-downloaded only when its
+    published .meta sha256 differs from the cached copy."""
+    cache.mkdir(parents=True, exist_ok=True)
+    feeds = []
+    for name in names:
+        base = feed_basename(name)
+        meta_path, gz_path = cache / f"{base}.meta", cache / f"{base}.json.gz"
+        fresh_meta_path = cache / f"{base}.meta.new"
+        download(NVD_FEED_BASE + f"{base}.meta", fresh_meta_path, log)
+        fresh = parse_meta(fresh_meta_path.read_text())
+        cached = parse_meta(meta_path.read_text()) if meta_path.exists() else None
+        if cached and cached.sha256 == fresh.sha256 and gz_path.exists():
+            fresh_meta_path.unlink()
+            log(f"  {base}: unchanged")
+        else:
+            log(f"  {base}: downloading")
+            download(NVD_FEED_BASE + f"{base}.json.gz", gz_path, log)
+            try:
+                verify_feed(gz_path, fresh)
+            except FetchError:
+                gz_path.unlink(missing_ok=True)
+                fresh_meta_path.unlink(missing_ok=True)
+                raise
+            fresh_meta_path.replace(meta_path)
+        feeds.append(Feed(name, gz_path, parse_meta(meta_path.read_text())))
+    return feeds
+
+
+def sync_kev(cache: Path, log=print) -> Path:
+    """Download the KEV catalogue (CISA publishes no checksum for it; kev.load
+    validates its structure)."""
+    cache.mkdir(parents=True, exist_ok=True)
+    dest = cache / KEV_FILE
+    log(f"  {KEV_FILE}: downloading")
+    download(KEV_URL, dest, log)
+    return dest
+
+
+def local_feeds(directory: Path) -> list[Feed]:
+    """Use already-downloaded feeds (offline rebuild). Every feed is verified
+    against its .meta, exactly as after a download."""
+    feeds = []
+    for meta_path in sorted(directory.glob("nvdcve-2.0-*.meta")):
+        name = meta_path.name[len("nvdcve-2.0-"):-len(".meta")]
+        gz_path = directory / f"{feed_basename(name)}.json.gz"
+        if not gz_path.exists():
+            raise FetchError(f"{meta_path.name} has no matching {gz_path.name}")
+        meta = parse_meta(meta_path.read_text())
+        verify_feed(gz_path, meta)
+        feeds.append(Feed(name, gz_path, meta))
+    return feeds
+
+
+def local_kev(directory: Path) -> Path:
+    """Use an already-downloaded KEV catalogue (offline rebuild)."""
+    path = directory / KEV_FILE
+    if not path.exists():
+        raise FetchError(f"{path} not found")
+    return path
+

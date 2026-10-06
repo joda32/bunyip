@@ -24,6 +24,8 @@
     {"criteria": "cpe:2.3:x:apache:http_server:*:*:*:*:*:*:*:*", "error": true},
     {"criteria": "cpe:2.3:a::http_server:*:*:*:*:*:*:*:*", "error": true},
     {"criteria": "cpe:2.3:a:apache:http server:*:*:*:*:*:*:*:*", "error": true},
-    {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:\\", "error": true}
+    {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:\\", "error": true},
+    {"criteria": "cpe:2.3:a:x:caf\\\u00e9:*:*:*:*:*:*:*:*", "error": true, "note": "escaped non-ASCII"},
+    {"criteria": "cpe:2.3:a:x:caf\u00e9:*:*:*:*:*:*:*:*", "error": true, "note": "unescaped non-ASCII"}
   ]
 }
