@@ -122,6 +122,7 @@ CREATE TABLE distro_advisories (
     fixed_version      TEXT,              -- NULL: affected, no fix released in this channel
     affected_upstreams TEXT NOT NULL DEFAULT '', -- space-separated upstream versions listed as affected
     urgency            TEXT,              -- distribution's own rating, e.g. Debian 'unimportant'
+    stream             TEXT NOT NULL DEFAULT '', -- module stream (RHEL AppStream, e.g. '1.20'); '' if none
     modified_at        TEXT
 );
 
@@ -153,4 +154,4 @@ CREATE INDEX idx_distro_adv_cve      ON distro_advisories (cve_id);
 CREATE INDEX idx_distro_pkgver_up    ON distro_package_versions (distro, package, upstream);
 CREATE INDEX idx_distro_packages_cpe ON distro_packages (cpe_part, cpe_vendor, cpe_product);
 
-INSERT INTO database_metadata (key, value) VALUES ('schema_version', '3');
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '4');

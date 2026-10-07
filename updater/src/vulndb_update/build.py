@@ -144,10 +144,12 @@ def _load_aliases(conn, rows: list, stats: Stats, log) -> None:
 def _load_distro(conn, di: DistroInput, package_map: list, stats: Stats, log) -> None:
     """Load one distribution's advisories for the mapped packages.
 
-    Per-CVE records come first. Per-advisory records (Debian DSA/DLA) then
-    fill only CVE/release/package combinations no per-CVE record covers; if
-    several advisories cover one, the highest fixed version is kept (the
-    conservative choice when a later advisory completed an earlier fix).
+    Per-CVE records come first. Per-advisory records (Debian DSA/DLA, Red
+    Hat RHSA, Rocky RLSA, AlmaLinux ALSA) then fill only CVE/release/package/
+    stream combinations no per-CVE record covers. If several advisories list
+    the same CVE for one release and stream, the earliest fixed version is
+    kept: later advisories re-list CVEs (cumulative or regression updates),
+    and taking their version would mark already-fixed hosts vulnerable.
     """
     start = time.monotonic()
     d = di.distro
@@ -161,12 +163,13 @@ def _load_distro(conn, di: DistroInput, package_map: list, stats: Stats, log) ->
     rows: dict[tuple, osv.AdvisoryRow] = {}
     versions: set = set()
     withdrawn = 0
-    for record in osv.iter_records(di.export.zip_path, d.record_prefix):
-        t = osv.transform(record, d, packages, per_cve=True)
-        withdrawn += t.withdrawn
-        versions |= t.versions
-        for r in t.rows:
-            rows[r.key] = r
+    if d.record_prefix:
+        for record in osv.iter_records(di.export.zip_path, d.record_prefix):
+            t = osv.transform(record, d, packages, per_cve=True)
+            withdrawn += t.withdrawn
+            versions |= t.versions
+            for r in t.rows:
+                rows[r.key] = r
     primary = set(rows)
     if d.advisory_prefixes:
         for record in osv.iter_records(di.export.zip_path, d.advisory_prefixes):
@@ -177,14 +180,14 @@ def _load_distro(conn, di: DistroInput, package_map: list, stats: Stats, log) ->
                 if r.key in primary:
                     continue
                 old = rows.get(r.key)
-                if old is None or _newer_fix(r.fixed_version, old.fixed_version):
+                if old is None or _earlier_fix(d, r.fixed_version, old.fixed_version):
                     rows[r.key] = r
     conn.executemany(
         "INSERT INTO distro_advisories (source, advisory_id, cve_id, distro, release, channel, codename,"
-        " package, fixed_version, affected_upstreams, urgency, modified_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " package, fixed_version, affected_upstreams, urgency, stream, modified_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [(r.source, r.advisory_id, r.cve_id, r.distro, r.release, r.channel, r.codename, r.package,
-          r.fixed_version, r.affected_upstreams, r.urgency, r.modified_at) for r in rows.values()])
+          r.fixed_version, r.affected_upstreams, r.urgency, r.stream, r.modified_at) for r in rows.values()])
     conn.executemany(
         "INSERT OR IGNORE INTO distro_package_versions (distro, release, package, version, upstream)"
         " VALUES (?, ?, ?, ?, ?)",
@@ -199,13 +202,16 @@ def _load_distro(conn, di: DistroInput, package_map: list, stats: Stats, log) ->
         f"in {time.monotonic() - start:.1f}s")
 
 
-def _newer_fix(a: str | None, b: str | None) -> bool:
-    """Whether fixed version a supersedes b (None = no fix, which wins)."""
-    if a is None or b is None:
-        return a is None and b is not None
+def _earlier_fix(d: osv.Distro, a: str | None, b: str | None) -> bool:
+    """Whether fixed version a is an earlier fix point than b. A row with no
+    fix never replaces a fixed one."""
+    if a is None:
+        return False
+    if b is None:
+        return True
     try:
-        return debversion.compare(a, b) > 0
-    except debversion.DebVersionError:
+        return d.compare(a, b) < 0
+    except ValueError:
         return False
 
 

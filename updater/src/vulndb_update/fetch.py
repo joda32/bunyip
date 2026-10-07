@@ -223,7 +223,7 @@ def sync_osv(cache: Path, ecosystem: str, log=print) -> OSVExport:
     downloaded again when the bucket's published MD5 changes, and every
     download must match that MD5."""
     cache.mkdir(parents=True, exist_ok=True)
-    url = f"{OSV_BASE}{ecosystem}/all.zip"
+    url = f"{OSV_BASE}{urllib.parse.quote(ecosystem)}/all.zip"  # e.g. "Red Hat" -> "Red%20Hat"
     zip_path, meta_path = _osv_paths(cache, ecosystem)
     head = _head(url)
     if not head["md5"]:

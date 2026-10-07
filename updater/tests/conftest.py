@@ -15,6 +15,8 @@ SCHEMA = REPO / "schema" / "schema.sql"
 NVD_DATA = REPO / "testdata" / "nvd"
 OSV_UBUNTU = REPO / "testdata" / "osv" / "ubuntu"
 OSV_DEBIAN = REPO / "testdata" / "osv" / "debian"
+OSV_DIR = REPO / "testdata" / "osv"
+OSV_EXPORTS = {"Ubuntu": "ubuntu", "Debian": "debian", "Red Hat": "redhat", "Rocky Linux": "rocky", "AlmaLinux": "almalinux"}
 KEV_FILE = "known_exploited_vulnerabilities.json"
 
 
@@ -81,8 +83,8 @@ def make_sources(directory: Path) -> Path:
         write_feed(directory, year, items, last_modified="2026-10-05T03:00:00-04:00")
     write_feed(directory, "modified", overlay_records())
     (directory / KEV_FILE).write_bytes((NVD_DATA / KEV_FILE).read_bytes())
-    write_osv_export(directory, "Ubuntu", sorted(OSV_UBUNTU.glob("*.json")))
-    write_osv_export(directory, "Debian", sorted(OSV_DEBIAN.glob("*.json")))
+    for ecosystem, sub in OSV_EXPORTS.items():
+        write_osv_export(directory, ecosystem, sorted((OSV_DIR / sub).glob("*.json")))
     return directory
 
 

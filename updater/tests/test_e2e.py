@@ -84,7 +84,7 @@ def test_and_configuration_is_conditional(vulndb_bin, real_db):
 
 def test_stats_reflect_rejections(vulndb_bin, real_db):
     p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "db", "stats"], capture_output=True, text=True, check=True)
-    assert "cves                         10" in p.stdout
+    assert "cves                         11" in p.stdout
 
 
 def test_go_verify_and_info(vulndb_bin, real_db):

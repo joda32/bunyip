@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from . import debversion
+from . import debversion, rpmversion
 
 
 @dataclass(frozen=True)
@@ -41,6 +41,10 @@ class Distro:
     # Release encoded in package versions, e.g. Debian "+deb12u3" -> "12".
     release_in_version: re.Pattern | None = None
     urgency_key: str | None = None
+    scheme: str = "dpkg"  # package version ordering: "dpkg" or "rpm"
+
+    def compare(self, a: str, b: str) -> int:
+        return (rpmversion if self.scheme == "rpm" else debversion).compare(a, b)
 
 
 DISTROS = {
@@ -64,6 +68,28 @@ DISTROS = {
         release_in_version=re.compile(r"[+~]deb(\d+)u\d+"),
         urgency_key="urgency",
     ),
+    # Red Hat family: per-advisory records only (RHSA/RLSA/ALSA ...), fixed
+    # entries only, no affected-version lists. Release = major version;
+    # RHEL extended-support streams (EUS/AUS/TUS/E4S) and other Red Hat
+    # products (OpenShift, JBoss, Satellite, ...) are not loaded.
+    "redhat": Distro(
+        name="redhat", ecosystem="Red Hat", record_prefix="",
+        standard=re.compile(r"Red Hat:enterprise_linux:(\d+)(?:\.\d+)?(?:::\w+)?"), pro=None,
+        advisory_prefixes=("RHSA-", "RHBA-", "RHEA-"),
+        release_in_version=re.compile(r"[._+]el(\d+)"), scheme="rpm",
+    ),
+    "rocky": Distro(
+        name="rocky", ecosystem="Rocky Linux", record_prefix="",
+        standard=re.compile(r"Rocky Linux:(\d+)"), pro=None,
+        advisory_prefixes=("RLSA-", "RLBA-", "RLEA-", "RXSA-"),
+        release_in_version=re.compile(r"[._+]el(\d+)"), scheme="rpm",
+    ),
+    "almalinux": Distro(
+        name="almalinux", ecosystem="AlmaLinux", record_prefix="",
+        standard=re.compile(r"AlmaLinux:(\d+)"), pro=None,
+        advisory_prefixes=("ALSA-", "ALBA-", "ALEA-"),
+        release_in_version=re.compile(r"[._+]el(\d+)"), scheme="rpm",
+    ),
 }
 
 
@@ -81,10 +107,11 @@ class AdvisoryRow:
     affected_upstreams: str
     modified_at: str | None
     urgency: str | None = None
+    stream: str = ""
 
     @property
-    def key(self) -> tuple[str, str, str, str]:
-        return self.cve_id, self.release, self.channel, self.package
+    def key(self) -> tuple[str, str, str, str, str]:
+        return self.cve_id, self.release, self.channel, self.package, self.stream
 
 
 @dataclass(frozen=True)
@@ -97,9 +124,20 @@ class PackageVersion:
 
 
 def upstream_of(version: str) -> str:
-    """Debian version -> upstream part: "1:9.6p1-3ubuntu13.3" -> "9.6p1"."""
+    """Package version -> upstream part: "1:9.6p1-3ubuntu13.3" -> "9.6p1",
+    "1:1.20.1-1.module+el8..." -> "1.20.1"."""
     v = version.split(":", 1)[1] if ":" in version else version
     return v.rsplit("-", 1)[0] if "-" in v else v
+
+
+def module_stream(fixed: str | None) -> str:
+    """RHEL AppStream module builds ("...module+el8.4.0+..."): the stream is
+    the upstream major.minor ("1.14"). Fixes in one module stream say nothing
+    about another stream of the same package in the same release."""
+    if not fixed or ".module" not in fixed:
+        return ""
+    parts = upstream_of(fixed).split(".")
+    return ".".join(parts[:2])
 
 
 def parse_ecosystem(d: Distro, eco: str) -> tuple[str, str] | None:
@@ -130,10 +168,10 @@ def _cve_ids(record: dict, per_cve: bool) -> list[str]:
     return ids[:1] if per_cve else ids
 
 
-def _older_than(v: str, fixed: str) -> bool:
+def _older_than(d: "Distro", v: str, fixed: str) -> bool:
     try:
-        return debversion.compare(v, fixed) < 0
-    except debversion.DebVersionError:
+        return d.compare(v, fixed) < 0
+    except ValueError:
         return False
 
 
@@ -175,7 +213,7 @@ def transform(record: dict, d: Distro, packages: set[str], per_cve: bool = True)
                     fixed = ev["fixed"]  # one fix point per release
         listed = [v for v in a.get("versions") or [] if isinstance(v, str)]
         if fixed:
-            affected = [v for v in listed if _older_than(v, fixed)]
+            affected = [v for v in listed if _older_than(d, v, fixed)]
         else:
             affected = listed if d.unfixed_versions_release_specific else []
         urgency = (a.get("ecosystem_specific") or {}).get(d.urgency_key) if d.urgency_key else None
@@ -185,7 +223,7 @@ def transform(record: dict, d: Distro, packages: set[str], per_cve: bool = True)
                 release=release, channel=channel, codename=_codename(pkg.get("purl")), package=name,
                 fixed_version=fixed,
                 affected_upstreams=" ".join(sorted({upstream_of(v) for v in affected})),
-                modified_at=record.get("modified"), urgency=urgency,
+                modified_at=record.get("modified"), urgency=urgency, stream=module_stream(fixed),
             ))
         if channel == "standard":
             known = list(affected)

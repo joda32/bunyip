@@ -215,3 +215,60 @@ def test_build_with_debian(sources, tmp_path):
     assert q("SELECT urgency FROM distro_advisories WHERE cve_id = 'CVE-2007-2243' AND release = '12'") == [("unimportant",)]
     assert q("SELECT DISTINCT release FROM distro_package_versions WHERE package = 'openssh' AND upstream = '9.2p1'") == [("12",)]
     assert stats.distro_rows > 0
+
+
+# --- Red Hat family -----------------------------------------------------------
+
+REDHAT, ROCKY, ALMA = osv.DISTROS["redhat"], osv.DISTROS["rocky"], osv.DISTROS["almalinux"]
+RH_MAPPED = {"openssh", "nginx"}
+
+
+def rh(sub, rid):
+    return json.loads((REPO / "testdata" / "osv" / sub / f"{rid.replace(':', '_')}.json").read_text())
+
+
+def test_redhat_record():
+    t = osv.transform(rh("redhat", "RHSA-2024:4312"), REDHAT, RH_MAPPED, per_cve=False)
+    assert {(r.cve_id, r.release, r.package, r.fixed_version, r.stream) for r in t.rows} == \
+        {("CVE-2024-6387", "9", "openssh", "0:8.7p1-38.el9_4.1", "")}
+    assert osv.PackageVersion("redhat", "9", "openssh", "0:8.7p1-38.el9_4.1", "8.7p1") in t.versions
+
+
+def test_redhat_extended_support_skipped():
+    # RHSA-2024:4340 is for RHEL 9.2 EUS only.
+    assert osv.transform(rh("redhat", "RHSA-2024:4340"), REDHAT, RH_MAPPED, per_cve=False).rows == []
+
+
+def test_redhat_variants_collapse_to_major_release():
+    t = osv.transform(rh("redhat", "RHSA-2023:4382"), REDHAT, RH_MAPPED, per_cve=False)
+    assert {(r.release, r.fixed_version) for r in t.rows} == {("7", "0:7.4p1-23.el7_9")}
+    assert len({r.key for r in t.rows}) == 1
+
+
+@pytest.mark.parametrize("rid, stream", [("RHSA-2021:2290", "1.16"), ("RHSA-2021:2259", "1.18"), ("RHSA-2022:0323", "1.20")])
+def test_redhat_module_streams(rid, stream):
+    t = osv.transform(rh("redhat", rid), REDHAT, RH_MAPPED, per_cve=False)
+    rel8 = [r for r in t.rows if r.release == "8" and r.package == "nginx"]
+    assert {r.stream for r in rel8} == {stream}
+
+
+def test_build_redhat_family(sources, tmp_path):
+    out = tmp_path / "v.sqlite"
+    pm = osv.load_package_map(REPO / "data" / "distro_packages.json")
+    distros = [build.DistroInput(d, fetch.local_osv(sources, d.ecosystem)) for d in (REDHAT, ROCKY, ALMA)]
+    build.build(out, SCHEMA.read_text(), fetch.local_feeds(sources), fetch.local_kev(sources),
+                allow_small=True, log=lambda *a: None, package_map=pm, distros=distros)
+    conn = sqlite3.connect(out)
+    q = lambda sql, *a: conn.execute(sql, a).fetchall()  # noqa: E731
+    # One CVE, three independent module-stream fixes in RHEL 8.
+    assert sorted(q("SELECT stream, fixed_version FROM distro_advisories WHERE distro = 'redhat'"
+                    " AND cve_id = 'CVE-2021-23017' AND release = '8'")) == [
+        ("1.16", "1:1.16.1-2.module+el8.4.0+11155+68135136.1"),
+        ("1.18", "1:1.18.0-3.module+el8.4.0+11152+f736ed63.1"),
+        ("1.20", "1:1.20.1-1.module+el8.5.0+13723+ab304644")]
+    # AlmaLinux re-lists CVE-2023-38408 in a 2026 advisory; the earliest fix is kept.
+    assert q("SELECT advisory_id, fixed_version FROM distro_advisories WHERE distro = 'almalinux'"
+             " AND cve_id = 'CVE-2023-38408' AND release = '8'") == [("ALSA-2023:4419", "8.0p1-19.el8_8")]
+    assert q("SELECT DISTINCT release FROM distro_package_versions WHERE distro = 'redhat'"
+             " AND package = 'openssh' AND upstream = '8.7p1'") == [("9",)]
+    assert q("SELECT COUNT(*) FROM distro_advisories WHERE release LIKE '9.%' OR release LIKE '8.%'") == [(0,)]

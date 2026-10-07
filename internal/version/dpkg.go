@@ -13,14 +13,18 @@ type Dpkg struct{}
 
 func (Dpkg) Name() string { return "dpkg" }
 
-// DebVersion is a parsed Debian package version.
-type DebVersion struct {
+// EVR is a parsed distribution package version: [epoch:]upstream[-revision]
+// (Debian upstream/revision, RPM version/release).
+type EVR struct {
 	Epoch    string // digits; "0" when absent
 	Upstream string
 	Revision string // "" when absent
 }
 
-func (v DebVersion) String() string {
+// DebVersion is a parsed Debian package version.
+type DebVersion = EVR
+
+func (v EVR) String() string {
 	s := v.Upstream
 	if v.Epoch != "0" {
 		s = v.Epoch + ":" + s
