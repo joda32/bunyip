@@ -215,7 +215,7 @@ internal-network services already carry CPEs. Such services are reported as
 An unauthenticated `nmap -sV --top-ports 1000` of a Ludus lab (5 Windows hosts,
 3 Linux hosts) took 119 s with the `vulndb` NSE script enabled.
 
-- **Windows (Server 2016/2022, Windows 11): nothing assessable.**
+- **Windows (Server 2016/2022, Windows 11): per-service, nothing assessable.**
   - SMB, RDP, RPC, LDAP and Kerberos carry only `cpe:/o:microsoft:windows` or
     no CPE. Nmap did not identify OpenSSH for Windows, Simple DNS Plus had no
     version, and IIS shows the "recorded against Windows" caveat.
@@ -224,6 +224,23 @@ An unauthenticated `nmap -sV --top-ports 1000` of a Ludus lab (5 Windows hosts,
     Windows rules key on build + revision (e.g. `10.0.20348.2340`), so an
     unauthenticated scan can say "this build has N CVEs, patch level unknown",
     not "vulnerable".
+  - That is what the build-level assessment now reports (`vulndb nmap`, same
+    scan, 1.3 s for 8 hosts; docs/matching.md section 10):
+
+    | Host | Evidence | Release | Applies unless patched | KEV | Undetermined |
+    |---|---|---|---|---|---|
+    | DC | RDP build + AD services | Windows Server 2022 [HIGH] | 3,957 | 107 | 11 |
+    | WSUS | RDP build (server-only build) | Windows Server 2022 [HIGH] | 3,957 | 107 | 11 |
+    | WEB01 | RDP build + SMB OS string | Windows Server 2016 [HIGH] | 5,226 | 154 | 47 |
+    | SQL01 | RDP build only | Server 2016 or Windows 10 1607 [MEDIUM] | 5,226 / 4,970 | 154 / 147 | 47 / 2 |
+    | WKSTN01 | RDP build (client-only build) | Windows 11 22H2 [HIGH], end of support | 1,695 | 74 | 0 |
+
+    Undetermined CVEs are almost all rules that name an edition (`sw_edition`
+    `-` or `datacenter:_azure`). Before range rules were left to the build
+    query alone, Windows 11 22H2 also showed 74 undetermined CVEs from NVD
+    ranges that end at 21H2 builds (`< 10.0.22000.1413`).
+  - The workstation runs Windows 11 22H2, out of support since 2025-10-14
+    (Enterprise), which the report flags.
 - **Debian 11 routers: the release is end of life.** OpenSSH
   `8.4p1 Debian 5+deb11u7` resolved to Debian 11, which reached end of LTS on
   2026-08-31. Neither Debian's OSV export nor its Security Tracker covers it

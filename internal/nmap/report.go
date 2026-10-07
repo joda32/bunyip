@@ -2,6 +2,7 @@ package nmap
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"offline-vulndb/internal/identity"
 	"offline-vulndb/internal/matcher"
 	"offline-vulndb/internal/version"
+	"offline-vulndb/internal/windows"
 )
 
 // Assessment says what happened to an open port.
@@ -50,6 +52,8 @@ type Summary struct {
 	DistroFixed    int `json:"distro_fixed"`    // (service, CVE) pairs fixed in the distribution package
 	DistroOnly     int `json:"distro_only"`     // (service, CVE) pairs found only via distribution advisories
 	EndOfLife      int `json:"end_of_life"`     // assessed services on an end-of-life distribution release
+	WindowsHosts   int `json:"windows_hosts"`   // hosts assessed at Windows build level
+	WindowsEOL     int `json:"windows_eol"`     // ... whose release is past its end of support
 }
 
 type HostReport struct {
@@ -64,6 +68,10 @@ type HostReport struct {
 	// service that exposes its exact package version (e.g. OpenSSH).
 	DistroRelease string          `json:"distro_release,omitempty"`
 	Services      []ServiceReport `json:"services"`
+	// Windows is the build-level assessment of a Windows host (see package
+	// windows); two entries when the build is shared by a server and a
+	// client release and the scan does not show which.
+	Windows []windows.Assessment `json:"windows,omitempty"`
 }
 
 type ServiceReport struct {
@@ -92,6 +100,7 @@ func Analyse(ctx context.Context, scan *Scan, engine *matcher.Engine) (*Report, 
 		Hosts: []HostReport{},
 	}
 	cache := map[string]*matcher.Result{}
+	var winAssessor *windows.Assessor
 	for _, h := range scan.Hosts {
 		if h.Status != "up" {
 			rep.Summary.HostsDown++
@@ -124,6 +133,20 @@ func Analyse(ctx context.Context, scan *Scan, engine *matcher.Engine) (*Report, 
 			rep.Summary.add(sr)
 			hr.Services = append(hr.Services, sr)
 		}
+		if ev := windows.Detect(windowsSignals(h, open)); ev != nil {
+			if winAssessor == nil {
+				if winAssessor, err = windows.NewAssessor(ctx, engine); err != nil {
+					return nil, err
+				}
+			}
+			if hr.Windows, err = winAssessor.Assess(ctx, ev); err != nil {
+				return nil, err
+			}
+			rep.Summary.addWindows(hr.Windows)
+			if !slices.Contains(rep.Warnings, windows.PatchNote) {
+				rep.Warnings = append(rep.Warnings, windows.PatchNote)
+			}
+		}
 		rep.Hosts = append(rep.Hosts, hr)
 	}
 	for _, r := range cache {
@@ -135,6 +158,38 @@ func Analyse(ctx context.Context, scan *Scan, engine *matcher.Engine) (*Report, 
 	}
 	slices.Sort(rep.Warnings)
 	return rep, nil
+}
+
+// windowsSignals collects the Windows build evidence that NSE scripts and
+// service fingerprints expose.
+func windowsSignals(h Host, open []Port) windows.Signals {
+	var sig windows.Signals
+	for _, p := range open {
+		where := fmt.Sprintf("%d/%s", p.PortID, p.Protocol)
+		for _, sc := range p.Scripts {
+			if pv := sc.Elems["Product_Version"]; strings.HasSuffix(sc.ID, "-ntlm-info") && pv != "" {
+				sig.ProductVersions = append(sig.ProductVersions, windows.Signal{Value: pv, Source: sc.ID + " on " + where})
+			}
+		}
+		s := p.Service
+		if !s.Probed() {
+			continue
+		}
+		// e.g. "Windows Server 2016 Standard Evaluation 14393 microsoft-ds"
+		if s.Name == "microsoft-ds" && strings.HasPrefix(s.Product, "Windows ") {
+			sig.OSStrings = append(sig.OSStrings, windows.Signal{
+				Value: strings.TrimSuffix(s.Product, " microsoft-ds"), Source: "SMB fingerprint on " + where})
+		}
+		if sig.DomainController == "" && (s.Product == "Microsoft Windows Active Directory LDAP" || s.Product == "Microsoft Windows Kerberos") {
+			sig.DomainController = s.Product + " on " + where
+		}
+	}
+	for _, sc := range h.Scripts {
+		if os := sc.Elems["os"]; sc.ID == "smb-os-discovery" && os != "" {
+			sig.OSStrings = append(sig.OSStrings, windows.Signal{Value: os, Source: "smb-os-discovery"})
+		}
+	}
+	return sig
 }
 
 // observe resolves a probed service's identity.
@@ -261,6 +316,22 @@ func cacheKey(cands []identity.Candidate, din *matcher.DistroInput) string {
 		b.WriteString(";")
 	}
 	return b.String()
+}
+
+func (s *Summary) addWindows(as []windows.Assessment) {
+	eol, assessed := true, false
+	for _, a := range as {
+		if a.Status == windows.Assessed {
+			assessed = true
+			eol = eol && a.EndOfLife
+		}
+	}
+	if assessed {
+		s.WindowsHosts++
+		if eol {
+			s.WindowsEOL++
+		}
+	}
 }
 
 func (s *Summary) add(sr ServiceReport) {

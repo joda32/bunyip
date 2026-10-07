@@ -113,6 +113,18 @@ ELS, Debian ELTS). It is loaded into `distro_releases` and lets reports flag
 services on end-of-life releases. Verify the dates against the vendors'
 lifecycle pages when updating.
 
+## Windows builds
+
+`data/windows_builds.json` maps Windows build numbers (as `rdp-ntlm-info`
+and `smb-os-discovery` report them) to the release's NVD CPEs and lifecycle,
+e.g. 20348 server → `windows_server_2022:-`, 14393 client →
+`windows_10_1607:-` and `windows_10:1607`. Shared builds have one row per kind
+(server, client). The NVD version attribute is what separates releases:
+`windows_server_2016:-` is the 14393 LTSC release, while `windows_server_2016:1903`
+is a different (Semi-Annual Channel) build. Check new rows against the NVD
+CPE dictionary and Microsoft's lifecycle pages. It is loaded into
+`windows_builds` (`--windows-builds PATH` to use another file).
+
 ## Aliases
 
 `data/aliases.json` lists hand-reviewed aliases from identities that Nmap

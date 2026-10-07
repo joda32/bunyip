@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sanitized from a Windows lab scan (nmap -sV -sC); addresses and names replaced. -->
+<nmaprun scanner="nmap" args="nmap -sV -sC -oX windows-hosts.xml 192.0.2.0/24" start="1791389400" version="7.95" xmloutputversion="1.05">
+<host><status state="up" reason="echo-reply"/><address addr="192.0.2.10" addrtype="ipv4"/><hostnames><hostname name="dc01.example.test" type="PTR"/></hostnames>
+<ports>
+<port protocol="tcp" portid="88"><state state="open" reason="syn-ack"/><service name="kerberos-sec" product="Microsoft Windows Kerberos" extrainfo="server time: 2026-10-07 16:29:07Z" ostype="Windows" method="probed" conf="10"><cpe>cpe:/a:microsoft:kerberos</cpe><cpe>cpe:/o:microsoft:windows</cpe></service></port>
+<port protocol="tcp" portid="389"><state state="open" reason="syn-ack"/><service name="ldap" product="Microsoft Windows Active Directory LDAP" extrainfo="Domain: example.test., Site: Default-First-Site-Name" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service></port>
+<port protocol="tcp" portid="3389"><state state="open" reason="syn-ack"/><service name="ms-wbt-server" product="Microsoft Terminal Services" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service><script id="rdp-ntlm-info" output="&#xa;  Target_Name: EXAMPLE&#xa;  NetBIOS_Computer_Name: DC01&#xa;  Product_Version: 10.0.20348&#xa;  System_Time: 2026-10-07T16:30:45+00:00"><elem key="Target_Name">EXAMPLE</elem>
+<elem key="NetBIOS_Computer_Name">DC01</elem>
+<elem key="Product_Version">10.0.20348</elem>
+<elem key="System_Time">2026-10-07T16:30:45+00:00</elem>
+</script></port>
+</ports></host>
+<host><status state="up" reason="echo-reply"/><address addr="192.0.2.11" addrtype="ipv4"/><hostnames><hostname name="web01.example.test" type="PTR"/></hostnames>
+<ports>
+<port protocol="tcp" portid="445"><state state="open" reason="syn-ack"/><service name="microsoft-ds" product="Windows Server 2016 Standard Evaluation 14393 microsoft-ds" ostype="Windows Server 2008 R2 - 2012" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service></port>
+<port protocol="tcp" portid="3389"><state state="open" reason="syn-ack"/><service name="ms-wbt-server" product="Microsoft Terminal Services" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service><script id="rdp-ntlm-info" output="&#xa;  Product_Version: 10.0.14393"><elem key="Product_Version">10.0.14393</elem>
+</script></port>
+</ports>
+<hostscript><script id="smb-os-discovery" output="&#xa;  OS: Windows Server 2016 Standard Evaluation 14393 (Windows Server 2016 Standard Evaluation 6.3)&#xa;  Computer name: WEB01"><elem key="os">Windows Server 2016 Standard Evaluation 14393</elem>
+<elem key="lanmanager">Windows Server 2016 Standard Evaluation 6.3</elem>
+<elem key="server">WEB01\x00</elem>
+</script></hostscript>
+</host>
+<host><status state="up" reason="echo-reply"/><address addr="192.0.2.12" addrtype="ipv4"/>
+<ports>
+<port protocol="tcp" portid="3389"><state state="open" reason="syn-ack"/><service name="ms-wbt-server" product="Microsoft Terminal Services" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service><script id="rdp-ntlm-info" output="&#xa;  Product_Version: 10.0.14393"><elem key="Product_Version">10.0.14393</elem>
+</script></port>
+</ports></host>
+<host><status state="up" reason="echo-reply"/><address addr="192.0.2.13" addrtype="ipv4"/><hostnames><hostname name="wkstn01.example.test" type="PTR"/></hostnames>
+<ports>
+<port protocol="tcp" portid="3389"><state state="open" reason="syn-ack"/><service name="ms-wbt-server" product="Microsoft Terminal Services" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service><script id="rdp-ntlm-info" output="&#xa;  Product_Version: 10.0.22621"><elem key="Product_Version">10.0.22621</elem>
+</script></port>
+</ports></host>
+<host><status state="up" reason="echo-reply"/><address addr="192.0.2.14" addrtype="ipv4"/>
+<ports>
+<port protocol="tcp" portid="3389"><state state="open" reason="syn-ack"/><service name="ms-wbt-server" product="Microsoft Terminal Services" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service><script id="rdp-ntlm-info" output="&#xa;  Product_Version: 10.0.17763"><elem key="Product_Version">10.0.17763</elem>
+</script></port>
+</ports>
+<hostscript><script id="smb-os-discovery" output="&#xa;  OS: Windows Server 2016 Standard 14393"><elem key="os">Windows Server 2016 Standard 14393</elem>
+</script></hostscript>
+</host>
+<host><status state="up" reason="echo-reply"/><address addr="192.0.2.15" addrtype="ipv4"/>
+<ports>
+<port protocol="tcp" portid="3389"><state state="open" reason="syn-ack"/><service name="ms-wbt-server" product="Microsoft Terminal Services" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service><script id="rdp-ntlm-info" output="&#xa;  Product_Version: 10.0.29999"><elem key="Product_Version">10.0.29999</elem>
+</script></port>
+</ports></host>
+<runstats><finished time="1791389500" elapsed="100"/><hosts up="6" down="0" total="6"/></runstats>
+</nmaprun>

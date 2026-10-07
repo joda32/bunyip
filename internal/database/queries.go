@@ -403,3 +403,33 @@ WHERE distro = ? AND release = ?`, distro, release).Scan(&l.EOL, &l.ExtendedUnti
 	}
 	return &l, nil
 }
+
+// WindowsBuild maps a Windows build number to a release and its NVD CPEs.
+type WindowsBuild struct {
+	Build   int
+	Kind    string // "server" or "client"
+	Name    string
+	CPEs    []string
+	EOL     string // end of support for every edition
+	Support string
+}
+
+// WindowsBuilds loads the curated build map (small table).
+func (s *Store) WindowsBuilds(ctx context.Context) ([]WindowsBuild, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT build, kind, name, cpes, eol, support FROM windows_builds ORDER BY build, kind`)
+	if err != nil {
+		return nil, wrapQueryErr(err)
+	}
+	defer rows.Close()
+	var out []WindowsBuild
+	for rows.Next() {
+		var b WindowsBuild
+		var cpes string
+		if err := rows.Scan(&b.Build, &b.Kind, &b.Name, &cpes, &b.EOL, &b.Support); err != nil {
+			return nil, err
+		}
+		b.CPEs = strings.Fields(cpes)
+		out = append(out, b)
+	}
+	return out, wrapQueryErr(rows.Err())
+}

@@ -103,7 +103,7 @@ func TestQueryJSONFromCPE22(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, r.stdout)
 	}
-	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "7" || doc.Database.Dataset != "synthetic-fixture" {
+	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "8" || doc.Database.Dataset != "synthetic-fixture" {
 		t.Errorf("unexpected envelope: %+v", doc)
 	}
 	res := doc.Result
@@ -209,7 +209,7 @@ func TestInfoVerifyStats(t *testing.T) {
 	db := initDB(t)
 
 	r := cli("--db", db, "info")
-	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    7") ||
+	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    8") ||
 		!strings.Contains(r.stdout, "synthetic-fixture") || !strings.Contains(r.stdout, "Data age:") ||
 		!strings.Contains(r.stdout, "CVEs without CPE applicability data: 1 of 13") {
 		t.Errorf("info: exit %d\n%s%s", r.code, r.stdout, r.stderr)
@@ -685,5 +685,40 @@ func TestNSEScriptWithNmap(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Errorf("nmap output missing %q:\n%s", want, s)
 		}
+	}
+}
+
+func TestNmapWindowsBuilds(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "vulndb.sqlite")
+	if r := cli("--db", db, "db", "init", "--fixture", "../../testdata/fixtures/windows.json"); r.code != exitOK {
+		t.Fatalf("db init: %s", r.stderr)
+	}
+	r := cli("--db", db, "nmap", "../../testdata/nmap/windows-hosts.xml")
+	if r.code != exitOK {
+		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	}
+	for _, want := range []string{
+		"Windows: 4 host(s) assessed at build level (patch level not visible; CVEs apply unless patched)",
+		"Windows: Windows Server 2022 (build 10.0.20348) [HIGH]",
+		"Evidence: rdp-ntlm-info on 3389/tcp Product_Version 10.0.20348",
+		"Server release because: Microsoft Windows Kerberos on 88/tcp (domain controllers run Windows Server)",
+		"1 CVEs apply unless patched: 1 in CISA KEV, 0 with public exploit evidence, 1 critical; 2 undetermined",
+		"CVE-0000-0904    CRITICAL  CVSS 9.8  KEV added 2024-05-14  [ransomware]",
+		"Windows: Windows 10 1607 (build 10.0.14393) [MEDIUM]",
+		"Windows: Windows 11 22H2 (build 10.0.22621) [HIGH]",
+		"END OF SUPPORT: support ended 2025-10-14",
+		"Not assessed: the host reported different Windows builds (17763 and 14393).",
+		"Not assessed: build 29999 is not in the Windows build map",
+		"Build-level assessment: the patch level is not visible",
+	} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("missing %q in:\n%s", want, r.stdout)
+		}
+	}
+
+	r = cli("--db", db, "nmap", "--format", "json", "../../testdata/nmap/windows-hosts.xml")
+	if r.code != exitOK || !strings.Contains(r.stdout, `"windows_hosts": 4`) ||
+		!strings.Contains(r.stdout, `"release": "Windows Server 2016"`) || !strings.Contains(r.stdout, `"cve": "CVE-0000-0901"`) {
+		t.Errorf("json: exit %d\n%s", r.code, r.stdout)
 	}
 }

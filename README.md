@@ -28,7 +28,7 @@ exact matching rules are in [`docs/matching.md`](docs/matching.md).
 - Does not run, download or ship exploit code; it only records that exploit
   references exist.
 
-## Status: milestone 8
+## Status: milestone 9
 
 Implemented:
 - **Query engine (Go):** CPE 2.2/2.3 parsing and normalisation, version
@@ -47,6 +47,11 @@ Implemented:
   each candidate CVE is checked against the distribution's own fix data (FIXED /
   VULNERABLE / FIX_AVAILABLE / NO_FIX). This removes backport false positives
   and adds CVEs NVD lacks data for. See [docs/matching.md](docs/matching.md#9-distribution-advisories-internaldistro).
+- **Windows hosts at build level:** `vulndb nmap` reads the build that
+  `rdp-ntlm-info` / `smb-os-discovery` report (`10.0.20348`), maps it to the
+  release's NVD identities (`data/windows_builds.json`) and lists the CVEs that
+  apply unless the host is patched, KEV entries first, with end-of-support
+  status. See [docs/matching.md](docs/matching.md#10-windows-build-level-assessment-internalwindows).
 - **Updater (Python, [`updater/`](updater/README.md)):** builds a real database
   from the NVD CVE JSON 2.0 feeds, the CISA KEV catalogue, five distributions'
   advisories (OSV.dev exports), `data/aliases.json` and
@@ -194,7 +199,7 @@ compatibility:
       }
     ],
     "warnings": [
-      "Matching is based on upstream product/version data. Distribution backported security fixes are only evaluated where a distribution verdict is shown (currently Ubuntu).",
+      "Matching is based on upstream product/version data. Distribution backported security fixes are only evaluated where a distribution verdict is shown (Ubuntu, Debian and Red Hat-family packages).",
       "Database contains SYNTHETIC test fixture data, not real vulnerability information."
     ]
   }
@@ -253,6 +258,28 @@ Each open port is one of:
 - `NOT_PROBED`: Nmap only guessed the service from the port number.
 
 OS and hardware CPEs are listed but never queried as if they were the service.
+Windows hosts are assessed separately, at build level, when the scan includes
+`rdp-ntlm-info` or `smb-os-discovery` output (`nmap -sV -sC`):
+
+```text
+192.0.2.10 (dc01.example.test)
+  Windows: Windows Server 2022 (build 10.0.20348) [HIGH]
+    Evidence: rdp-ntlm-info on 3389/tcp Product_Version 10.0.20348
+    Server release because: Microsoft Windows Kerberos on 88/tcp (domain controllers run Windows Server)
+    Support: mainstream support until 2026-10-13; extended support until 2031-10-14
+    3957 CVEs apply unless patched: 107 in CISA KEV, 29 with public exploit evidence, 129 critical; 11 undetermined
+    KEV, most recently added first:
+    CVE-2026-85880   HIGH      CVSS 7.8  KEV added 2026-09-08
+    CVE-2026-33824   CRITICAL  CVSS 9.8  KEV added 2026-08-18
+    ...
+```
+
+The patch level (the update revision) is not visible to an unauthenticated
+scan, so these are the release's CVEs that apply *unless patched*, not
+findings. When a build is shared (14393 is Windows Server 2016 and Windows 10
+1607) and nothing on the host tells them apart, both are listed with `MEDIUM`
+confidence.
+
 Flags on a CVE line mark results to review: `CONDITIONAL` (another condition,
 such as a specific OS, was not evaluated), `ransomware` (known use per KEV), and
 `via alias` (found only through a curated alias identity).
@@ -376,9 +403,12 @@ failed verify), `2` usage error (unknown command or flag, unsupported
 - Releases past end of life are flagged (`data/distro_releases.json`): their
   distributions no longer publish advisory data. Example: Debian 11, whose LTS
   ended 2026-08-31.
-- Windows hosts are essentially not assessed. Their services carry only OS
-  CPEs, and patch levels are not visible to an unauthenticated scan (see
-  docs/data-sources.md, "Field trial").
+- Windows hosts are assessed per build, not per patch level. An
+  unauthenticated scan cannot see installed updates, so the result is the
+  release's exposure ("applies unless patched"), not a vulnerability finding.
+  It needs `-sC` (or `--script rdp-ntlm-info,smb-os-discovery`) and works in
+  `vulndb nmap` only, not in the NSE adapter. Windows services themselves
+  (SMB, RDP, LDAP) are still `UNIDENTIFIED`.
 - Debian 11 (LTS) verdicts exist only for CVEs with a DLA/DSA advisory.
   Debian's per-CVE data barely covers LTS, so most other CVEs are `NO_DATA`
   there. On a real bookworm OpenSSH, 26 upstream matches split into FIXED,
@@ -405,10 +435,13 @@ internal/identity/   candidate identities: aliases, platform CPEs, distro detect
 internal/distro/     distribution advisory verdicts (release inference, dpkg comparison)
 internal/matcher/    rule evaluation, per-CVE aggregation, enrichment, ordering
 internal/nmap/       Nmap XML parser and scan assessment
+internal/windows/    Windows build-level assessment (build evidence -> release CPEs)
 internal/output/     text and JSON rendering
 internal/bundle/     signed transport bundles (create, verify, atomic import)
 data/aliases.json    curated vendor/product aliases (loaded into the database)
 data/distro_packages.json  curated CPE -> distribution source package map
+data/distro_releases.json  curated distribution release lifecycle (end of life)
+data/windows_builds.json   curated Windows build -> release, NVD CPEs, lifecycle
 schema/schema.sql    database schema (embedded in the binary)
 updater/             Python updater: NVD + KEV -> vulndb.sqlite
 testdata/fixtures/   synthetic test data

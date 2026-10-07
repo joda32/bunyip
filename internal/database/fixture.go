@@ -27,6 +27,16 @@ type Fixture struct {
 	DistroVersions  []FixtureDistroVersion  `json:"distro_package_versions"`
 	DistroAdvisory  []FixtureDistroAdvisory `json:"distro_advisories"`
 	DistroReleases  []FixtureDistroRelease  `json:"distro_releases"`
+	WindowsBuilds   []FixtureWindowsBuild   `json:"windows_builds"`
+}
+
+type FixtureWindowsBuild struct {
+	Build   int      `json:"build"`
+	Kind    string   `json:"kind"`
+	Name    string   `json:"name"`
+	CPEs    []string `json:"cpes"` // full CPE 2.3 names
+	EOL     string   `json:"eol"`
+	Support string   `json:"support"`
 }
 
 type FixtureDistroRelease struct {
@@ -196,6 +206,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`,
 	}
 	if err := importDistro(ctx, tx, f); err != nil {
 		return err
+	}
+	for _, w := range f.WindowsBuilds {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO windows_builds (build, kind, name, cpes, eol, support, source) VALUES (?, ?, ?, ?, ?, ?, 'fixture')`,
+			w.Build, w.Kind, w.Name, strings.Join(w.CPEs, " "), w.EOL, w.Support); err != nil {
+			return fmt.Errorf("windows build %d: %w", w.Build, err)
+		}
 	}
 	return tx.Commit()
 }

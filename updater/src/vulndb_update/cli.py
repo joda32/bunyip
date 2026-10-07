@@ -5,7 +5,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, aliases, build, fetch, kev, jsonstream, osv
+from . import __version__, aliases, build, fetch, kev, jsonstream, osv, windows
 
 # src/vulndb_update/cli.py -> repository root is three levels up.
 _REPO = Path(__file__).resolve().parents[3]
@@ -13,6 +13,7 @@ _REPO_SCHEMA = _REPO / "schema" / "schema.sql"
 _REPO_ALIASES = _REPO / "data" / "aliases.json"
 _REPO_PACKAGES = _REPO / "data" / "distro_packages.json"
 _REPO_RELEASES = _REPO / "data" / "distro_releases.json"
+_REPO_WINDOWS = _REPO / "data" / "windows_builds.json"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="curated CPE -> distro package map (default: data/distro_packages.json)")
     b.add_argument("--distro-releases", type=Path, default=_REPO_RELEASES,
                    help="curated release lifecycle (default: data/distro_releases.json)")
+    b.add_argument("--windows-builds", type=Path, default=_REPO_WINDOWS,
+                   help="curated Windows build map (default: data/windows_builds.json)")
     b.add_argument("--allow-small", action="store_true",
                    help="skip the completeness floors (for tests and partial builds)")
     b.add_argument("--quiet", action="store_true")
@@ -65,6 +68,7 @@ def _build(args, log) -> int:
     alias_rows, _ = aliases.load(args.aliases)
     package_map = osv.load_package_map(args.distro_packages)
     releases = osv.load_releases(args.distro_releases)
+    windows_builds = windows.load(args.windows_builds)
     wanted = [] if args.no_distro else (args.distro or sorted(osv.DISTROS))
     start = time.monotonic()
     distros = []
@@ -89,7 +93,8 @@ def _build(args, log) -> int:
     log(f"Building {args.out}")
     stats = build.build(args.out, args.schema.read_text(encoding="utf-8"), feeds, kev_path,
                         allow_small=args.allow_small, log=log, alias_rows=alias_rows,
-                        distros=distros, package_map=package_map, releases=releases)
+                        distros=distros, package_map=package_map, releases=releases,
+                        windows_builds=windows_builds)
     log(f"Done in {time.monotonic() - start:.0f}s: {stats.loaded} CVEs loaded, "
         f"{stats.replaced} updated by overlay, {stats.unchanged} unchanged, "
         f"{stats.rejected} rejected, {len(stats.skipped_rules)} unparseable rules skipped")

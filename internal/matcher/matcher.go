@@ -55,7 +55,7 @@ var ErrInsufficientIdentity = errors.New("insufficient identity information")
 
 // Warning shown on every result until distro advisory data is supported.
 const backportWarning = "Matching is based on upstream product/version data. Distribution backported " +
-	"security fixes are only evaluated where a distribution verdict is shown (currently Ubuntu)."
+	"security fixes are only evaluated where a distribution verdict is shown (Ubuntu, Debian and Red Hat-family packages)."
 
 // Warning shown for real datasets: since April 2026 NVD adds CPE
 // applicability data to only a minority of new CVEs.
@@ -371,6 +371,23 @@ func (e *Engine) buildVulnerabilities(ctx context.Context, res *Result) error {
 		return err
 	}
 	res.Vulnerabilities = append(res.Vulnerabilities, vs...)
+	return nil
+}
+
+// Reaggregate rebuilds res.Vulnerabilities from res.Evaluations after a
+// caller has adjusted evaluations with knowledge the engine lacks (see
+// package windows). Distribution verdicts are not re-applied, so it is only
+// for results queried without distribution input.
+func (e *Engine) Reaggregate(ctx context.Context, res *Result) error {
+	if res.Distro != nil {
+		return fmt.Errorf("reaggregate: result has distribution verdicts")
+	}
+	res.Vulnerabilities = []Vulnerability{}
+	if err := e.buildVulnerabilities(ctx, res); err != nil {
+		return err
+	}
+	res.count()
+	sortVulnerabilities(res.Vulnerabilities)
 	return nil
 }
 

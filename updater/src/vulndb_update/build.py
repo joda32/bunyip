@@ -73,14 +73,14 @@ def feed_order(feeds: list[Feed]) -> list[Feed]:
 def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
           allow_small: bool = False, log=print, alias_rows: list | None = None,
           distros: list[DistroInput] | None = None, package_map: list | None = None,
-          releases: list | None = None) -> Stats:
+          releases: list | None = None, windows_builds: list | None = None) -> Stats:
     out = Path(out)
     tmp = out.with_name(f".{out.name}.building")
     tmp.unlink(missing_ok=True)
     conn = sqlite3.connect(tmp, isolation_level=None)
     try:
         stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows or [],
-                       distros or [], package_map or [], releases or [])
+                       distros or [], package_map or [], releases or [], windows_builds or [])
         conn.close()
         os.replace(tmp, out)
         return stats
@@ -90,7 +90,8 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
         raise
 
 
-def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, distros, package_map, releases) -> Stats:
+def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, distros, package_map, releases,
+           windows_builds) -> Stats:
     # The file is private until renamed, so durability during the load is
     # unnecessary; integrity is checked explicitly before the rename.
     conn.execute("PRAGMA journal_mode = OFF")
@@ -125,6 +126,9 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, dist
         "INSERT INTO distro_releases (distro, release, codename, eol, extended_until, extended, source)"
         " VALUES (?, ?, ?, ?, ?, ?, ?)",
         [(r.distro, r.release, r.codename, r.eol, r.extended_until, r.extended, r.source) for r in releases])
+    conn.executemany(
+        "INSERT INTO windows_builds (build, kind, name, cpes, eol, support, source) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [(w.build, w.kind, w.name, w.cpes, w.eol, w.support, w.source) for w in windows_builds])
     conn.execute("COMMIT")
     _write_metadata(conn, ordered, catalogue, stats, distros)
     _self_check(conn, allow_small, bool(distros))

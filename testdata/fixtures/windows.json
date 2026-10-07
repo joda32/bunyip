@@ -1,0 +1,322 @@
+{
+ "metadata": {
+  "dataset": "synthetic-fixture",
+  "database_version": "fixture-windows-1",
+  "notice": "SYNTHETIC TEST DATA for build-level Windows assessment. CVE-0000-09xx records, KEV and exploit entries are fabricated."
+ },
+ "cves": [
+  {
+   "cve_id": "CVE-0000-0901",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Affects Windows Server 2016 (release named without a version range). KEV.",
+   "cvss_v3_score": 8.8,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_server_2016:-:*:*:*:*:*:*:*",
+         "vulnerable": true
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0902",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Affects Windows Server 2016 before build 10.0.14393.7000. Exploit reference.",
+   "cvss_v3_score": 9.8,
+   "severity": "CRITICAL",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_server_2016:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "10.0.14393.7000"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0903",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Affects only the Windows Server 2016 1903 Semi-Annual Channel release.",
+   "cvss_v3_score": 7.8,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_server_2016:1903:*:*:*:*:*:*:*",
+         "vulnerable": true
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0904",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Affects Windows Server 2022 before build 10.0.20348.2000. KEV, ransomware.",
+   "cvss_v3_score": 9.8,
+   "severity": "CRITICAL",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_server_2022:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "10.0.20348.2000"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0905",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Affects Windows Server 2022 Datacenter edition only.",
+   "cvss_v3_score": 5.5,
+   "severity": "MEDIUM",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_server_2022:-:*:*:*:datacenter:*:*:*",
+         "vulnerable": true
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0906",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Affects Windows 10 1607 x86 only.",
+   "cvss_v3_score": 7.0,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_10_1607:*:*:*:*:*:*:x86:*",
+         "vulnerable": true,
+         "version_end_excluding": "10.0.14393.7000"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0907",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Affects Windows 10 1607 x64 before build 10.0.14393.7000.",
+   "cvss_v3_score": 7.0,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_10_1607:*:*:*:*:*:*:x64:*",
+         "vulnerable": true,
+         "version_end_excluding": "10.0.14393.7000"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0908",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Affects Windows 11 22H2 before build 10.0.22621.1000. KEV.",
+   "cvss_v3_score": 7.8,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_11_22h2:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_start_including": "10.0.22621.0",
+         "version_end_excluding": "10.0.22621.1000"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0909",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Introduced in Windows Server 2022 update 10.0.20348.1000, fixed in 10.0.20348.2000.",
+   "cvss_v3_score": 7.5,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_server_2022:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_start_including": "10.0.20348.1000",
+         "version_end_excluding": "10.0.20348.2000"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0910",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Windows 11 22H2 rule whose range ends at a 21H2 build (mirrors an NVD data error).",
+   "cvss_v3_score": 7.8,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_11_22h2:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "10.0.22000.1413"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "kev": [
+  {
+   "cve_id": "CVE-0000-0901",
+   "vendor_project": "Microsoft",
+   "product": "Windows",
+   "vulnerability_name": "[SYNTHETIC] Windows Server 2016 flaw",
+   "date_added": "2023-02-14",
+   "due_date": "2023-03-07",
+   "known_ransomware": "Unknown",
+   "notes": "Synthetic fixture entry."
+  },
+  {
+   "cve_id": "CVE-0000-0904",
+   "vendor_project": "Microsoft",
+   "product": "Windows",
+   "vulnerability_name": "[SYNTHETIC] Windows Server 2022 flaw",
+   "date_added": "2024-05-14",
+   "due_date": "2024-06-04",
+   "known_ransomware": "Known",
+   "notes": "Synthetic fixture entry."
+  },
+  {
+   "cve_id": "CVE-0000-0908",
+   "vendor_project": "Microsoft",
+   "product": "Windows",
+   "vulnerability_name": "[SYNTHETIC] Windows 11 flaw",
+   "date_added": "2023-06-13",
+   "due_date": "2023-07-04",
+   "known_ransomware": "Unknown",
+   "notes": "Synthetic fixture entry."
+  }
+ ],
+ "exploit_evidence": [
+  {
+   "cve_id": "CVE-0000-0902",
+   "source": "nvd-reference",
+   "reference": "https://example.invalid/exploit/0902",
+   "reference_type": "exploit-reference",
+   "verified": false
+  }
+ ],
+ "windows_builds": [
+  {
+   "build": 14393,
+   "kind": "server",
+   "name": "Windows Server 2016",
+   "cpes": [
+    "cpe:2.3:o:microsoft:windows_server_2016:-:*:*:*:*:*:*:*"
+   ],
+   "eol": "2027-01-12",
+   "support": "extended support until 2027-01-12"
+  },
+  {
+   "build": 14393,
+   "kind": "client",
+   "name": "Windows 10 1607",
+   "cpes": [
+    "cpe:2.3:o:microsoft:windows_10_1607:-:*:*:*:*:*:*:*",
+    "cpe:2.3:o:microsoft:windows_10:1607:*:*:*:*:*:*:*"
+   ],
+   "eol": "2026-10-13",
+   "support": "Enterprise LTSB 2016 until 2026-10-13"
+  },
+  {
+   "build": 20348,
+   "kind": "server",
+   "name": "Windows Server 2022",
+   "cpes": [
+    "cpe:2.3:o:microsoft:windows_server_2022:-:*:*:*:*:*:*:*"
+   ],
+   "eol": "2031-10-14",
+   "support": "extended support until 2031-10-14"
+  },
+  {
+   "build": 22621,
+   "kind": "client",
+   "name": "Windows 11 22H2",
+   "cpes": [
+    "cpe:2.3:o:microsoft:windows_11_22h2:-:*:*:*:*:*:*:*"
+   ],
+   "eol": "2025-10-14",
+   "support": "support ended 2025-10-14"
+  }
+ ]
+}

@@ -178,9 +178,23 @@ CREATE TABLE distro_releases (
     PRIMARY KEY (distro, release)
 ) WITHOUT ROWID;
 
+-- Curated Windows build map (data/windows_builds.json): the build number an
+-- unauthenticated scan can see (e.g. rdp-ntlm-info Product_Version
+-- 10.0.20348) -> the release and the NVD CPE identities that describe it.
+CREATE TABLE windows_builds (
+    build   INTEGER NOT NULL,
+    kind    TEXT NOT NULL CHECK (kind IN ('server', 'client')),
+    name    TEXT NOT NULL,          -- e.g. 'Windows Server 2022'
+    cpes    TEXT NOT NULL,          -- space-separated CPE 2.3 names (version = release, not build)
+    eol     TEXT NOT NULL,          -- end of support for every edition (YYYY-MM-DD)
+    support TEXT NOT NULL,          -- edition-specific support summary
+    source  TEXT NOT NULL,
+    PRIMARY KEY (build, kind)
+) WITHOUT ROWID;
+
 CREATE INDEX idx_distro_adv_lookup   ON distro_advisories (distro, package, release, cve_id);
 CREATE INDEX idx_distro_adv_cve      ON distro_advisories (cve_id);
 CREATE INDEX idx_distro_pkgver_up    ON distro_package_versions (distro, package, upstream);
 CREATE INDEX idx_distro_packages_cpe ON distro_packages (cpe_part, cpe_vendor, cpe_product);
 
-INSERT INTO database_metadata (key, value) VALUES ('schema_version', '7');
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '8');

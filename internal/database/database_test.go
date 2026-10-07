@@ -266,6 +266,32 @@ func TestStats(t *testing.T) {
 	}
 }
 
+func TestVerifyDetectsBadWindowsBuild(t *testing.T) {
+	path := newFixtureDB(t)
+	rw, err := openRW(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rw.Exec(`INSERT INTO windows_builds (build, kind, name, cpes, eol, support, source)
+		VALUES (20348, 'server', 'Windows Server 2022', 'cpe:2.3:o:microsoft:windows_server_2022:*:*:*:*:*:*:*:*', '2031-10-14', 'x', 'test')`); err != nil {
+		t.Fatal(err)
+	}
+	rw.Close()
+
+	s, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	checks, err := s.Verify(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasStatus(checks, "windows build map", CheckFail) {
+		t.Errorf("version ANY in the build map not detected: %+v", checks)
+	}
+}
+
 func TestImportRejectsBadCriteria(t *testing.T) {
 	ctx := context.Background()
 	s, err := Create(ctx, filepath.Join(t.TempDir(), "bad.sqlite"))

@@ -37,6 +37,15 @@ type Host struct {
 	Hostnames []string `json:"hostnames"`
 	OSCPEs    []string `json:"os_cpes"` // from -O OS detection
 	Ports     []Port   `json:"-"`
+	Scripts   []Script `json:"-"` // host script results (e.g. smb-os-discovery)
+}
+
+// Script is an NSE script result: its text output and top-level elements
+// (e.g. rdp-ntlm-info's Product_Version).
+type Script struct {
+	ID     string
+	Output string
+	Elems  map[string]string
 }
 
 // Address returns the preferred address (IPv4, then IPv6, then any).
@@ -53,6 +62,7 @@ type Port struct {
 	PortID   int
 	State    string
 	Service  *Service
+	Scripts  []Script
 }
 
 // Open reports whether the port state is open (including "open|filtered").
@@ -76,6 +86,25 @@ type Service struct {
 func (s *Service) Probed() bool { return s != nil && s.Method == "probed" }
 
 // XML shapes (only the parts used).
+type xmlScript struct {
+	ID     string `xml:"id,attr"`
+	Output string `xml:"output,attr"`
+	Elems  []struct {
+		Key   string `xml:"key,attr"`
+		Value string `xml:",chardata"`
+	} `xml:"elem"`
+}
+
+func (x xmlScript) script() Script {
+	s := Script{ID: x.ID, Output: x.Output, Elems: map[string]string{}}
+	for _, e := range x.Elems {
+		if e.Key != "" {
+			s.Elems[e.Key] = strings.TrimSpace(e.Value)
+		}
+	}
+	return s
+}
+
 type xmlHost struct {
 	Status struct {
 		State string `xml:"state,attr"`
@@ -104,8 +133,10 @@ type xmlHost struct {
 			Conf      int      `xml:"conf,attr"`
 			CPEs      []string `xml:"cpe"`
 		} `xml:"service"`
+		Scripts []xmlScript `xml:"script"`
 	} `xml:"ports>port"`
-	OSCPEs []string `xml:"os>osmatch>osclass>cpe"`
+	OSCPEs      []string    `xml:"os>osmatch>osclass>cpe"`
+	HostScripts []xmlScript `xml:"hostscript>script"`
 }
 
 // Parse reads an Nmap XML document of at most maxBytes bytes.
@@ -203,7 +234,13 @@ func convertHost(xh xmlHost) Host {
 			}
 			p.Service = svc
 		}
+		for _, xs := range xp.Scripts {
+			p.Scripts = append(p.Scripts, xs.script())
+		}
 		h.Ports = append(h.Ports, p)
+	}
+	for _, xs := range xh.HostScripts {
+		h.Scripts = append(h.Scripts, xs.script())
 	}
 	return h
 }

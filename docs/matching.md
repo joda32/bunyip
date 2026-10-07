@@ -298,3 +298,78 @@ the package.
 in several advisories. The earliest fixed version per release and stream is
 kept, because later advisories re-list CVEs. For example, AlmaLinux
 `ALSA-2026:69266` re-lists CVE-2023-38408, which was fixed in `ALSA-2023:4419`.
+
+## 10. Windows build-level assessment (`internal/windows`)
+
+Windows services carry only `cpe:/o:microsoft:windows` (or no CPE), so they
+cannot be assessed per port. An unauthenticated scan can, however, see the
+host's **build**. It cannot see the **patch level** (the update revision, or
+UBR, as in `20348.2849`). `vulndb nmap` uses the build to list the CVEs of the
+host's release, which apply *unless the host is patched*. This is an inventory
+of exposure, not a finding of vulnerability.
+
+**Evidence** (per host, from `-sC`/`--script` output in the XML):
+- `Product_Version` from any `*-ntlm-info` script (`rdp-ntlm-info`,
+  `http-ntlm-info`, `smtp-ntlm-info`, …), e.g. `10.0.20348`;
+- the build at the end of `smb-os-discovery`'s `os` string or of the SMB
+  service fingerprint, e.g. `Windows Server 2016 Standard Evaluation 14393`
+  (the release year is not mistaken for a build);
+- server or client: the word "Server" (or a client name such as "Windows 10")
+  in those strings, or Active Directory LDAP/Kerberos services on the host,
+  since domain controllers run only on Windows Server.
+
+If the host reports different builds, it is `CONFLICT` and not assessed. A
+build missing from the map is `UNMAPPED`.
+
+**Release.** The curated `windows_builds` table (`data/windows_builds.json`)
+maps build and kind to a release name, its NVD CPEs, and lifecycle dates.
+Several builds are shared: 14393 is Windows Server 2016 and Windows 10 1607,
+17763 is Server 2019 and Windows 10 1809, 26100 is Server 2025 and Windows 11
+24H2. When the scan shows no kind, each release is listed with `MEDIUM`
+confidence; a single release is `HIGH`.
+
+**Identities.** NVD encodes the release in the CPE *version*, and the curated
+map pins it:
+- `windows_server_2016:-` is the Long-Term Servicing Channel release, which
+  build 14393 runs. The same product also holds Semi-Annual Channel releases
+  (`1709` … `20h2`), which a 14393 host must not inherit;
+- clients use both NVD spellings, e.g. `windows_10_1607:-` and
+  `windows_10:1607`.
+
+Each identity is queried twice:
+1. as curated, which matches older rules that name the release
+   (`windows_server_2016:-`, no range);
+2. with the version set to the unpatched build (`10.0.14393`), which matches
+   newer rules written as ranges ending at the fixing update
+   (`< 10.0.14393.7428`).
+
+A CVE is listed when either query matches it, with two refinements:
+- range rules are decided by the build query alone. The release query cannot
+  evaluate a range, so it would mark every one UNKNOWN, including NVD's
+  occasional mistaken ranges (some `windows_11_22h2` rules end at 21H2 builds,
+  `< 10.0.22000.1413`, which a 22621 build is not in);
+- a range that *starts* at an update of the observed build
+  (`10.0.20348.3270 < v < 10.0.20348.3328`) is a CVE introduced by that
+  update. The unpatched build is outside it, but the host's unknown patch
+  level may be inside, so it is UNKNOWN rather than NO_MATCH.
+
+`target_hw` is `x64`: Windows
+Server has shipped only for x64 since 2008 R2, and clients are assumed to be
+x64 (stated in the output), since otherwise the x64/x86/ARM64 rule variants
+would all be undetermined. Rules that name a specific edition (`datacenter`,
+`azure`) are counted as undetermined.
+
+**Output.** Per host:
+- release, build, confidence and evidence;
+- support status from the map; a release whose `eol` date has passed is
+  flagged `END OF SUPPORT`;
+- the number of applicable CVEs, with KEV, exploit and critical counts;
+- KEV entries, most recently added first, since older ones are more likely
+  patched.
+
+JSON lists every applicable CVE compactly under `hosts[].windows[]`.
+
+The NSE adapter does not do this: a port script cannot read other scripts'
+results. Run `vulndb nmap` on the `-oX` output of a scan that included
+`rdp-ntlm-info` or `smb-os-discovery` (both are in Nmap's `default` category,
+so `-sC` is enough).

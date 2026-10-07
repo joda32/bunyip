@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"offline-vulndb/internal/distro"
 	"offline-vulndb/internal/matcher"
 	"offline-vulndb/internal/nmap"
 	"offline-vulndb/internal/version"
+	"offline-vulndb/internal/windows"
 )
 
 type nmapDocument struct {
@@ -38,6 +40,13 @@ func WriteNmapText(w io.Writer, r *nmap.Report) error {
 	if s.EndOfLife > 0 {
 		p.f("END OF LIFE: %d service(s) run on a distribution release past its end of life (no further security updates)\n", s.EndOfLife)
 	}
+	if s.WindowsHosts > 0 {
+		p.f("Windows: %d host(s) assessed at build level (patch level not visible; CVEs apply unless patched)", s.WindowsHosts)
+		if s.WindowsEOL > 0 {
+			p.f(", %d on a release past its end of support", s.WindowsEOL)
+		}
+		p.f("\n")
+	}
 	if s.DistroFixed > 0 || s.DistroOnly > 0 {
 		p.f("Distribution advisories: %d upstream matches already fixed in the installed/released package, "+
 			"%d findings only the distribution data shows\n", s.DistroFixed, s.DistroOnly)
@@ -54,6 +63,9 @@ func WriteNmapText(w io.Writer, r *nmap.Report) error {
 		}
 		if h.DistroRelease != "" {
 			p.f("  Distribution release (from an exact package version on this host): %s\n", h.DistroRelease)
+		}
+		for _, a := range h.Windows {
+			writeWindowsText(p, a)
 		}
 		if len(h.Services) == 0 {
 			p.f("  no open ports\n")
@@ -165,4 +177,76 @@ func flags(v matcher.Vulnerability, r *matcher.Result) string {
 		return ""
 	}
 	return "  [" + strings.Join(f, "; ") + "]"
+}
+
+// windowsKEVListed is how many KEV entries the text report lists per release.
+const windowsKEVListed = 10
+
+func writeWindowsText(p *printer, a windows.Assessment) {
+	switch a.Status {
+	case windows.Assessed:
+		p.f("  Windows: %s (build %s) [%s]\n", a.Release, a.ProductVersion, a.Confidence)
+	default:
+		p.f("  Windows: build %s\n", a.ProductVersion)
+	}
+	p.f("    Evidence: %s\n", wrap(strings.Join(a.Evidence, "; "), 14, 100))
+	if a.KindEvidence != "" {
+		p.f("    %s: %s\n", kindLabel(a.Kind), wrap(a.KindEvidence, 6, 100))
+	}
+	if a.Status != windows.Assessed {
+		for _, n := range a.Notes {
+			p.f("    %s\n", wrap(n, 4, 100))
+		}
+		return
+	}
+	if a.EndOfLife {
+		p.f("    END OF SUPPORT: %s\n", wrap(a.Support, 6, 100))
+	} else {
+		p.f("    Support: %s\n", wrap(a.Support, 6, 100))
+	}
+	p.f("    %d CVEs apply unless patched: %d in CISA KEV, %d with public exploit evidence, %d critical",
+		a.Applicable, a.KnownExploited, a.PublicExploit, a.Critical)
+	if a.Undetermined > 0 {
+		p.f("; %d undetermined", a.Undetermined)
+	}
+	p.f("\n")
+	var kev []windows.CVERef
+	for _, v := range a.Vulnerabilities {
+		if v.KnownExploited {
+			kev = append(kev, v)
+		}
+	}
+	// Most recently added first: older entries are more likely patched.
+	slices.SortStableFunc(kev, func(x, y windows.CVERef) int { return strings.Compare(y.KEVDateAdded, x.KEVDateAdded) })
+	if len(kev) > 0 {
+		p.f("    KEV, most recently added first:\n")
+	}
+	for i, v := range kev {
+		if i == windowsKEVListed {
+			p.f("    ... %d more KEV entries (see --format json)\n", len(kev)-i)
+			break
+		}
+		cvss := "CVSS n/a"
+		if v.CVSS != nil {
+			cvss = fmt.Sprintf("CVSS %.1f", *v.CVSS)
+		}
+		extra := ""
+		if v.KnownRansomware {
+			extra = "  [ransomware]"
+		}
+		p.f("    %-16s %-9s %-9s KEV added %s%s\n", v.CVE, orDash(v.Severity), cvss, orDash(v.KEVDateAdded), extra)
+	}
+	for _, n := range a.Notes {
+		if n == windows.PatchNote {
+			continue // stated once in the report notes
+		}
+		p.f("    Note: %s\n", wrap(n, 10, 100))
+	}
+}
+
+func kindLabel(kind string) string {
+	if kind == windows.Server {
+		return "Server release because"
+	}
+	return "Client release because"
 }

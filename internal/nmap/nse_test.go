@@ -12,13 +12,18 @@ import (
 
 func fixtureEngine(t *testing.T) *matcher.Engine {
 	t.Helper()
+	return fixtureEngineFrom(t, "../../testdata/fixtures/synthetic.json")
+}
+
+func fixtureEngineFrom(t *testing.T, fixture string) *matcher.Engine {
+	t.Helper()
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "v.sqlite")
 	s, err := database.Create(ctx, path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := database.LoadFixture("../../testdata/fixtures/synthetic.json")
+	f, err := database.LoadFixture(fixture)
 	if err != nil {
 		t.Fatal(err)
 	}

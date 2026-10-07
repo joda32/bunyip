@@ -30,7 +30,7 @@ type Check struct {
 var requiredTables = []string{
 	"database_metadata", "cves", "cve_configurations", "cve_config_nodes",
 	"cve_matches", "exploit_evidence", "kev", "aliases",
-	"distro_advisories", "distro_package_versions", "distro_packages", "distro_releases",
+	"distro_advisories", "distro_package_versions", "distro_packages", "distro_releases", "windows_builds",
 }
 
 // Verify runs integrity and consistency checks. It returns an error only if
@@ -92,6 +92,29 @@ func (s *Store) Verify(ctx context.Context) ([]Check, error) {
 	} else {
 		detail := fmt.Sprintf("%d bad rule(s), e.g. %s", len(bad), bad[0])
 		add("match criteria parse and index columns", CheckFail, detail)
+	}
+
+	// The Windows build map is queried as concrete identities (nmap
+	// build-level assessment); a bad entry would abort that analysis.
+	builds, err := s.WindowsBuilds(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var badBuilds []string
+	for _, b := range builds {
+		for _, c := range b.CPEs {
+			if p, err := cpe.Parse(c); err != nil || p.Part != "o" || !cpe.IsSpecific(p.Version) && p.Version != cpe.NA {
+				badBuilds = append(badBuilds, fmt.Sprintf("%d/%s %s", b.Build, b.Kind, c))
+			}
+		}
+		if len(b.CPEs) == 0 {
+			badBuilds = append(badBuilds, fmt.Sprintf("%d/%s has no CPEs", b.Build, b.Kind))
+		}
+	}
+	if len(badBuilds) == 0 {
+		add("windows build map", CheckOK, fmt.Sprintf("%d builds", len(builds)))
+	} else {
+		add("windows build map", CheckFail, fmt.Sprintf("%d bad entr(ies), e.g. %s", len(badBuilds), badBuilds[0]))
 	}
 	return checks, nil
 }

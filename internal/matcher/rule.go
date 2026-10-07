@@ -20,6 +20,7 @@ type RuleEvaluation struct {
 	CVEID    string         `json:"cve"`
 	Criteria string         `json:"criteria"`
 	Range    string         `json:"version_range,omitempty"` // empty when the rule has no bounds
+	Bounds   version.Range  `json:"-"`
 	Status   version.Status `json:"status"`
 	Reason   string         `json:"reason"`
 	// Conditional is set when the rule only applies together with other
@@ -62,6 +63,7 @@ func evaluateParsed(cmp version.Comparator, supplied cpe.CPE, rule database.Matc
 		CVEID:    rule.CVEID,
 		Criteria: rule.Criteria,
 	}
+	ev.Bounds = rule.Range
 	if !rule.Range.IsEmpty() {
 		ev.Range = rule.Range.String()
 	}
