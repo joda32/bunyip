@@ -117,6 +117,10 @@ CREATE TABLE aliases (
 -- need more (e.g. the updater's overlay deletes by cve_id) create them and
 -- drop them again before the database is finished.
 CREATE INDEX idx_cve_matches_lookup  ON cve_matches (criteria_part, criteria_vendor, criteria_product, vulnerable, version_key);
+-- Sibling nodes of an AND configuration ("X running on platform Y"), for
+-- evaluating the platform condition when the host's OS is known.
+CREATE INDEX idx_config_nodes_config ON cve_config_nodes (configuration_id);
+CREATE INDEX idx_cve_matches_and_node ON cve_matches (node_id) WHERE and_config_siblings = 1;
 CREATE INDEX idx_configurations_cve  ON cve_configurations (cve_id);
 CREATE INDEX idx_exploit_cve         ON exploit_evidence (cve_id);
 CREATE INDEX idx_aliases_observed    ON aliases (observed_vendor, observed_product);
@@ -217,4 +221,4 @@ CREATE INDEX idx_distro_adv_cve      ON distro_advisories (cve_id);
 CREATE INDEX idx_distro_pkgver_up    ON distro_package_versions (distro, package, upstream);
 CREATE INDEX idx_distro_packages_cpe ON distro_packages (cpe_part, cpe_vendor, cpe_product);
 
-INSERT INTO database_metadata (key, value) VALUES ('schema_version', '9');
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '10');

@@ -442,3 +442,21 @@ func refine(res *matcher.Result, cands []identity.Candidate, productVersion stri
 	}
 	return nil
 }
+
+// genericWindows is NVD's release-independent Windows identity: platform
+// conditions written as "running on microsoft:windows" accept any release.
+const genericWindows = "cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:x64:*"
+
+// Platform returns the assessed release as a host platform, for deciding
+// "running on Windows" conditions of the host's other services.
+func (a Assessment) Platform() (matcher.Platform, error) {
+	p := matcher.Platform{Name: a.Release, Family: "windows"}
+	for _, s := range append(slices.Clone(a.CPEs), genericWindows) {
+		c, err := cpe.Parse(s)
+		if err != nil {
+			return p, err
+		}
+		p.Identities = append(p.Identities, c)
+	}
+	return p, nil
+}

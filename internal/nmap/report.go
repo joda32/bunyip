@@ -59,6 +59,10 @@ type Summary struct {
 	EndOfLife      int `json:"end_of_life"`     // assessed services on an end-of-life distribution release
 	WindowsHosts   int `json:"windows_hosts"`   // hosts assessed at Windows build level
 	WindowsEOL     int `json:"windows_eol"`     // ... whose release is past its end of support
+	// (service, CVE) pairs whose "running on" condition the host's Windows
+	// release decided: confirmed (counted as matches) or excluded (not).
+	PlatformConfirmed int `json:"platform_confirmed"`
+	PlatformExcluded  int `json:"platform_excluded"`
 }
 
 type HostReport struct {
@@ -129,15 +133,9 @@ func Analyse(ctx context.Context, scan *Scan, engine *matcher.Engine) (*Report, 
 		if hostDistro.Detected() {
 			hr.Distro = hostDistro.Name
 		}
-		for _, p := range open {
-			rep.Summary.OpenPorts++
-			sr, err := assessPort(ctx, p, engine, cache, hint, hostDistro)
-			if err != nil {
-				return nil, err
-			}
-			rep.Summary.add(sr)
-			hr.Services = append(hr.Services, sr)
-		}
+		// The Windows build is assessed first: the release it establishes
+		// decides "running on Windows" conditions of the host's services.
+		var platforms []matcher.Platform
 		if ev := windows.Detect(windowsSignals(h, open)); ev != nil {
 			if winAssessor == nil {
 				if winAssessor, err = windows.NewAssessor(ctx, engine); err != nil {
@@ -151,6 +149,23 @@ func Analyse(ctx context.Context, scan *Scan, engine *matcher.Engine) (*Report, 
 			if !slices.Contains(rep.Warnings, windows.PatchNote) {
 				rep.Warnings = append(rep.Warnings, windows.PatchNote)
 			}
+			if platforms, err = hostPlatforms(hr.Windows); err != nil {
+				return nil, err
+			}
+		}
+		for _, p := range open {
+			rep.Summary.OpenPorts++
+			sr, err := assessPort(ctx, p, engine, cache, hint, hostDistro)
+			if err != nil {
+				return nil, err
+			}
+			if sr.Result != nil && len(platforms) > 0 {
+				if sr.Result, err = engine.ApplyPlatform(ctx, sr.Result, platforms); err != nil {
+					return nil, err
+				}
+			}
+			rep.Summary.add(sr)
+			hr.Services = append(hr.Services, sr)
 		}
 		rep.Hosts = append(rep.Hosts, hr)
 	}
@@ -163,6 +178,23 @@ func Analyse(ctx context.Context, scan *Scan, engine *matcher.Engine) (*Report, 
 	}
 	slices.Sort(rep.Warnings)
 	return rep, nil
+}
+
+// hostPlatforms returns the host's Windows release(s) when the build was
+// assessed; two when the build is shared and the kind unknown.
+func hostPlatforms(as []windows.Assessment) ([]matcher.Platform, error) {
+	var out []matcher.Platform
+	for _, a := range as {
+		if a.Status != windows.Assessed {
+			continue
+		}
+		p, err := a.Platform()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 // windowsSignals collects the Windows build evidence that NSE scripts and
@@ -366,6 +398,13 @@ func (s *Summary) add(sr ServiceReport) {
 		if v.Distro != nil && v.Distro.Status == distro.Fixed {
 			s.DistroFixed++
 			continue
+		}
+		if v.Applicability == matcher.PlatformExcluded {
+			s.PlatformExcluded++
+			continue
+		}
+		if v.Platform != "" && v.Applicability == matcher.Unconditional {
+			s.PlatformConfirmed++
 		}
 		if v.DistroOnly {
 			s.DistroOnly++

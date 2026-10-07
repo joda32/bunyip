@@ -28,6 +28,10 @@ type RuleEvaluation struct {
 	// supplied CPE cannot satisfy or refute.
 	Conditional   bool   `json:"conditional"`
 	ConditionNote string `json:"condition_note,omitempty"`
+	// PlatformCondition: the only unevaluated condition is other nodes of an
+	// AND configuration (typically "running on" an OS), which a known host
+	// platform can decide (see ApplyPlatform).
+	PlatformCondition bool `json:"-"`
 	// Set by Engine.Query: which candidate identity was evaluated.
 	IdentityCPE string              `json:"identity_cpe,omitempty"`
 	Confidence  identity.Confidence `json:"identity_confidence,omitempty"`
@@ -68,6 +72,7 @@ func evaluateParsed(cmp version.Comparator, supplied cpe.CPE, rule database.Matc
 		ev.Range = rule.Range.String()
 	}
 	ev.Conditional, ev.ConditionNote = conditionality(rule)
+	ev.PlatformCondition = rule.HasNode && rule.AndConfigSiblings && !rule.NodeNegate && !rule.AndNodeSiblings
 
 	if parseErr != nil {
 		ev.Status, ev.Reason = version.Unknown, fmt.Sprintf("criteria could not be parsed: %v", parseErr)

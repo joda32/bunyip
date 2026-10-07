@@ -191,6 +191,45 @@ With a single supplied CPE we can only evaluate one rule at a time, so:
 - a vulnerable rule in a **negated node** is never reported as MATCH (it is
   downgraded to UNKNOWN).
 
+### Platform conditions on Windows hosts
+
+In `vulndb nmap`, a host whose Windows build was assessed (section 10) has a
+known operating system. For its services, a CONDITIONAL CVE whose only open
+condition is the other node of an AND configuration ("Tomcat running on
+Windows") is decided against that release (`matcher.ApplyPlatform`). The
+sibling nodes are read through two indexes added in schema v10.
+
+| Platform node lists | Result |
+|---|---|
+| the host's release (`windows_server_2016:-`), or Windows generically (`microsoft:windows:-`) | `UNCONDITIONAL`, flagged "Windows platform confirmed" |
+| only other operating systems (Linux, macOS, …) | `PLATFORM_EXCLUDED`: kept in the output, not counted as a match |
+| other Windows releases only (`windows_7`, `windows_8.1`) | stays `CONDITIONAL`, with a note naming them |
+| hardware, applications, a negated node, or a second vulnerable node | stays `CONDITIONAL` |
+
+Other Windows releases do not exclude a CVE because NVD's platform lists are
+usually written when the CVE is published and are not extended for later
+releases. A Windows host running software NVD lists "on Windows 7 and 8.1"
+may well be affected on Server 2022.
+
+When the build is shared and the kind unknown (Server 2016 or Windows 10
+1607), both releases must agree; otherwise the CVE stays CONDITIONAL with a
+note. Results are copied before they are changed, since identical services on
+different hosts share one lookup.
+
+Measured on the 2026-10-07 database: of AND configurations whose vulnerable
+side is a product Nmap can report a CPE for, about 980 CVEs list Windows
+among their platforms (IBM DB2/WebSphere, .NET, Apache httpd, PHP, Oracle,
+Splunk, PostgreSQL, …) and about 380 list only other operating systems (JBoss,
+Tomcat, OpenSSH, CUPS, …). Most "running on Windows" configurations concern
+desktop software (Flash, Acrobat, iTunes, browsers) that a network scan does
+not see.
+
+Spot check on a synthetic Windows Server 2022 host with Tomcat, Apache httpd,
+PostgreSQL, IBM DB2 and OpenSSH for Windows: 118 conditions confirmed (e.g.
+Tomcat CVE-2019-0232, CGI on Windows; PostgreSQL CVE-2019-10211, the Windows
+installer's OpenSSL), 9 excluded (e.g. OpenSSH CVE-2008-3844, trojaned Red Hat
+packages; DB2 CVEs limited to Linux/AIX/HP-UX), 5 left CONDITIONAL.
+
 ## 6. Aggregation per CVE
 
 Rules are grouped by CVE. A CVE is MATCH if any rule matched, otherwise

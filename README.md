@@ -57,6 +57,9 @@ Implemented:
   release's NVD identities (`data/windows_builds.json`) and lists the CVEs that
   apply unless the host is patched, KEV entries first, with end-of-support
   status. See [docs/matching.md](docs/matching.md#10-windows-build-level-assessment-internalwindows).
+  The release also decides NVD "running on" conditions for the host's
+  services: CVEs that need Windows are confirmed, and CVEs that apply only on
+  other operating systems are excluded.
 - **Updater (Python, [`updater/`](updater/README.md)):** builds a real database
   from the NVD CVE JSON 2.0 feeds, the CISA KEV catalogue, five distributions'
   advisories (OSV.dev exports), `data/aliases.json` and
@@ -403,7 +406,9 @@ failed verify), `2` usage error (unknown command or flag, unsupported
   conservative generic one. Distro (`-1ubuntu1`), RPM, PEP 440 and similar
   schemes give UNKNOWN.
 - AND/negated NVD configurations are flagged, not evaluated, because one CPE
-  can't satisfy several conditions.
+  can't satisfy several conditions. The exception is "running on" platform
+  conditions on Windows hosts whose build was assessed; Linux hosts' platform
+  conditions are not evaluated yet.
 - Distro backports are not evaluated (see above).
 - NVD is currently the only applicability source, and it covers only part of
   recent CVEs (see above). An empty result is not evidence of no vulnerability.

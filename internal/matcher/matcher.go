@@ -47,6 +47,9 @@ type Applicability string
 const (
 	Unconditional Applicability = "UNCONDITIONAL"
 	Conditional   Applicability = "CONDITIONAL"
+	// PlatformExcluded: the CVE applies only on platforms (operating
+	// systems) the host is known not to run; see ApplyPlatform.
+	PlatformExcluded Applicability = "PLATFORM_EXCLUDED"
 )
 
 // ErrInsufficientIdentity is returned when the supplied CPE does not name a
@@ -159,23 +162,24 @@ func (e *Engine) ResolveDistro(ctx context.Context, cands []identity.Candidate, 
 
 // Result is the full outcome of one query.
 type Result struct {
-	Input              string           `json:"input"`
-	NormalizedCPE      string           `json:"normalized_cpe"`
-	Part               string           `json:"part"`
-	Vendor             string           `json:"vendor"`
-	Product            string           `json:"product"`
-	Version            string           `json:"version"`
-	IdentityConfidence Confidence       `json:"identity_confidence"`
-	Comparator         string           `json:"comparator"`
-	Identities         []IdentityResult `json:"identities"`
-	CandidateRules     int              `json:"candidate_rules"`
-	MatchCount         int              `json:"match_count"`        // version MATCH, excluding distro-FIXED
-	UnknownCount       int              `json:"unknown_count"`      // version UNKNOWN, excluding distro-FIXED
-	DistroFixedCount   int              `json:"distro_fixed_count"` // fixed in the distribution package
-	Distro             *distro.Context  `json:"distro,omitempty"`
-	Vulnerabilities    []Vulnerability  `json:"vulnerabilities"`
-	Warnings           []string         `json:"warnings"`
-	Evaluations        []RuleEvaluation `json:"-"` // every rule, for --debug
+	Input                 string           `json:"input"`
+	NormalizedCPE         string           `json:"normalized_cpe"`
+	Part                  string           `json:"part"`
+	Vendor                string           `json:"vendor"`
+	Product               string           `json:"product"`
+	Version               string           `json:"version"`
+	IdentityConfidence    Confidence       `json:"identity_confidence"`
+	Comparator            string           `json:"comparator"`
+	Identities            []IdentityResult `json:"identities"`
+	CandidateRules        int              `json:"candidate_rules"`
+	MatchCount            int              `json:"match_count"`                       // version MATCH, excluding distro-FIXED
+	UnknownCount          int              `json:"unknown_count"`                     // version UNKNOWN, excluding distro-FIXED
+	DistroFixedCount      int              `json:"distro_fixed_count"`                // fixed in the distribution package
+	PlatformExcludedCount int              `json:"platform_excluded_count,omitempty"` // only on platforms the host does not run
+	Distro                *distro.Context  `json:"distro,omitempty"`
+	Vulnerabilities       []Vulnerability  `json:"vulnerabilities"`
+	Warnings              []string         `json:"warnings"`
+	Evaluations           []RuleEvaluation `json:"-"` // every rule, for --debug
 }
 
 // IdentityResult describes one candidate identity that was looked up.
@@ -214,6 +218,7 @@ type Vulnerability struct {
 	MatchedRules    []MatchedRule   `json:"matched_rules"`
 	Distro          *distro.Verdict `json:"distro,omitempty"`
 	DistroOnly      bool            `json:"distro_only,omitempty"` // found only via distribution advisories
+	Platform        string          `json:"platform,omitempty"`    // how the host platform decided a platform condition
 	Warnings        []string        `json:"warnings,omitempty"`
 }
 
@@ -461,11 +466,13 @@ func (e *Engine) applyDistro(ctx context.Context, res *Result, cands []identity.
 // count fills the summary counters. CVEs a distribution has fixed in the
 // observed package are counted separately, not as matches.
 func (r *Result) count() {
-	r.MatchCount, r.UnknownCount, r.DistroFixedCount = 0, 0, 0
+	r.MatchCount, r.UnknownCount, r.DistroFixedCount, r.PlatformExcludedCount = 0, 0, 0, 0
 	for _, v := range r.Vulnerabilities {
 		switch {
 		case v.distroFixed():
 			r.DistroFixedCount++
+		case v.Applicability == PlatformExcluded:
+			r.PlatformExcludedCount++
 		case v.VersionStatus == version.Match:
 			r.MatchCount++
 		default:

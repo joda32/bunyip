@@ -29,12 +29,10 @@ DATASET = "nvd+kev"
 # query engine never uses them, so they are dropped before shipping.
 BUILD_INDEXES = """
 CREATE INDEX build_cve_matches_cve     ON cve_matches (cve_id);
-CREATE INDEX build_config_nodes_config ON cve_config_nodes (configuration_id);
 CREATE INDEX build_exploit_cve         ON exploit_evidence (cve_id);
 """
 DROP_BUILD_INDEXES = """
 DROP INDEX build_cve_matches_cve;
-DROP INDEX build_config_nodes_config;
 DROP INDEX build_exploit_cve;
 """
 

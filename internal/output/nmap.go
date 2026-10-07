@@ -50,6 +50,10 @@ func WriteNmapText(w io.Writer, r *nmap.Report) error {
 		}
 		p.f("\n")
 	}
+	if s.PlatformConfirmed > 0 || s.PlatformExcluded > 0 {
+		p.f("Platform conditions decided by the host's Windows release: %d confirmed, %d excluded (apply only on other operating systems)\n",
+			s.PlatformConfirmed, s.PlatformExcluded)
+	}
 	if s.DistroFixed > 0 || s.DistroOnly > 0 {
 		p.f("Distribution advisories: %d upstream matches already fixed in the installed/released package, "+
 			"%d findings only the distribution data shows\n", s.DistroFixed, s.DistroOnly)
@@ -123,10 +127,16 @@ func writeServiceText(p *printer, sr nmap.ServiceReport) {
 		p.f("    Distribution: %s\n", wrap(distroContextLabel(sr.Result), 18, 100))
 	}
 	unknown := 0
-	var fixed []string
+	var fixed, excluded []string
+	excludedOn := ""
 	for _, v := range sr.Result.Vulnerabilities {
 		if v.Distro != nil && v.Distro.Status == distro.Fixed {
 			fixed = append(fixed, v.CVE)
+			continue
+		}
+		if v.Applicability == matcher.PlatformExcluded {
+			excluded = append(excluded, v.CVE)
+			excludedOn = v.Platform
 			continue
 		}
 		if v.VersionStatus != version.Match {
@@ -142,6 +152,12 @@ func writeServiceText(p *printer, sr nmap.ServiceReport) {
 	if len(fixed) > 0 {
 		p.f("    + %d fixed in the %s package: %s\n", len(fixed), sr.Result.Distro.Target.DistroName,
 			wrap(strings.Join(fixed, ", "), 6, 100))
+	}
+	if len(excluded) == 1 {
+		p.f("    + 1 not applicable on this host: %s\n", wrap(excluded[0]+" "+excludedOn, 6, 100))
+	} else if len(excluded) > 1 {
+		p.f("    + %d not applicable on this host (they apply only on other operating systems): %s\n", len(excluded),
+			wrap(strings.Join(excluded, ", "), 6, 100))
 	}
 	if len(sr.Result.Vulnerabilities) == 0 {
 		p.f("    No candidate vulnerabilities found\n")
@@ -176,8 +192,11 @@ func flags(v matcher.Vulnerability, r *matcher.Result) string {
 	if v.KnownRansomware {
 		f = append(f, "ransomware")
 	}
-	if v.Applicability == matcher.Conditional {
+	switch {
+	case v.Applicability == matcher.Conditional:
 		f = append(f, "CONDITIONAL")
+	case v.Platform != "":
+		f = append(f, "Windows platform confirmed")
 	}
 	if v.MatchedCPE != "" && len(r.Identities) > 0 && v.MatchedCPE != r.Identities[0].CPE {
 		f = append(f, "via alias, "+string(v.MatchConfidence))

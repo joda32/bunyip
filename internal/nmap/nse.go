@@ -185,6 +185,8 @@ func buildNSEResponse(sr *ServiceReport, opts NSEOptions) *NSEResponse {
 			if !opts.ShowDistroFixed {
 				continue
 			}
+		case v.Applicability == matcher.PlatformExcluded:
+			continue // applies only on other operating systems
 		case v.VersionStatus != version.Match:
 			resp.Counts.Undetermined++
 			if !opts.ShowUnknown {

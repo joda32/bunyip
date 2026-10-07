@@ -256,6 +256,188 @@
      ]
     }
    ]
+  },
+  {
+   "cve_id": "CVE-0000-0920",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Apache Tomcat before 9.0.50, running on Microsoft Windows (any release).",
+   "cvss_v3_score": 8.1,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "operator": "AND",
+     "nodes": [
+      {
+       "operator": "OR",
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:a:apache:tomcat:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "9.0.50"
+        }
+       ]
+      },
+      {
+       "operator": "OR",
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows:-:*:*:*:*:*:*:*",
+         "vulnerable": false
+        },
+        {
+         "criteria": "cpe:2.3:o:apple:macos:-:*:*:*:*:*:*:*",
+         "vulnerable": false
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0921",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Apache Tomcat before 9.0.50, running on Linux or macOS only.",
+   "cvss_v3_score": 8.1,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "operator": "AND",
+     "nodes": [
+      {
+       "operator": "OR",
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:a:apache:tomcat:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "9.0.50"
+        }
+       ]
+      },
+      {
+       "operator": "OR",
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:linux:linux_kernel:-:*:*:*:*:*:*:*",
+         "vulnerable": false
+        },
+        {
+         "criteria": "cpe:2.3:o:apple:macos:-:*:*:*:*:*:*:*",
+         "vulnerable": false
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0922",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Apache Tomcat before 9.0.50, running on Windows 7 or 8.1 (list predates newer releases).",
+   "cvss_v3_score": 8.1,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "operator": "AND",
+     "nodes": [
+      {
+       "operator": "OR",
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:a:apache:tomcat:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "9.0.50"
+        }
+       ]
+      },
+      {
+       "operator": "OR",
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_7:-:*:*:*:*:*:*:*",
+         "vulnerable": false
+        },
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_8.1:-:*:*:*:*:*:*:*",
+         "vulnerable": false
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0923",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Apache Tomcat before 9.0.50, running on Windows Server 2016.",
+   "cvss_v3_score": 8.1,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "operator": "AND",
+     "nodes": [
+      {
+       "operator": "OR",
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:a:apache:tomcat:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "9.0.50"
+        }
+       ]
+      },
+      {
+       "operator": "OR",
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:o:microsoft:windows_server_2016:-:*:*:*:*:*:*:*",
+         "vulnerable": false
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0924",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Apache Tomcat before 9.0.50, on specific hardware.",
+   "cvss_v3_score": 8.1,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "operator": "AND",
+     "nodes": [
+      {
+       "operator": "OR",
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:a:apache:tomcat:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "9.0.50"
+        }
+       ]
+      },
+      {
+       "operator": "OR",
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:h:examplecorp:appliance:-:*:*:*:*:*:*:*",
+         "vulnerable": false
+        }
+       ]
+      }
+     ]
+    }
+   ]
   }
  ],
  "kev": [

@@ -103,7 +103,7 @@ func TestQueryJSONFromCPE22(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, r.stdout)
 	}
-	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "9" || doc.Database.Dataset != "synthetic-fixture" {
+	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "10" || doc.Database.Dataset != "synthetic-fixture" {
 		t.Errorf("unexpected envelope: %+v", doc)
 	}
 	res := doc.Result
@@ -209,7 +209,7 @@ func TestInfoVerifyStats(t *testing.T) {
 	db := initDB(t)
 
 	r := cli("--db", db, "info")
-	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    9") ||
+	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    10") ||
 		!strings.Contains(r.stdout, "synthetic-fixture") || !strings.Contains(r.stdout, "Data age:") ||
 		!strings.Contains(r.stdout, "CVEs without CPE applicability data: 1 of 13") {
 		t.Errorf("info: exit %d\n%s%s", r.code, r.stdout, r.stderr)
@@ -706,7 +706,10 @@ func TestNmapWindowsBuilds(t *testing.T) {
 		t.Errorf("undetermined KEV entry listed:\n%s", r.stdout)
 	}
 	for _, want := range []string{
-		"Hosts up 7, down 0 | open ports 10: assessed 2, OS components 8, unidentified 0, not probed 0",
+		"Hosts up 7, down 0 | open ports 13: assessed 5, OS components 8, unidentified 0, not probed 0",
+		"Platform conditions decided by the host's Windows release: 3 confirmed, 2 excluded (apply only on other operating systems)",
+		"CVE-0000-0920    HIGH      CVSS 8.1  exploit:NO  KEV:NO  MATCH  [Windows platform confirmed]",
+		"+ 1 not applicable on this host: CVE-0000-0921 applies only on linux:linux_kernel, apple:macos; the",
 		"Windows: 4 host(s) assessed at build level (patch level not visible; CVEs apply unless patched)",
 		"  Windows components, covered by the build assessment above:\n    389/tcp ldap, 3389/tcp ms-wbt-server\n",
 		"  Windows components, not assessed: the Windows build could not be used (see above):\n    3389/tcp ms-wbt-server\n",
@@ -731,7 +734,8 @@ func TestNmapWindowsBuilds(t *testing.T) {
 
 	r = cli("--db", db, "nmap", "--format", "json", "../../testdata/nmap/windows-hosts.xml")
 	if r.code != exitOK || !strings.Contains(r.stdout, `"windows_hosts": 4`) ||
-		!strings.Contains(r.stdout, `"release": "Windows Server 2016"`) || !strings.Contains(r.stdout, `"cve": "CVE-0000-0901"`) {
+		!strings.Contains(r.stdout, `"release": "Windows Server 2016"`) ||
+		!strings.Contains(r.stdout, `"applicability": "PLATFORM_EXCLUDED"`) || !strings.Contains(r.stdout, `"platform_excluded": 2`) || !strings.Contains(r.stdout, `"cve": "CVE-0000-0901"`) {
 		t.Errorf("json: exit %d\n%s", r.code, r.stdout)
 	}
 }

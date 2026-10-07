@@ -13,6 +13,7 @@
 </ports></host>
 <host><status state="up" reason="echo-reply"/><address addr="192.0.2.11" addrtype="ipv4"/><hostnames><hostname name="web01.example.test" type="PTR"/></hostnames>
 <ports>
+<port protocol="tcp" portid="8080"><state state="open" reason="syn-ack"/><service name="http" product="Apache Tomcat" version="9.0.1" method="probed" conf="10"><cpe>cpe:/a:apache:tomcat:9.0.1</cpe></service></port>
 <port protocol="tcp" portid="445"><state state="open" reason="syn-ack"/><service name="microsoft-ds" product="Windows Server 2016 Standard Evaluation 14393 microsoft-ds" ostype="Windows Server 2008 R2 - 2012" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service></port>
 <port protocol="tcp" portid="3389"><state state="open" reason="syn-ack"/><service name="ms-wbt-server" product="Microsoft Terminal Services" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service><script id="rdp-ntlm-info" output="&#xa;  Product_Version: 10.0.14393"><elem key="Product_Version">10.0.14393</elem>
 </script></port>
@@ -24,6 +25,7 @@
 </host>
 <host><status state="up" reason="echo-reply"/><address addr="192.0.2.12" addrtype="ipv4"/>
 <ports>
+<port protocol="tcp" portid="8080"><state state="open" reason="syn-ack"/><service name="http" product="Apache Tomcat" version="9.0.1" method="probed" conf="10"><cpe>cpe:/a:apache:tomcat:9.0.1</cpe></service></port>
 <port protocol="tcp" portid="3389"><state state="open" reason="syn-ack"/><service name="ms-wbt-server" product="Microsoft Terminal Services" ostype="Windows" method="probed" conf="10"><cpe>cpe:/o:microsoft:windows</cpe></service><script id="rdp-ntlm-info" output="&#xa;  Product_Version: 10.0.14393"><elem key="Product_Version">10.0.14393</elem>
 </script></port>
 </ports></host>
@@ -47,6 +49,7 @@
 </ports></host>
 <host><status state="up" reason="echo-reply"/><address addr="192.0.2.16" addrtype="ipv4"/><hostnames><hostname name="av01.example.test" type="PTR"/></hostnames>
 <ports>
+<port protocol="tcp" portid="8080"><state state="open" reason="syn-ack"/><service name="http" product="Apache Tomcat" version="9.0.1" method="probed" conf="10"><cpe>cpe:/a:apache:tomcat:9.0.1</cpe></service></port>
 <port protocol="tcp" portid="3310"><state state="open" reason="syn-ack"/><service name="clam" product="ClamAV" version="0.103.2 (27019)" extrainfo="AV definitions updated on:Thu Oct  5 08:12:00 2026" method="probed" conf="10"/></port>
 </ports></host>
 <runstats><finished time="1791389500" elapsed="100"/><hosts up="7" down="0" total="7"/></runstats>

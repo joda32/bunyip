@@ -9,6 +9,7 @@ import (
 
 	"offline-vulndb/internal/distro"
 	"offline-vulndb/internal/identity"
+	"offline-vulndb/internal/matcher"
 	"offline-vulndb/internal/windows"
 )
 
@@ -19,7 +20,12 @@ func TestParseScripts(t *testing.T) {
 		h.Scripts[0].Elems["os"] != "Windows Server 2016 Standard Evaluation 14393" {
 		t.Errorf("host scripts: %+v", h.Scripts)
 	}
-	rdp := h.Ports[1].Scripts
+	var rdp []Script
+	for _, p := range h.Ports {
+		if p.PortID == 3389 {
+			rdp = p.Scripts
+		}
+	}
 	if len(rdp) != 1 || rdp[0].ID != "rdp-ntlm-info" || rdp[0].Elems["Product_Version"] != "10.0.14393" ||
 		!strings.Contains(rdp[0].Output, "Product_Version: 10.0.14393") {
 		t.Errorf("port scripts: %+v", rdp)
@@ -136,7 +142,9 @@ func TestAnalyseWindowsBuilds(t *testing.T) {
 	// Windows built-ins are OS components, covered by the build assessment;
 	// Kerberos keeps its (LOW) application CPE. ClamAV is identified through
 	// its curated product name, since Nmap reports no CPE for it.
-	if rep.Summary.OSComponents != 8 || rep.Summary.VersionMatches != 1 {
+	// Matches: Tomcat on three hosts (5 CVEs, one excluded by the platform
+	// on each Windows host) and ClamAV.
+	if rep.Summary.OSComponents != 8 || rep.Summary.VersionMatches != 4+4+5+1 {
 		t.Errorf("summary: %+v", rep.Summary)
 	}
 	svc := map[int]ServiceReport{}
@@ -146,7 +154,7 @@ func TestAnalyseWindowsBuilds(t *testing.T) {
 	if svc[389].Assessment != OSComponent || svc[3389].Assessment != OSComponent || svc[88].Assessment != Assessed {
 		t.Errorf("dc services: 88=%s 389=%s 3389=%s", svc[88].Assessment, svc[389].Assessment, svc[3389].Assessment)
 	}
-	av := byAddr["192.0.2.16"].Services[0]
+	av := serviceOn(t, rep, "192.0.2.16", 3310)
 	if av.Assessment != Assessed || av.Result == nil || len(av.Result.Vulnerabilities) != 1 ||
 		av.Result.Vulnerabilities[0].CVE != "CVE-0000-0911" || av.Result.Identities[0].Confidence != identity.High ||
 		!strings.HasPrefix(av.Result.Identities[0].Source, "product-name:") {
@@ -154,5 +162,86 @@ func TestAnalyseWindowsBuilds(t *testing.T) {
 	}
 	if len(byAddr["192.0.2.16"].Windows) != 0 {
 		t.Errorf("non-Windows host assessed as Windows")
+	}
+}
+
+// vulnByCVE indexes a service's vulnerabilities.
+func vulnByCVE(sr ServiceReport) map[string]matcher.Vulnerability {
+	out := map[string]matcher.Vulnerability{}
+	if sr.Result != nil {
+		for _, v := range sr.Result.Vulnerabilities {
+			out[v.CVE] = v
+		}
+	}
+	return out
+}
+
+func serviceOn(t *testing.T, rep *Report, addr string, port int) ServiceReport {
+	t.Helper()
+	for _, h := range rep.Hosts {
+		for _, s := range h.Services {
+			if h.Address == addr && s.Port == port {
+				return s
+			}
+		}
+	}
+	t.Fatalf("no %s:%d", addr, port)
+	return ServiceReport{}
+}
+
+func TestPlatformConditions(t *testing.T) {
+	e := fixtureEngineFrom(t, "../../testdata/fixtures/windows.json")
+	rep, err := Analyse(context.Background(), parseFile(t, "../../testdata/nmap/windows-hosts.xml"), e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type want struct {
+		app  matcher.Applicability
+		note string
+	}
+	check := func(addr string, cases map[string]want) {
+		t.Helper()
+		vs := vulnByCVE(serviceOn(t, rep, addr, 8080))
+		for id, w := range cases {
+			v, ok := vs[id]
+			if !ok {
+				t.Errorf("%s %s missing", addr, id)
+				continue
+			}
+			if v.Applicability != w.app || !strings.Contains(v.Platform, w.note) {
+				t.Errorf("%s %s: %s %q, want %s %q", addr, id, v.Applicability, v.Platform, w.app, w.note)
+			}
+		}
+	}
+	// Windows Server 2016 (HIGH).
+	check("192.0.2.11", map[string]want{
+		"CVE-0000-0920": {matcher.Unconditional, "platform condition met: the host runs Windows Server 2016 (cpe:2.3:o:microsoft:windows:-"},
+		"CVE-0000-0921": {matcher.PlatformExcluded, "applies only on linux:linux_kernel, apple:macos; the host runs Windows Server 2016"},
+		"CVE-0000-0922": {matcher.Conditional, "NVD lists the platform as windows_7, windows_8.1; the host runs Windows Server 2016, which is not listed"},
+		"CVE-0000-0923": {matcher.Unconditional, "windows_server_2016"},
+		"CVE-0000-0924": {matcher.Conditional, ""},
+	})
+	// Build 14393 without a kind: Windows 10 1607 or Server 2016. Generic
+	// Windows and non-Windows platforms are decided for both; Server 2016
+	// alone is not.
+	check("192.0.2.12", map[string]want{
+		"CVE-0000-0920": {matcher.Unconditional, "Windows 10 1607 or Windows Server 2016"},
+		"CVE-0000-0921": {matcher.PlatformExcluded, ""},
+		"CVE-0000-0923": {matcher.Conditional, "depends on which release the host runs"},
+	})
+	// Not a Windows host: nothing is decided.
+	for id, v := range vulnByCVE(serviceOn(t, rep, "192.0.2.16", 8080)) {
+		if v.Applicability != matcher.Conditional || v.Platform != "" {
+			t.Errorf("non-Windows host %s: %s %q", id, v.Applicability, v.Platform)
+		}
+	}
+	// Counts: excluded CVEs are not matches; the shared cached result for
+	// the AV host was not modified by the Windows hosts.
+	web := serviceOn(t, rep, "192.0.2.11", 8080).Result
+	if web.MatchCount != 4 || web.PlatformExcludedCount != 1 {
+		t.Errorf("web counts: match %d excluded %d", web.MatchCount, web.PlatformExcludedCount)
+	}
+	if rep.Summary.PlatformConfirmed != 3 || rep.Summary.PlatformExcluded != 2 {
+		t.Errorf("summary: confirmed %d excluded %d", rep.Summary.PlatformConfirmed, rep.Summary.PlatformExcluded)
 	}
 }

@@ -468,3 +468,67 @@ func (s *Store) ProductNames(ctx context.Context) ([]ProductName, error) {
 	}
 	return out, wrapQueryErr(rows.Err())
 }
+
+// ConfigNode is a node of an AND configuration other than the one holding
+// the rule it was fetched for: usually the platform condition of "X running
+// on Y" (non-vulnerable operating-system rules).
+type ConfigNode struct {
+	ID       int64
+	Operator string // "AND" or "OR"
+	Negate   bool
+	Rules    []MatchRule
+}
+
+// SiblingNodes returns, per rule ID, the other nodes of the rule's AND
+// configuration with their rules. Rules not in an AND configuration with
+// other nodes are absent from the result.
+func (s *Store) SiblingNodes(ctx context.Context, ruleIDs []int64) (map[int64][]ConfigNode, error) {
+	out := map[int64][]ConfigNode{}
+	for len(ruleIDs) > 0 {
+		chunk := ruleIDs[:min(chunkSize, len(ruleIDs))]
+		ruleIDs = ruleIDs[len(chunk):]
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		q := `
+SELECT r.id, n.id, n.operator, n.negate,
+       s.id, s.cve_id, s.criteria, s.vulnerable,
+       COALESCE(s.version_start_including, ''), COALESCE(s.version_start_excluding, ''),
+       COALESCE(s.version_end_including, ''),   COALESCE(s.version_end_excluding, '')
+FROM cve_matches r
+JOIN cve_config_nodes rn ON rn.id = r.node_id
+JOIN cve_config_nodes n  ON n.configuration_id = rn.configuration_id AND n.id <> rn.id
+JOIN cve_matches s       ON s.node_id = n.id AND s.and_config_siblings = 1
+WHERE r.and_config_siblings = 1 AND r.id IN (` + placeholders(len(chunk)) + `)
+ORDER BY r.id, n.id, s.id`
+		if err := s.siblingRows(ctx, q, args, out); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+func (s *Store) siblingRows(ctx context.Context, q string, args []any, out map[int64][]ConfigNode) error {
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return wrapQueryErr(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ruleID int64
+		var n ConfigNode
+		var m MatchRule
+		if err := rows.Scan(&ruleID, &n.ID, &n.Operator, &n.Negate, &m.ID, &m.CVEID, &m.Criteria, &m.Vulnerable,
+			&m.Range.StartIncluding, &m.Range.StartExcluding, &m.Range.EndIncluding, &m.Range.EndExcluding); err != nil {
+			return err
+		}
+		nodes := out[ruleID]
+		if len(nodes) == 0 || nodes[len(nodes)-1].ID != n.ID {
+			nodes = append(nodes, n)
+		}
+		nodes[len(nodes)-1].Rules = append(nodes[len(nodes)-1].Rules, m)
+		out[ruleID] = nodes
+	}
+	return wrapQueryErr(rows.Err())
+}
