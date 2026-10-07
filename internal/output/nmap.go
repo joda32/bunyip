@@ -212,7 +212,7 @@ func writeWindowsText(p *printer, a windows.Assessment) {
 	p.f("\n")
 	var kev []windows.CVERef
 	for _, v := range a.Vulnerabilities {
-		if v.KnownExploited {
+		if v.KnownExploited && v.VersionStatus == string(version.Match) {
 			kev = append(kev, v)
 		}
 	}

@@ -697,6 +697,10 @@ func TestNmapWindowsBuilds(t *testing.T) {
 	if r.code != exitOK {
 		t.Fatalf("exit %d: %s", r.code, r.stderr)
 	}
+	// CVE-0000-0909 is in KEV but undetermined: counted and listed only as undetermined.
+	if strings.Contains(r.stdout, "CVE-0000-0909") {
+		t.Errorf("undetermined KEV entry listed:\n%s", r.stdout)
+	}
 	for _, want := range []string{
 		"Windows: 4 host(s) assessed at build level (patch level not visible; CVEs apply unless patched)",
 		"Windows: Windows Server 2022 (build 10.0.20348) [HIGH]",

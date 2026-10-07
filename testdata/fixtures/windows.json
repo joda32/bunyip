@@ -265,6 +265,16 @@
    "due_date": "2023-07-04",
    "known_ransomware": "Unknown",
    "notes": "Synthetic fixture entry."
+  },
+  {
+   "cve_id": "CVE-0000-0909",
+   "vendor_project": "Microsoft",
+   "product": "Windows",
+   "vulnerability_name": "[SYNTHETIC] Windows Server 2022 update regression",
+   "date_added": "2025-01-14",
+   "due_date": "2025-02-04",
+   "known_ransomware": "Unknown",
+   "notes": "Synthetic fixture entry; undetermined for the unpatched build."
   }
  ],
  "exploit_evidence": [
