@@ -50,6 +50,13 @@ type RuleEvaluation struct {
 //     (OpenSSH), version and update are first folded into one effective
 //     version on both sides, so "9.3p1" equals criteria "9.3" + update "p1".
 func EvaluateRule(cmp version.Comparator, supplied cpe.CPE, rule database.MatchRule) RuleEvaluation {
+	crit, err := cpe.ParsePattern(rule.Criteria)
+	return evaluateParsed(cmp, supplied, rule, crit, err)
+}
+
+// evaluateParsed is EvaluateRule with the criteria already parsed (callers
+// evaluating many rules parse each distinct criteria string once).
+func evaluateParsed(cmp version.Comparator, supplied cpe.CPE, rule database.MatchRule, crit cpe.CPE, parseErr error) RuleEvaluation {
 	ev := RuleEvaluation{
 		RuleID:   rule.ID,
 		CVEID:    rule.CVEID,
@@ -60,9 +67,8 @@ func EvaluateRule(cmp version.Comparator, supplied cpe.CPE, rule database.MatchR
 	}
 	ev.Conditional, ev.ConditionNote = conditionality(rule)
 
-	crit, err := cpe.ParsePattern(rule.Criteria)
-	if err != nil {
-		ev.Status, ev.Reason = version.Unknown, fmt.Sprintf("criteria could not be parsed: %v", err)
+	if parseErr != nil {
+		ev.Status, ev.Reason = version.Unknown, fmt.Sprintf("criteria could not be parsed: %v", parseErr)
 		return ev
 	}
 	crit, supplied = joinUpdates(cmp, crit, supplied)

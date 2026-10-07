@@ -25,6 +25,7 @@ class Match:
     start_excluding: str | None
     end_including: str | None
     end_excluding: str | None
+    version_key: str = ""  # exact-version lookup key; '' for ranges and non-exact versions
 
 
 @dataclass
@@ -103,17 +104,18 @@ def transform(item: dict) -> Record:
             for m in n.get("cpeMatch") or []:
                 criteria = m.get("criteria", "")
                 try:
-                    part, vendor, product = cpe.lookup_key(criteria)
+                    attrs = cpe.parse_pattern(criteria)
                 except cpe.CPEError as e:
                     rec.skipped_rules.append(f"{cve_id}: {criteria!r}: {e}")
                     continue
+                bounds = [m.get(k) for k in ("versionStartIncluding", "versionStartExcluding",
+                                             "versionEndIncluding", "versionEndExcluding")]
                 matches.append(Match(
-                    criteria=criteria, part=part, vendor=vendor, product=product,
+                    criteria=criteria, part=attrs[0], vendor=attrs[1], product=attrs[2],
                     vulnerable=bool(m.get("vulnerable")),
-                    start_including=m.get("versionStartIncluding"),
-                    start_excluding=m.get("versionStartExcluding"),
-                    end_including=m.get("versionEndIncluding"),
-                    end_excluding=m.get("versionEndExcluding"),
+                    start_including=bounds[0], start_excluding=bounds[1],
+                    end_including=bounds[2], end_excluding=bounds[3],
+                    version_key="" if any(bounds) else cpe.version_key(cpe.unescape(attrs[3])),
                 ))
             nodes.append(Node(_operator(n.get("operator")), bool(n.get("negate")), matches))
         rec.configurations.append(Configuration(_operator(cfg.get("operator")), nodes))

@@ -25,6 +25,20 @@ MIN_DISTRO_ROWS = 1_000
 DATASET = "nvd+kev"
 
 
+# Indexes needed only while building (the overlay deletes a CVE's rows); the
+# query engine never uses them, so they are dropped before shipping.
+BUILD_INDEXES = """
+CREATE INDEX build_cve_matches_cve     ON cve_matches (cve_id);
+CREATE INDEX build_config_nodes_config ON cve_config_nodes (configuration_id);
+CREATE INDEX build_exploit_cve         ON exploit_evidence (cve_id);
+"""
+DROP_BUILD_INDEXES = """
+DROP INDEX build_cve_matches_cve;
+DROP INDEX build_config_nodes_config;
+DROP INDEX build_exploit_cve;
+"""
+
+
 class BuildError(RuntimeError):
     """Raised when the database fails a self-check."""
 
@@ -83,6 +97,7 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, dist
     conn.execute("PRAGMA temp_store = MEMORY")
     conn.execute("PRAGMA cache_size = -262144")
     conn.executescript(schema_sql)
+    conn.executescript(BUILD_INDEXES)
 
     stats = Stats()
     ordered = feed_order(feeds)
@@ -106,7 +121,10 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, dist
         _load_distro(conn, di, package_map, stats, log)
     _write_metadata(conn, ordered, catalogue, stats, distros)
     _self_check(conn, allow_small, bool(distros))
+    conn.executescript(DROP_BUILD_INDEXES)
     conn.execute("ANALYZE")
+    conn.execute("PRAGMA temp_store = FILE")  # VACUUM's copy would otherwise be held in memory
+    conn.execute("VACUUM")  # compact: overlay deletes and dropped indexes leave free pages
     return stats
 
 
@@ -255,16 +273,22 @@ def _insert(conn, r: nvd.Record) -> None:
     for cfg in r.configurations:
         cfg_id = conn.execute("INSERT INTO cve_configurations (cve_id, operator) VALUES (?, ?)",
                               (r.cve_id, cfg.operator)).lastrowid
+        and_config_siblings = int(cfg.operator == "AND" and len(cfg.nodes) > 1)
         for node in cfg.nodes:
             node_id = conn.execute(
                 "INSERT INTO cve_config_nodes (configuration_id, operator, negate) VALUES (?, ?, ?)",
                 (cfg_id, node.operator, int(node.negate))).lastrowid
+            and_node_siblings = int(node.operator == "AND" and len(node.matches) > 1)
             conn.executemany(
                 "INSERT INTO cve_matches (cve_id, node_id, criteria, criteria_part, criteria_vendor,"
                 " criteria_product, vulnerable, version_start_including, version_start_excluding,"
-                " version_end_including, version_end_excluding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " version_end_including, version_end_excluding, node_operator, node_negate, config_operator,"
+                " and_node_siblings, and_config_siblings, version_key)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [(r.cve_id, node_id, m.criteria, m.part, m.vendor, m.product, int(m.vulnerable),
-                  m.start_including, m.start_excluding, m.end_including, m.end_excluding)
+                  m.start_including, m.start_excluding, m.end_including, m.end_excluding,
+                  node.operator, int(node.negate), cfg.operator, and_node_siblings, and_config_siblings,
+                  m.version_key)
                  for m in node.matches])
     conn.executemany(
         "INSERT INTO exploit_evidence (cve_id, source, reference, reference_type, verified, metadata_json)"
@@ -318,10 +342,14 @@ def _self_check(conn, allow_small: bool, expect_distro: bool = False) -> None:
 
     # Mirror of the Go `db verify` check: lookup columns must agree with criteria.
     bad = 0
-    for row_id, criteria, part, vendor, product in conn.execute(
-            "SELECT id, criteria, criteria_part, criteria_vendor, criteria_product FROM cve_matches"):
+    for row_id, criteria, part, vendor, product, key, ranged in conn.execute(
+            "SELECT id, criteria, criteria_part, criteria_vendor, criteria_product, version_key,"
+            " COALESCE(version_start_including, version_start_excluding, version_end_including,"
+            " version_end_excluding) IS NOT NULL FROM cve_matches"):
         try:
-            ok = cpe.lookup_key(criteria) == (part, vendor, product)
+            attrs = cpe.parse_pattern(criteria)
+            want_key = "" if ranged else cpe.version_key(cpe.unescape(attrs[3]))
+            ok = (attrs[0], attrs[1], attrs[2]) == (part, vendor, product) and key == want_key
         except cpe.CPEError:
             ok = False
         if not ok:

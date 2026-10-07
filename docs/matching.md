@@ -67,6 +67,25 @@ re-parsing `criteria` in full.
 Non-vulnerable rules (`vulnerable = 0`, e.g. "running on Windows" platform
 rules) are never candidates by themselves.
 
+**Version key.** Rules for one exact version (no range bounds) carry a key: the
+version's major.minor, from `version.Key`. For example, `2.6.32` → `2.6`, `5`
+→ `5.0`, `8.9p1` → `8.9`. Every other rule has the key `''`.
+- A query reads only rules whose key is `''` or the observed version's key.
+  Versions equal under the generic and OpenSSH comparators always share a key,
+  so no rule that could match is skipped. The filter is used only for those
+  comparators (`version.KeySafe`).
+- 68% of Linux kernel rules are exact versions of other kernel series, so a
+  5.15 query reads 53k instead of 163k rules.
+- One visible effect: exact-version rules for another series that the
+  comparator could not parse no longer show up as UNKNOWN. For example, Apache
+  2.4.49 used to list CVE-2017-12171 as UNKNOWN because of its rule for
+  `2.2.15-60`, a RHEL package version from the 2.2 series. Such a rule can
+  never be the observed version.
+
+**Configuration context on each rule.** The rule's node and configuration
+operators, negation and AND-sibling flags are copied onto the rule at build
+time, so the lookup is one indexed scan with no joins.
+
 ## 3. Rule evaluation (`internal/matcher/rule.go`)
 
 Each non-version attribute is related to the criteria value:

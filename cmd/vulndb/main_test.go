@@ -99,7 +99,7 @@ func TestQueryJSONFromCPE22(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, r.stdout)
 	}
-	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "4" || doc.Database.Dataset != "synthetic-fixture" {
+	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "6" || doc.Database.Dataset != "synthetic-fixture" {
 		t.Errorf("unexpected envelope: %+v", doc)
 	}
 	res := doc.Result
@@ -205,7 +205,7 @@ func TestInfoVerifyStats(t *testing.T) {
 	db := initDB(t)
 
 	r := cli("--db", db, "info")
-	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    4") ||
+	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    6") ||
 		!strings.Contains(r.stdout, "synthetic-fixture") || !strings.Contains(r.stdout, "Data age:") ||
 		!strings.Contains(r.stdout, "CVEs without CPE applicability data: 1 of 13") {
 		t.Errorf("info: exit %d\n%s%s", r.code, r.stdout, r.stderr)
@@ -575,6 +575,37 @@ func TestQueryDistro(t *testing.T) {
 		args := append([]string{"--db", db, "query", "--cpe", "cpe:/a:openbsd:openssh:8.9p1"}, bad...)
 		if r := cli(args...); r.code != exitUsage {
 			t.Errorf("%v: exit %d, want usage error", bad, r.code)
+		}
+	}
+}
+
+func TestBundleCLI(t *testing.T) {
+	dir := t.TempDir()
+	db := initDB(t)
+	key, pub := filepath.Join(dir, "k.key"), filepath.Join(dir, "k.pub")
+	out := filepath.Join(dir, "vulndb.tar.gz")
+	target := filepath.Join(dir, "offline.sqlite")
+
+	steps := []struct {
+		args []string
+		code int
+		want string
+	}{
+		{[]string{"bundle", "keygen", "--key", key, "--pub", pub}, exitOK, "key ID"},
+		{[]string{"--db", db, "bundle", "create", "--out", out, "--key", key}, exitOK, "Signature:         valid"},
+		{[]string{"bundle", "verify", out, "--pubkey", pub}, exitOK, "Bundle OK"},
+		{[]string{"bundle", "verify", out}, exitError, "public key is required"},
+		{[]string{"--db", target, "bundle", "import", out, "--pubkey", pub}, exitOK, "Installed"},
+		{[]string{"--db", target, "bundle", "import", out, "--pubkey", pub}, exitOK, "Nothing to do"},
+		{[]string{"--db", target, "info"}, exitOK, "synthetic-fixture"},
+		{[]string{"bundle", "import"}, exitUsage, "exactly one bundle file"},
+		{[]string{"bundle", "keygen", "--key", key, "--pub", pub}, exitError, "exists"},
+		{[]string{"bundle", "explode"}, exitUsage, "unknown subcommand"},
+	}
+	for _, s := range steps {
+		r := cli(s.args...)
+		if r.code != s.code || !strings.Contains(r.stdout+r.stderr, s.want) {
+			t.Errorf("%v: exit %d, want %d with %q\n%s%s", s.args, r.code, s.code, s.want, r.stdout, r.stderr)
 		}
 	}
 }

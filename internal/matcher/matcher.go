@@ -266,7 +266,11 @@ func (e *Engine) Query(ctx context.Context, cands []identity.Candidate, in *Dist
 	for i, cand := range cands {
 		c := cand.CPE
 		cmp := version.For(c.Vendor, c.Product)
-		rules, err := e.Store.CandidateRules(ctx, c.Part, c.Vendor, c.Product)
+		key := ""
+		if version.KeySafe(cmp) && cpe.IsSpecific(c.Version) {
+			key = version.Key(cpe.Unescape(c.Version))
+		}
+		rules, err := e.Store.CandidateRules(ctx, c.Part, c.Vendor, c.Product, key)
 		if err != nil {
 			return nil, err
 		}
@@ -275,8 +279,18 @@ func (e *Engine) Query(ctx context.Context, cands []identity.Candidate, in *Dist
 			Comparator: cmp.Name(), CandidateRules: len(rules),
 		})
 		res.CandidateRules += len(rules)
+		type parsed struct {
+			crit cpe.CPE
+			err  error
+		}
+		cache := map[string]parsed{}
 		for _, r := range rules {
-			ev := EvaluateRule(cmp, c, r)
+			p, ok := cache[r.Criteria]
+			if !ok {
+				p.crit, p.err = cpe.ParsePattern(r.Criteria)
+				cache[r.Criteria] = p
+			}
+			ev := evaluateParsed(cmp, c, r, p.crit, p.err)
 			ev.IdentityCPE, ev.Confidence, ev.who = c.String(), cand.Confidence, describeIdentity(cand)
 			ev.order = i
 			res.Evaluations = append(res.Evaluations, ev)

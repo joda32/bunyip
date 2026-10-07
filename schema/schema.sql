@@ -46,6 +46,16 @@ CREATE TABLE cve_config_nodes (
 -- One CPE match rule. `criteria` is the source CPE 2.3 match string, kept
 -- verbatim. criteria_part/vendor/product are derived from it purely to index
 -- candidate lookup; the match decision always re-parses `criteria`.
+--
+-- The rule's configuration context is copied onto it when the database is
+-- built (the tree above remains the source of truth), so a lookup is a
+-- single indexed scan: popular products have >100k rules.
+--   and_node_siblings:   the rule's node is AND and has other rules
+--   and_config_siblings: the rule's configuration is AND and has other nodes
+--   version_key:         for rules matching one exact version (no range
+--                        bounds), that version's major.minor key
+--                        (version.Key); '' for every other rule. A query only
+--                        reads rules whose key is '' or the observed one.
 CREATE TABLE cve_matches (
     id                      INTEGER PRIMARY KEY,
     cve_id                  TEXT NOT NULL REFERENCES cves(cve_id),
@@ -58,7 +68,13 @@ CREATE TABLE cve_matches (
     version_start_including TEXT,
     version_start_excluding TEXT,
     version_end_including   TEXT,
-    version_end_excluding   TEXT
+    version_end_excluding   TEXT,
+    node_operator           TEXT NOT NULL DEFAULT 'OR' CHECK (node_operator IN ('AND', 'OR')),
+    node_negate             INTEGER NOT NULL DEFAULT 0 CHECK (node_negate IN (0, 1)),
+    config_operator         TEXT NOT NULL DEFAULT 'OR' CHECK (config_operator IN ('AND', 'OR')),
+    and_node_siblings       INTEGER NOT NULL DEFAULT 0 CHECK (and_node_siblings IN (0, 1)),
+    and_config_siblings     INTEGER NOT NULL DEFAULT 0 CHECK (and_config_siblings IN (0, 1)),
+    version_key             TEXT NOT NULL DEFAULT ''
 );
 
 -- Evidence that a public exploit exists. References only; no exploit code.
@@ -97,11 +113,10 @@ CREATE TABLE aliases (
     confidence           TEXT NOT NULL
 );
 
-CREATE INDEX idx_cve_matches_lookup  ON cve_matches (criteria_part, criteria_vendor, criteria_product, vulnerable);
-CREATE INDEX idx_cve_matches_cve     ON cve_matches (cve_id);
-CREATE INDEX idx_cve_matches_node    ON cve_matches (node_id);
-CREATE INDEX idx_cve_matches_crit    ON cve_matches (criteria);
-CREATE INDEX idx_config_nodes_config ON cve_config_nodes (configuration_id);
+-- Only indexes the query engine uses ship in the database. Builders that
+-- need more (e.g. the updater's overlay deletes by cve_id) create them and
+-- drop them again before the database is finished.
+CREATE INDEX idx_cve_matches_lookup  ON cve_matches (criteria_part, criteria_vendor, criteria_product, vulnerable, version_key);
 CREATE INDEX idx_configurations_cve  ON cve_configurations (cve_id);
 CREATE INDEX idx_exploit_cve         ON exploit_evidence (cve_id);
 CREATE INDEX idx_aliases_observed    ON aliases (observed_vendor, observed_product);
@@ -154,4 +169,4 @@ CREATE INDEX idx_distro_adv_cve      ON distro_advisories (cve_id);
 CREATE INDEX idx_distro_pkgver_up    ON distro_package_versions (distro, package, upstream);
 CREATE INDEX idx_distro_packages_cpe ON distro_packages (cpe_part, cpe_vendor, cpe_product);
 
-INSERT INTO database_metadata (key, value) VALUES ('schema_version', '4');
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '6');

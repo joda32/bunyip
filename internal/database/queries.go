@@ -36,24 +36,23 @@ type MatchRule struct {
 // CandidateRules returns vulnerable match rules whose criteria share the
 // given part, vendor and product (canonical CPE values). This is only an
 // indexed pre-filter; callers must still evaluate each rule in full.
-func (s *Store) CandidateRules(ctx context.Context, part, vendor, product string) ([]MatchRule, error) {
+//
+// versionKey (version.Key of the observed version) skips exact-version rules
+// for other version series; "" reads every rule.
+func (s *Store) CandidateRules(ctx context.Context, part, vendor, product, versionKey string) ([]MatchRule, error) {
+	// A single scan of idx_cve_matches_lookup: configuration context was
+	// copied onto each rule when the database was built.
 	const q = `
 SELECT m.id, m.cve_id, m.criteria, m.vulnerable,
        COALESCE(m.version_start_including, ''), COALESCE(m.version_start_excluding, ''),
        COALESCE(m.version_end_including, ''),   COALESCE(m.version_end_excluding, ''),
-       n.id IS NOT NULL,
-       COALESCE(n.operator, 'OR'), COALESCE(n.negate, 0), COALESCE(c.operator, 'OR'),
-       COALESCE(n.operator = 'AND' AND EXISTS
-           (SELECT 1 FROM cve_matches m2 WHERE m2.node_id = n.id AND m2.id <> m.id), 0),
-       COALESCE(c.operator = 'AND' AND EXISTS
-           (SELECT 1 FROM cve_config_nodes n2 WHERE n2.configuration_id = c.id AND n2.id <> n.id), 0)
+       m.node_id IS NOT NULL, m.node_operator, m.node_negate, m.config_operator,
+       m.and_node_siblings, m.and_config_siblings
 FROM cve_matches m
-LEFT JOIN cve_config_nodes   n ON n.id = m.node_id
-LEFT JOIN cve_configurations c ON c.id = n.configuration_id
 WHERE m.criteria_part = ? AND m.criteria_vendor = ? AND m.criteria_product = ?
-  AND m.vulnerable = 1
+  AND m.vulnerable = 1 AND (? = '' OR m.version_key IN ('', ?))
 ORDER BY m.cve_id, m.id`
-	rows, err := s.db.QueryContext(ctx, q, part, vendor, product)
+	rows, err := s.db.QueryContext(ctx, q, part, vendor, product, versionKey, versionKey)
 	if err != nil {
 		return nil, wrapQueryErr(err)
 	}

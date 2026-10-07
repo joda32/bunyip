@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"offline-vulndb/internal/cpe"
+	"offline-vulndb/internal/version"
 )
 
 // CheckStatus is the outcome of one verification check.
@@ -121,7 +122,10 @@ func (s *Store) missingTables(ctx context.Context) ([]string, error) {
 // columns agree with it, since a mismatch would silently hide rules.
 func (s *Store) badCriteria(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, criteria, criteria_part, criteria_vendor, criteria_product FROM cve_matches`)
+		`SELECT id, criteria, criteria_part, criteria_vendor, criteria_product, version_key,
+		        COALESCE(version_start_including, version_start_excluding, version_end_including,
+		                 version_end_excluding) IS NOT NULL
+		 FROM cve_matches`)
 	if err != nil {
 		return nil, wrapQueryErr(err)
 	}
@@ -129,16 +133,24 @@ func (s *Store) badCriteria(ctx context.Context) ([]string, error) {
 	var bad []string
 	for rows.Next() {
 		var id int64
-		var crit, part, vendor, product string
-		if err := rows.Scan(&id, &crit, &part, &vendor, &product); err != nil {
+		var crit, part, vendor, product, key string
+		var ranged bool
+		if err := rows.Scan(&id, &crit, &part, &vendor, &product, &key, &ranged); err != nil {
 			return nil, err
 		}
 		c, err := cpe.ParsePattern(crit)
+		wantKey := ""
+		if err == nil && !ranged {
+			wantKey = version.Key(cpe.Unescape(c.Version))
+		}
 		switch {
 		case err != nil:
 			bad = append(bad, fmt.Sprintf("rule %d: %v", id, err))
 		case c.Part != part || c.Vendor != vendor || c.Product != product:
 			bad = append(bad, fmt.Sprintf("rule %d: index columns disagree with criteria %q", id, crit))
+		case key != wantKey:
+			// A wrong key would silently hide the rule from matching queries.
+			bad = append(bad, fmt.Sprintf("rule %d: version_key %q, want %q", id, key, wantKey))
 		}
 	}
 	return bad, wrapQueryErr(rows.Err())
@@ -186,4 +198,17 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	}
 	st.CVEsWithoutConfigurations = n
 	return st, nil
+}
+
+// QuickCheck runs SQLite's quick_check (structural integrity, faster than a
+// full integrity_check) and fails if it reports problems.
+func (s *Store) QuickCheck(ctx context.Context) error {
+	var res string
+	if err := s.db.QueryRowContext(ctx, `PRAGMA quick_check`).Scan(&res); err != nil {
+		return wrapQueryErr(err)
+	}
+	if res != "ok" {
+		return fmt.Errorf("%w: quick_check: %s", ErrCorrupt, res)
+	}
+	return nil
 }

@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"offline-vulndb/internal/bundle"
 	"offline-vulndb/internal/database"
 	"offline-vulndb/internal/identity"
 	"offline-vulndb/internal/matcher"
@@ -49,6 +51,11 @@ Commands:
   db init [--fixture FILE] [--force]     create a new database (optionally loading a fixture)
   db verify                              check database integrity and consistency
   db stats                               show table row counts
+  bundle keygen --key FILE --pub FILE    create an Ed25519 signing key pair
+  bundle create --out FILE [--key FILE]  package the database (--db) as a signed transport bundle
+  bundle verify FILE --pubkey FILE       check a bundle's signature and contents
+  bundle import FILE --pubkey FILE       verify and atomically install a bundle as --db
+        [--allow-unsigned] [--allow-downgrade]
 
 Global options (may also follow the command):
   --db PATH   database file (default $VULNDB_DB, else ./vulndb.sqlite)
@@ -106,6 +113,8 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		err = cmdInfo(ctx, g, rest[1:], stdout, stderr)
 	case "db":
 		err = cmdDB(ctx, g, rest[1:], stdout, stderr)
+	case "bundle":
+		err = cmdBundle(ctx, g, rest[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return exitOK
@@ -532,4 +541,145 @@ func cmdDBStats(ctx context.Context, g *globals, args []string, stdout, stderr i
 	}
 	fmt.Fprintf(stdout, "  %-20s %10d\n", "cves w/o config", st.CVEsWithoutConfigurations)
 	return nil
+}
+
+// parseWithFile parses flags that may appear before or after one positional
+// file argument.
+func parseWithFile(fs *flag.FlagSet, args []string) (string, error) {
+	var files []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return "", err
+			}
+			return "", usageError{err.Error()}
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		files = append(files, fs.Arg(0))
+		args = fs.Args()[1:]
+	}
+	if len(files) != 1 {
+		return "", usageError{fs.Name() + ": exactly one bundle file is required"}
+	}
+	return files[0], nil
+}
+
+func cmdBundle(ctx context.Context, g *globals, args []string, stdout, stderr io.Writer) error {
+	if len(args) == 0 {
+		return usageError{"bundle: subcommand required (keygen, create, verify, import)"}
+	}
+	fs := newFlagSet("bundle "+args[0], stderr)
+	g.register(fs)
+	switch args[0] {
+	case "keygen":
+		key := fs.String("key", "", "private key file to create (keep it on the build machine)")
+		pub := fs.String("pub", "", "public key file to create (copy it to the offline side)")
+		if err := parseSub(fs, args[1:]); err != nil {
+			return err
+		}
+		if *key == "" || *pub == "" {
+			return usageError{"bundle keygen: --key and --pub are required"}
+		}
+		id, err := bundle.GenerateKeys(*key, *pub)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "Created signing key %s (private) and %s (public), key ID %s\n", *key, *pub, id)
+		return nil
+
+	case "create":
+		out := fs.String("out", "", "bundle file to write, e.g. vulndb-2026-10-07.tar.gz")
+		key := fs.String("key", "", "private key to sign with (omit for an unsigned bundle)")
+		if err := parseSub(fs, args[1:]); err != nil {
+			return err
+		}
+		if *out == "" {
+			return usageError{"bundle create: --out is required"}
+		}
+		var sk ed25519.PrivateKey
+		if *key != "" {
+			var err error
+			if sk, err = bundle.LoadPrivateKey(*key); err != nil {
+				return err
+			}
+		}
+		start := time.Now()
+		m, err := bundle.Create(ctx, g.db, *out, sk)
+		if err != nil {
+			return err
+		}
+		fi, _ := os.Stat(*out)
+		fmt.Fprintf(stdout, "Created %s (%.0f MB from a %.0f MB database) in %s\n", *out,
+			float64(fi.Size())/1e6, float64(m.Database.Size)/1e6, time.Since(start).Round(time.Second))
+		writeManifest(stdout, m)
+		if !m.Signed {
+			fmt.Fprintln(stdout, "WARNING: bundle is not signed; importing it will require --allow-unsigned.")
+		}
+		return nil
+
+	case "verify", "import":
+		pub := fs.String("pubkey", "", "trusted public key")
+		allowUnsigned := fs.Bool("allow-unsigned", false, "accept a bundle without a verified signature")
+		allowDowngrade := fs.Bool("allow-downgrade", false, "install a database older than the installed one")
+		file, err := parseWithFile(fs, args[1:])
+		if err != nil {
+			return err
+		}
+		opts := bundle.Options{AllowUnsigned: *allowUnsigned, AllowDowngrade: *allowDowngrade}
+		if *pub != "" {
+			if opts.PublicKey, err = bundle.LoadPublicKey(*pub); err != nil {
+				return err
+			}
+		}
+		if args[0] == "verify" {
+			m, err := bundle.Verify(file, opts)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(stdout, "Bundle OK: %s\n", file)
+			writeManifest(stdout, m)
+			return nil
+		}
+		res, err := bundle.Import(ctx, file, g.db, opts)
+		if err != nil {
+			return err
+		}
+		switch {
+		case res.Skipped:
+			fmt.Fprintf(stdout, "Bundle verified; %s already has this database version. Nothing to do.\n", g.db)
+		default:
+			fmt.Fprintf(stdout, "Installed %s from %s\n", g.db, file)
+			if res.Previous != "" {
+				fmt.Fprintf(stdout, "Previous database kept as %s\n", res.Previous)
+			}
+		}
+		writeManifest(stdout, res.Manifest)
+		return nil
+	}
+	return usageError{fmt.Sprintf("bundle: unknown subcommand %q", args[0])}
+}
+
+func writeManifest(w io.Writer, m *bundle.Manifest) {
+	md := m.Database.Metadata
+	sig := "not signed"
+	switch {
+	case m.Signed && m.KeyID != "":
+		sig = "valid, key ID " + m.KeyID
+	case m.Signed:
+		sig = "present, NOT checked"
+	}
+	fmt.Fprintf(w, "  Signature:         %s\n", sig)
+	fmt.Fprintf(w, "  Database version:  %s (schema %s)\n", md["database_version"], md["schema_version"])
+	if md["nvd_last_modified"] != "" {
+		fmt.Fprintf(w, "  NVD data as of:    %s\n", md["nvd_last_modified"])
+	}
+	if md["kev_catalog_version"] != "" {
+		fmt.Fprintf(w, "  KEV catalogue:     %s\n", md["kev_catalog_version"])
+	}
+	if md["distro_sources"] != "" {
+		fmt.Fprintf(w, "  Distributions:     %s\n", md["distro_sources"])
+	}
+	fmt.Fprintf(w, "  SHA-256:           %s\n", m.Database.SHA256)
 }

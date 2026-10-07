@@ -28,7 +28,7 @@ exact matching rules are in [`docs/matching.md`](docs/matching.md).
 - Does not run, download or ship exploit code; it only records that exploit
   references exist.
 
-## Status: milestone 6
+## Status: milestone 7
 
 Implemented:
 - **Query engine (Go):** CPE 2.2/2.3 parsing and normalisation, version
@@ -72,7 +72,16 @@ make test-all       # Go tests + updater tests, incl. real-data end-to-end test
 make real-db        # NVD feeds + CISA KEV -> ./vulndb.sqlite (feeds cached in .cache/feeds)
 ```
 
-Copy `vulndb.sqlite` and `bin/vulndb` into the restricted network.
+Package it as a signed bundle and install it in the restricted network with
+`vulndb bundle import`. The import verifies the signature, checksum, schema and
+SQLite integrity, refuses rollbacks, and replaces the database atomically. See
+[docs/deployment.md](docs/deployment.md).
+
+```bash
+make keygen                 # once: vulndb-signing.key (keep) + vulndb-signing.pub (copy to offline side)
+make bundle                 # vulndb-YYYY-MM-DD.tar.gz (835 MB database -> 140 MB)
+vulndb --db /opt/vulndb/vulndb.sqlite bundle import vulndb-2026-10-07.tar.gz --pubkey vulndb-signing.pub
+```
 - `vulndb info` shows how old the NVD data is, and warns after 7 days.
 - It also shows how many CVEs have no CPE applicability data. Since April 2026
   NVD adds that data to only a minority of new CVEs, so recent vulnerabilities
@@ -301,6 +310,7 @@ bin/vulndb query --cpe cpe:/a:openbsd:openssh:8.7p1 --distro redhat --package-ve
 bin/vulndb info        # versions, NVD data age, KEV version, coverage; warns if stale or synthetic
 bin/vulndb db verify   # SQLite integrity, foreign keys, criteria re-parse vs index columns
 bin/vulndb db stats    # row counts and file size
+bin/vulndb bundle keygen|create|verify|import   # signed transport bundles (docs/deployment.md)
 ```
 
 Exit codes: `0` success (including "no results"), `1` runtime error (missing
@@ -334,8 +344,9 @@ failed verify), `2` usage error (unknown command or flag, unsupported
   product CPE. For example, IIS vulnerabilities since about 2017 are listed
   against Windows CPEs, so `cpe:/a:microsoft:internet_information_services:10.0`
   finds none of them.
-- Products with enormous rule sets are slow. `linux_kernel` has 163k rules and a
-  query takes about 1.6 s, versus 10–30 ms for typical services.
+- Products with enormous rule sets are slower. A `linux_kernel` 5.15 query
+  reads 53k of the kernel's 163k rules and takes about 0.7 s, versus 4–13 ms
+  for typical services.
 - NVD itself contains a handful of malformed criteria (e.g. unescaped
   parentheses in Cisco IOS versions). They are skipped and counted in
   `nvd_rules_skipped`.
@@ -352,15 +363,17 @@ internal/distro/     distribution advisory verdicts (release inference, dpkg com
 internal/matcher/    rule evaluation, per-CVE aggregation, enrichment, ordering
 internal/nmap/       Nmap XML parser and scan assessment
 internal/output/     text and JSON rendering
+internal/bundle/     signed transport bundles (create, verify, atomic import)
 data/aliases.json    curated vendor/product aliases (loaded into the database)
 data/distro_packages.json  curated CPE -> distribution source package map
 schema/schema.sql    database schema (embedded in the binary)
 updater/             Python updater: NVD + KEV -> vulndb.sqlite
 testdata/fixtures/   synthetic test data
 testdata/nvd/        real NVD/KEV records for updater and end-to-end tests
-testdata/contract/   shared Go/Python vectors (CPE canonicalisation, RPM ordering)
+testdata/contract/   shared Go/Python vectors (CPE canonicalisation, RPM ordering, version keys)
 testdata/nmap/       a real Nmap scan and hand-written multi-host samples
 testdata/osv/        real Ubuntu, Debian, Red Hat, Rocky and AlmaLinux OSV advisory records
 docs/matching.md     matching semantics
 docs/data-sources.md source coverage measurements and decisions
+docs/deployment.md   build -> signed bundle -> offline import
 ```

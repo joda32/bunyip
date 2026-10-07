@@ -105,3 +105,33 @@ def _canonical(v: str) -> str:
         i += 1
     result = "".join(out)
     return "\\-" if result == NA else result
+
+
+def version_key(v: str) -> str:
+    """Exact-version lookup key; a port of version.Key in Go (shared vectors in
+    testdata/contract/version_key_vectors.json)."""
+    if v in ("", ANY, NA) or "*" in v or "?" in v:
+        return ""
+    segs = v.split(".", 2)
+    if len(segs) == 1:
+        segs.append("0")
+    out = []
+    for seg in segs[:2]:
+        j = 0
+        while j < len(seg) and seg[j].isascii() and seg[j].isdigit():
+            j += 1
+        if j == 0:
+            return ""
+        out.append(seg[:j].lstrip("0") or "0")
+    return ".".join(out)
+
+
+def unescape(v: str) -> str:
+    """Canonical attribute value -> logical value (removes backslash escapes)."""
+    out, i = [], 0
+    while i < len(v):
+        if v[i] == "\\" and i + 1 < len(v):
+            i += 1
+        out.append(v[i])
+        i += 1
+    return "".join(out)

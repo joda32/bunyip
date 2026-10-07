@@ -131,6 +131,18 @@ of the time (e.g. `microsoft:kerberos` is not MIT Kerberos). Add genuine
 renames or acquisitions to `aliases`, and record false matches under
 `rejected` so they aren't proposed again.
 
+## Database size
+
+Only indexes the query engine uses are shipped. The build creates extra
+indexes (e.g. on `cve_matches.cve_id` for the `modified` overlay), then drops
+them. It finishes with `ANALYZE` and `VACUUM`, with temporary storage on disk
+to bound memory. Each rule is stored with its configuration context and
+exact-version key (see docs/matching.md). The result:
+- 835 MB, down from 1.17 GB;
+- built in about 5.5 minutes from cached feeds;
+- compressing to a 140 MB transport bundle (`vulndb bundle create`, see
+  docs/deployment.md).
+
 ## Safety
 
 - Downloads use HTTPS only and only from `nvd.nist.gov` and `www.cisa.gov`

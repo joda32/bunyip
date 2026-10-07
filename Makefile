@@ -4,7 +4,7 @@ BIN     := bin/vulndb
 DB      ?= vulndb.sqlite
 FIXTURE := testdata/fixtures/synthetic.json
 
-.PHONY: all build test test-short test-all cover bench vet fmt fixture-db venv updater-test real-db clean
+.PHONY: all build test test-short test-all cover bench vet fmt fixture-db venv updater-test real-db keygen bundle clean
 
 all: vet test build
 
@@ -53,6 +53,17 @@ updater-test:
 # cached in .cache/feeds and only re-downloaded when NVD publishes changes.
 real-db:
 	$(PYTHON) -m vulndb_update build --out $(DB) --cache .cache/feeds
+
+# Signing key for transport bundles (once; keep the private key on the build machine).
+KEY ?= vulndb-signing.key
+PUB ?= vulndb-signing.pub
+keygen: build
+	$(BIN) bundle keygen --key $(KEY) --pub $(PUB)
+
+# Signed transport bundle of $(DB) for the offline side (see docs/deployment.md).
+BUNDLE ?= vulndb-$(shell date -u +%F).tar.gz
+bundle: build
+	$(BIN) --db $(DB) bundle create --key $(KEY) --out $(BUNDLE)
 
 clean:
 	rm -rf bin

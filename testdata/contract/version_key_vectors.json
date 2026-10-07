@@ -1,0 +1,27 @@
+{
+  "comment": "Shared Go/Python contract for the exact-version lookup key (version.Key in Go, cpe.version_key in Python). key = first two dot-separated segments, each reduced to its leading digits without leading zeros, a missing second segment counting as 0; '' when the version is not usable (ANY, NA, wildcards, no leading digit). Versions that compare equal under the generic and OpenSSH comparators must share a key; rules with key '' are always considered.",
+  "vectors": [
+    {"version": "2.4.49", "key": "2.4"},
+    {"version": "5.15.0", "key": "5.15"},
+    {"version": "5.15", "key": "5.15"},
+    {"version": "5", "key": "5.0"},
+    {"version": "5.0.0", "key": "5.0"},
+    {"version": "05.015", "key": "5.15"},
+    {"version": "8.9p1", "key": "8.9"},
+    {"version": "9.3", "key": "9.3"},
+    {"version": "1.1.1k", "key": "1.1"},
+    {"version": "2.6.32-279", "key": "2.6"},
+    {"version": "10.0.19045", "key": "10.0"},
+    {"version": "1.10", "key": "1.10"},
+    {"version": "1.9", "key": "1.9"},
+    {"version": "*", "key": ""},
+    {"version": "-", "key": ""},
+    {"version": "", "key": ""},
+    {"version": "2.4.*", "key": ""},
+    {"version": "2.?", "key": ""},
+    {"version": "v1.2", "key": ""},
+    {"version": "beta", "key": ""},
+    {"version": "1.x", "key": ""},
+    {"version": "r2", "key": ""}
+  ]
+}

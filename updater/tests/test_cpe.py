@@ -26,3 +26,12 @@ def test_parse_pattern_all_attributes():
 def test_error_names_attribute():
     with pytest.raises(cpe.CPEError, match="attribute product"):
         cpe.parse_pattern("cpe:2.3:a:apache:http server:*:*:*:*:*:*:*:*")
+
+
+KEY_VECTORS = json.loads((REPO / "testdata" / "contract" / "version_key_vectors.json").read_text())["vectors"]
+
+
+@pytest.mark.parametrize("v", KEY_VECTORS, ids=[v["version"] or "<empty>" for v in KEY_VECTORS])
+def test_version_key_contract(v):
+    """Must agree with version.Key (Go) on every shared vector."""
+    assert cpe.version_key(v["version"]) == v["key"]

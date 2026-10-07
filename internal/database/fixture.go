@@ -254,16 +254,21 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			return err
 		}
 		cfgID, _ := res.LastInsertId()
+		cfgOp := operatorOrDefault(cfg.Operator)
 		for _, node := range cfg.Nodes {
+			nodeOp := operatorOrDefault(node.Operator)
 			res, err := tx.ExecContext(ctx,
 				`INSERT INTO cve_config_nodes (configuration_id, operator, negate) VALUES (?, ?, ?)`,
-				cfgID, operatorOrDefault(node.Operator), node.Negate)
+				cfgID, nodeOp, node.Negate)
 			if err != nil {
 				return err
 			}
 			nodeID, _ := res.LastInsertId()
+			rc := RuleContext{NodeID: nodeID, NodeOperator: nodeOp, NodeNegate: node.Negate, ConfigOperator: cfgOp,
+				AndNodeSiblings:   nodeOp == "AND" && len(node.CPEMatch) > 1,
+				AndConfigSiblings: cfgOp == "AND" && len(cfg.Nodes) > 1}
 			for _, m := range node.CPEMatch {
-				if err := InsertMatchRule(ctx, tx, c.CVEID, nodeID, m); err != nil {
+				if err := InsertMatchRule(ctx, tx, c.CVEID, rc, m); err != nil {
 					return err
 				}
 			}
@@ -272,25 +277,40 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	return nil
 }
 
+// RuleContext is a rule's place in its NVD configuration, stored on the rule.
+// A zero NodeID stores the rule without configuration structure.
+type RuleContext struct {
+	NodeID                             int64
+	NodeOperator, ConfigOperator       string
+	NodeNegate                         bool
+	AndNodeSiblings, AndConfigSiblings bool
+}
+
 // InsertMatchRule validates a criteria string and stores the rule with its
-// derived lookup columns. A node ID of 0 stores the rule without
-// configuration structure.
-func InsertMatchRule(ctx context.Context, e execer, cveID string, nodeID int64, m FixtureMatch) error {
+// derived lookup columns and configuration context.
+func InsertMatchRule(ctx context.Context, e execer, cveID string, rc RuleContext, m FixtureMatch) error {
 	crit, err := cpe.ParsePattern(m.Criteria)
 	if err != nil {
 		return fmt.Errorf("criteria %q: %w", m.Criteria, err)
 	}
 	var node any
-	if nodeID != 0 {
-		node = nodeID
+	if rc.NodeID != 0 {
+		node = rc.NodeID
+	}
+	key := ""
+	if m.VersionStartIncluding == "" && m.VersionStartExcluding == "" && m.VersionEndIncluding == "" && m.VersionEndExcluding == "" {
+		key = version.Key(cpe.Unescape(crit.Version))
 	}
 	_, err = e.ExecContext(ctx, `
 INSERT INTO cve_matches (cve_id, node_id, criteria, criteria_part, criteria_vendor, criteria_product, vulnerable,
-                         version_start_including, version_start_excluding, version_end_including, version_end_excluding)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                         version_start_including, version_start_excluding, version_end_including, version_end_excluding,
+                         node_operator, node_negate, config_operator, and_node_siblings, and_config_siblings, version_key)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		cveID, node, m.Criteria, crit.Part, crit.Vendor, crit.Product, m.Vulnerable,
 		nullStr(m.VersionStartIncluding), nullStr(m.VersionStartExcluding),
-		nullStr(m.VersionEndIncluding), nullStr(m.VersionEndExcluding))
+		nullStr(m.VersionEndIncluding), nullStr(m.VersionEndExcluding),
+		operatorOrDefault(rc.NodeOperator), rc.NodeNegate, operatorOrDefault(rc.ConfigOperator),
+		rc.AndNodeSiblings, rc.AndConfigSiblings, key)
 	return err
 }
 

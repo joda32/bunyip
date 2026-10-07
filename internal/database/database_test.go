@@ -130,7 +130,7 @@ func TestMetadata(t *testing.T) {
 func TestCandidateRules(t *testing.T) {
 	s := openFixtureDB(t)
 	ctx := context.Background()
-	rules, err := s.CandidateRules(ctx, "a", "apache", "http_server")
+	rules, err := s.CandidateRules(ctx, "a", "apache", "http_server", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestCandidateRules(t *testing.T) {
 	}
 
 	// Non-vulnerable platform rules are not candidates.
-	win, err := s.CandidateRules(ctx, "o", "microsoft", "windows")
+	win, err := s.CandidateRules(ctx, "o", "microsoft", "windows", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestCandidateRules(t *testing.T) {
 		t.Errorf("got %d windows rules, want 0 (vulnerable=false only)", len(win))
 	}
 
-	none, err := s.CandidateRules(ctx, "a", "nobody", "nothing")
+	none, err := s.CandidateRules(ctx, "a", "nobody", "nothing", "")
 	if err != nil || len(none) != 0 {
 		t.Errorf("got %v, %v; want no rules", none, err)
 	}
@@ -321,5 +321,25 @@ func TestSchemaFileVersion(t *testing.T) {
 	s.Close()
 	if _, err := Open(context.Background(), path); err != nil {
 		t.Fatalf("schema.sql version does not match SchemaVersion: %v", err)
+	}
+}
+
+func TestCandidateRulesVersionKey(t *testing.T) {
+	s := openFixtureDB(t)
+	ctx := context.Background()
+	// CVE-0000-0002 is an exact-version rule for 2.4.49 (key "2.4"); the
+	// other apache rules are ranges (key "").
+	same, err := s.CandidateRules(ctx, "a", "apache", "http_server", "2.4")
+	if err != nil || len(same) != 6 {
+		t.Fatalf("key 2.4: %d rules, %v", len(same), err)
+	}
+	other, err := s.CandidateRules(ctx, "a", "apache", "http_server", "9.9")
+	if err != nil || len(other) != 5 {
+		t.Fatalf("key 9.9: %d rules, %v", len(other), err)
+	}
+	for _, r := range other {
+		if r.CVEID == "CVE-0000-0002" {
+			t.Error("exact-version rule for another version series was read")
+		}
 	}
 }

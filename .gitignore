@@ -6,3 +6,7 @@ graphify-out/
 .cache/
 __pycache__/
 *.egg-info/
+*.tar.gz
+*.tar.gz.partial
+vulndb-signing.key
+*.previous
