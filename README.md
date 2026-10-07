@@ -28,7 +28,7 @@ exact matching rules are in [`docs/matching.md`](docs/matching.md).
 - Does not run, download or ship exploit code; it only records that exploit
   references exist.
 
-## Status: milestone 7
+## Status: milestone 8
 
 Implemented:
 - **Query engine (Go):** CPE 2.2/2.3 parsing and normalisation, version
@@ -37,7 +37,8 @@ Implemented:
   structure, KEV and exploit enrichment, text and JSON output, a debug trace,
   and `db init/verify/stats`.
 - **Nmap input:** `vulndb nmap scan.xml` assesses every open, fingerprinted
-  service in Nmap `-oX` output.
+  service in Nmap `-oX` output; `nse/vulndb.nse` shows the same results inline
+  during a scan (`nmap -sV --script vulndb`).
 - **Identity resolution:** curated aliases map the vendor/product names Nmap
   reports to the names NVD uses (e.g. `mysql:mysql` → `oracle:mysql`).
   Distribution packages (Ubuntu, Debian, RHEL, …) are detected.
@@ -52,8 +53,9 @@ Implemented:
   `data/distro_packages.json`.
 
 Not yet: SUSE/Alpine advisories, product-name resolution when no CPE is
-reported, the CVE List as a second source (evaluated and deferred,
-see [docs/data-sources.md](docs/data-sources.md)), and the NSE adapter.
+reported (evaluated: a long-tail curation job, see
+[docs/data-sources.md](docs/data-sources.md)), the CVE List as a second source (evaluated and deferred,
+see [docs/data-sources.md](docs/data-sources.md)).
 
 ## Build
 
@@ -255,6 +257,41 @@ Flags on a CVE line mark results to review: `CONDITIONAL` (another condition,
 such as a specific OS, was not evaluated), `ransomware` (known use per KEV), and
 `via alias` (found only through a curated alias identity).
 
+### Inline in Nmap (NSE)
+
+```bash
+nmap -sV --script /opt/vulndb/vulndb.nse \
+     --script-args vulndb.bin=/opt/vulndb/vulndb,vulndb.db=/opt/vulndb/vulndb.sqlite 10.0.0.0/24
+```
+
+```text
+22/tcp open  ssh     OpenSSH 9.6p1 Ubuntu 3ubuntu13.18 (Ubuntu Linux; protocol 2.0)
+| vulndb:
+|   6 candidate CVEs (0 in CISA KEV, 0 with public exploit evidence)
+|   Distribution: Ubuntu 24.04 installed 1:9.6p1-3ubuntu13.18; 16 more fixed in the package
+|   CVE-2023-51767   HIGH      CVSS 7.0
+|   CVE-2026-73282   MEDIUM    CVSS 4.8  Ubuntu: VULNERABLE
+|   ...
+```
+
+How it works:
+- The script is a thin adapter. Per port, it writes the service fingerprint
+  and the host's other open ports (for distribution evidence) to a temporary
+  file, runs `vulndb nse --request FILE`, and prints the answer.
+- Target-controlled banner text never appears on a command line.
+- Each port takes about 12 ms.
+- With `-oX`, the results are also stored as structured `<elem>` data.
+
+Script arguments:
+- `vulndb.bin`, `vulndb.db`: paths to the binary and database;
+- `vulndb.max` (default 10): CVEs listed per port;
+- `vulndb.mincvss`: hide lower-scored CVEs;
+- `vulndb.showall`: also list undetermined CVEs and ones fixed in the
+  distribution package.
+
+Ports with nothing to report print nothing. Configuration errors (wrong binary
+or database path) are always shown. Unix-like systems only.
+
 ### Distribution-packaged hosts
 
 A real scan of an Ubuntu 24.04 machine (`OpenSSH 9.6p1 Ubuntu 3ubuntu13.18`):
@@ -376,4 +413,5 @@ testdata/osv/        real Ubuntu, Debian, Red Hat, Rocky and AlmaLinux OSV advis
 docs/matching.md     matching semantics
 docs/data-sources.md source coverage measurements and decisions
 docs/deployment.md   build -> signed bundle -> offline import
+nse/vulndb.nse       Nmap script adapter (nmap -sV --script vulndb)
 ```

@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -47,6 +48,7 @@ Commands:
         [--distro NAME [--package-version VER]]  also evaluate distribution advisories
                                          (ubuntu, debian, redhat, rocky, almalinux, centos)
   nmap FILE [--format text|json]         assess services in Nmap XML output (-oX); FILE "-" = stdin
+  nse --request FILE                     answer a request from nse/vulndb.nse (JSON in, JSON out)
   info                                   show database provenance and age
   db init [--fixture FILE] [--force]     create a new database (optionally loading a fixture)
   db verify                              check database integrity and consistency
@@ -62,7 +64,8 @@ Global options (may also follow the command):
   --debug     explain matching decisions on stderr
 
 Results are CANDIDATE vulnerabilities based on product/version data; they do
-not prove a target is vulnerable. Distro backported fixes are not evaluated.
+not prove a target is vulnerable. Distribution backported fixes are evaluated
+only where a distribution verdict is shown (Ubuntu, Debian, RHEL family).
 `
 
 func main() {
@@ -109,6 +112,8 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		err = cmdQuery(ctx, g, rest[1:], stdout, stderr)
 	case "nmap":
 		err = cmdNmap(ctx, g, rest[1:], stdin, stdout, stderr)
+	case "nse":
+		err = cmdNSE(ctx, g, rest[1:], stdout, stderr)
 	case "info":
 		err = cmdInfo(ctx, g, rest[1:], stdout, stderr)
 	case "db":
@@ -682,4 +687,48 @@ func writeManifest(w io.Writer, m *bundle.Manifest) {
 		fmt.Fprintf(w, "  Distributions:     %s\n", md["distro_sources"])
 	}
 	fmt.Fprintf(w, "  SHA-256:           %s\n", m.Database.SHA256)
+}
+
+// cmdNSE answers one request from nse/vulndb.nse. Requests arrive in a file
+// (never on the command line: they contain banner text from the target).
+// Failures are reported as JSON {"error": ...} on stdout as well, so the
+// script can show them; the exit code is still non-zero.
+func cmdNSE(ctx context.Context, g *globals, args []string, stdout, stderr io.Writer) error {
+	fs := newFlagSet("nse", stderr)
+	g.register(fs)
+	reqPath := fs.String("request", "", "request file written by the NSE script")
+	if err := parseSub(fs, args); err != nil {
+		return err
+	}
+	if *reqPath == "" {
+		return usageError{"nse: --request is required"}
+	}
+	resp, err := answerNSE(ctx, g, *reqPath)
+	if err != nil {
+		json.NewEncoder(stdout).Encode(map[string]any{"version": nmap.NSERequestVersion, "error": err.Error()})
+		return err
+	}
+	return json.NewEncoder(stdout).Encode(resp)
+}
+
+func answerNSE(ctx context.Context, g *globals, reqPath string) (*nmap.NSEResponse, error) {
+	f, err := os.Open(reqPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	req, err := nmap.ParseNSERequest(f)
+	if err != nil {
+		return nil, err
+	}
+	store, err := database.Open(ctx, g.db)
+	if err != nil {
+		return nil, err
+	}
+	defer store.Close()
+	engine, err := matcher.New(ctx, store)
+	if err != nil {
+		return nil, err
+	}
+	return nmap.AnswerNSE(ctx, req, engine)
 }

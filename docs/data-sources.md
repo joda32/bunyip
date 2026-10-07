@@ -194,3 +194,18 @@ IIS is a special case. NVD has recorded IIS vulnerabilities against Windows
 CPEs since about 2017, so an IIS CPE cannot find them. This is reported as a
 note rather than "solved" with a mapping, since an IIS version does not
 identify a Windows build.
+
+## Nmap services without CPEs (evaluated 2026-10-07; not automated)
+
+Nmap 7.94 has 7,352 match lines with a product name but no application CPE
+(6,069 distinct names, 471 templated).
+- Only 44 of those names appear elsewhere in Nmap's database with a CPE, and
+  at least one of those is wrong (`Trend Micro InterScan` → `postfix:postfix`).
+- Matching names against NVD's product vocabulary mostly finds the wrong
+  software: `1C:Enterprise` → Gradle, `Adabas D database` → Oracle,
+  `Aperio Algorithm Framework` → Silverstripe.
+
+Genuine matches exist (3CX, Apache ActiveMQ, Arkeia), but each needs a human
+decision. The products are a long tail of niche and embedded software; common
+internal-network services already carry CPEs. Such services are reported as
+`UNIDENTIFIED`.

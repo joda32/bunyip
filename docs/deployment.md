@@ -30,7 +30,8 @@ bin/vulndb bundle keygen --key vulndb-signing.key --pub vulndb-signing.pub
   ID printed at creation, and confirm it on the offline side.
 
 On the offline machine, copy `bin/vulndb` (one static binary, no runtime
-dependencies) and the public key.
+dependencies) and the public key. To see results inline in Nmap scans, also
+copy `nse/vulndb.nse` (see README, "Inline in Nmap").
 
 ## Each update
 

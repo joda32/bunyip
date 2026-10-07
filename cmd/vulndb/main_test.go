@@ -3,12 +3,16 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 const fixture = "../../testdata/fixtures/synthetic.json"
@@ -606,6 +610,80 @@ func TestBundleCLI(t *testing.T) {
 		r := cli(s.args...)
 		if r.code != s.code || !strings.Contains(r.stdout+r.stderr, s.want) {
 			t.Errorf("%v: exit %d, want %d with %q\n%s%s", s.args, r.code, s.code, s.want, r.stdout, r.stderr)
+		}
+	}
+}
+
+func TestNSECommand(t *testing.T) {
+	db := initDB(t)
+	dir := t.TempDir()
+	req := filepath.Join(dir, "req.json")
+	os.WriteFile(req, []byte(`{"version":1,"host":{"address":"192.0.2.9","hostnames":[],"os_cpes":[]},
+ "ports":[{"protocol":"tcp","port":443,"state":"open","name":"http","product":"nginx","version":"1.20.1","extrainfo":"",
+   "ostype":"","tunnel":"ssl","method":"probed","conf":10,"cpes":["cpe:/a:igor_sysoev:nginx:1.20.1"]}],
+ "target":{"protocol":"tcp","port":443},"options":{"max":10,"mincvss":0,"show_undetermined":false,"show_distro_fixed":false}}`), 0o600)
+	r := cli("--db", db, "nse", "--request", req)
+	if r.code != exitOK || !strings.Contains(r.stdout, `"id":"CVE-0000-0101"`) || !strings.Contains(r.stdout, "via-alias") {
+		t.Fatalf("exit %d: %s %s", r.code, r.stdout, r.stderr)
+	}
+	os.WriteFile(req, []byte(`{"version":9}`), 0o600)
+	r = cli("--db", db, "nse", "--request", req)
+	if r.code != exitError || !strings.Contains(r.stdout, `"error":"unsupported nse request version 9`) {
+		t.Errorf("error JSON: exit %d %s", r.code, r.stdout)
+	}
+}
+
+// TestNSEScriptWithNmap runs the real nse/vulndb.nse in Nmap against a local
+// listener that presents a genuine-format Ubuntu OpenSSH banner. No external
+// network access; skipped when Nmap is not installed.
+func TestNSEScriptWithNmap(t *testing.T) {
+	nmapPath, err := exec.LookPath("nmap")
+	if err != nil || testing.Short() {
+		t.Skip("nmap not installed")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "vulndb")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	db := initDB(t)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				c.Write([]byte("SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.10\r\n"))
+				c.SetReadDeadline(time.Now().Add(5 * time.Second))
+				io.Copy(io.Discard, c)
+			}(c)
+		}
+	}()
+	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
+	script, _ := filepath.Abs("../../nse/vulndb.nse")
+	out, err := exec.Command(nmapPath, "-sV", "-Pn", "-n", "-p", port, "--script", script,
+		"--script-args", "vulndb.bin="+bin+",vulndb.db="+db, "-oX", "-", "127.0.0.1").CombinedOutput()
+	if err != nil {
+		t.Fatalf("nmap: %v\n%s", err, out)
+	}
+	s := string(out)
+	for _, want := range []string{
+		`product="OpenSSH" version="8.9p1 Ubuntu 3ubuntu0.10"`, // Nmap fingerprinted the banner
+		"2 candidate CVEs",
+		"Distribution: Ubuntu 22.04 installed 1:8.9p1-3ubuntu0.10; 1 more fixed in the package",
+		"CVE-0000-0203", "Ubuntu: VULNERABLE",
+		`<elem key="id">CVE-0000-0203</elem>`, // structured -oX output
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("nmap output missing %q:\n%s", want, s)
 		}
 	}
 }
