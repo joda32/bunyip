@@ -697,6 +697,10 @@ func TestNmapWindowsBuilds(t *testing.T) {
 	if r.code != exitOK {
 		t.Fatalf("exit %d: %s", r.code, r.stderr)
 	}
+	// Windows built-ins are listed once per host, not as per-port notes.
+	if strings.Contains(r.stdout, "Note: Windows component: covered") || strings.Contains(r.stdout, "\n  389/tcp") {
+		t.Errorf("OS component ports printed individually:\n%s", r.stdout)
+	}
 	// CVE-0000-0909 is in KEV but undetermined: counted and listed only as undetermined.
 	if strings.Contains(r.stdout, "CVE-0000-0909") {
 		t.Errorf("undetermined KEV entry listed:\n%s", r.stdout)
@@ -704,7 +708,8 @@ func TestNmapWindowsBuilds(t *testing.T) {
 	for _, want := range []string{
 		"Hosts up 7, down 0 | open ports 10: assessed 2, OS components 8, unidentified 0, not probed 0",
 		"Windows: 4 host(s) assessed at build level (patch level not visible; CVEs apply unless patched)",
-		"389/tcp ldap Microsoft Windows Active Directory LDAP\n    Note: Windows component: covered by the host's Windows build",
+		"  Windows components, covered by the build assessment above:\n    389/tcp ldap, 3389/tcp ms-wbt-server\n",
+		"  Windows components, not assessed: the Windows build could not be used (see above):\n    3389/tcp ms-wbt-server\n",
 		"Identity: cpe:2.3:a:clamav:clamav:0.103.2:*:*:*:*:*:*:* [HIGH] (curated product name)",
 		"CVE-0000-0911    HIGH      CVSS 7.5  exploit:NO  KEV:NO  MATCH",
 		"Windows: Windows Server 2022 (build 10.0.20348) [HIGH]",

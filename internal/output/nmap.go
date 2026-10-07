@@ -70,11 +70,14 @@ func WriteNmapText(w io.Writer, r *nmap.Report) error {
 		for _, a := range h.Windows {
 			writeWindowsText(p, a)
 		}
+		writeOSComponents(p, h)
 		if len(h.Services) == 0 {
 			p.f("  no open ports\n")
 		}
 		for _, sr := range h.Services {
-			writeServiceText(p, sr)
+			if sr.Assessment != nmap.OSComponent {
+				writeServiceText(p, sr)
+			}
 		}
 	}
 
@@ -255,4 +258,42 @@ func kindLabel(kind string) string {
 		return "Server release because"
 	}
 	return "Client release because"
+}
+
+// writeOSComponents lists a host's Windows built-in ports on one line: each
+// would otherwise repeat the same note, and a Windows host exposes many.
+func writeOSComponents(p *printer, h nmap.HostReport) {
+	var ports []string
+	for _, sr := range h.Services {
+		if sr.Assessment == nmap.OSComponent {
+			ports = append(ports, fmt.Sprintf("%d/%s %s", sr.Port, sr.Protocol, orDash(sr.Service)))
+		}
+	}
+	if len(ports) == 0 {
+		return
+	}
+	var label string
+	switch {
+	case slices.ContainsFunc(h.Windows, func(a windows.Assessment) bool { return a.Status == windows.Assessed }):
+		label = "covered by the build assessment above"
+	case len(h.Windows) > 0:
+		label = "not assessed: the Windows build could not be used (see above)"
+	default:
+		label = "not assessed: no Windows build in the scan (run with -sC)"
+	}
+	p.f("  Windows components, %s:\n", label)
+	// Wrap between entries, never inside one ("3268/tcp ldap").
+	line := "   "
+	for i, port := range ports {
+		item := " " + port
+		if i < len(ports)-1 {
+			item += ","
+		}
+		if len(line)+len(item) > 100 && line != "   " {
+			p.f("%s\n", line)
+			line = "   "
+		}
+		line += item
+	}
+	p.f("%s\n", line)
 }

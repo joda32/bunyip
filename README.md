@@ -259,7 +259,9 @@ Each open port is one of:
 - `ASSESSED`: an application CPE (reported by Nmap, or from a curated product
   name) was looked up, plus any curated aliases.
 - `OS_COMPONENT`: a Windows built-in (RPC, LDAP, SMB, RDP, …), covered by the
-  host's Windows build assessment.
+  host's Windows build assessment. The text report lists these ports once per
+  host ("Windows components, covered by the build assessment above: 135/tcp
+  msrpc, 389/tcp ldap, …") instead of repeating a note for each.
 - `UNIDENTIFIED`: the service was fingerprinted but has no application CPE and
   its name is not in the curated map.
 - `NOT_PROBED`: Nmap only guessed the service from the port number.
