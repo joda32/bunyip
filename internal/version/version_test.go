@@ -146,3 +146,18 @@ func TestEvaluateExact(t *testing.T) {
 		}
 	}
 }
+
+func TestForSelectsPEP440(t *testing.T) {
+	for _, vp := range []struct{ vendor, product string }{
+		{"djangoproject", "django"}, {"python", "requests"}, {"palletsprojects", "werkzeug"},
+		{"cryptography.io", "cryptography"}, {"aiohttp", "aiohttp"},
+	} {
+		if got := For(vp.vendor, vp.product).Name(); got != "pep440" {
+			t.Errorf("For(%s:%s) = %q, want pep440", vp.vendor, vp.product, got)
+		}
+	}
+	// Unlisted products stay on the generic comparator.
+	if got := For("apache", "http_server").Name(); got != "generic" {
+		t.Errorf("For(apache:http_server) = %q, want generic", got)
+	}
+}

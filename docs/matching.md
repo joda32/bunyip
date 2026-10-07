@@ -152,6 +152,15 @@ unless another bound is definitely violated (then NO_MATCH).
 
 ## 4. Version comparison (`internal/version`)
 
+Comparators are chosen per product by `version.For` (`internal/version/registry.go`):
+OpenSSH for `openbsd:openssh`, PEP 440 for a verified set of Python packages
+(Django, Flask/Werkzeug/Jinja, CPython, requests, urllib3, cryptography,
+paramiko, aiohttp, numpy, …), and the conservative Generic comparator for
+everything else. A comparator returns an error — surfaced as UNKNOWN, never a
+match — when it cannot order two versions, so distro-revisioned versions
+(`2.2.1-1ubuntu0.1`) fall to the distribution-advisory path rather than being
+guessed.
+
 Comparators implement `Compare(a, b) (int, error)`. An error means "cannot
 order these" and always becomes UNKNOWN. The comparator is chosen per
 canonical vendor:product (`version.For`):
