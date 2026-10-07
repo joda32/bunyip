@@ -65,8 +65,56 @@ type Store interface {
 // Debian security/point updates ("2+deb12u3" -> "12") and Ubuntu
 // per-release uploads ("0ubuntu0.22.04.2" -> "22.04").
 var releaseInRevision = map[string]*regexp.Regexp{
-	"debian": regexp.MustCompile(`[+~]deb(\d+)u\d+`),
-	"ubuntu": regexp.MustCompile(`ubuntu0\.(\d\d\.\d\d)`),
+	"debian":    regexp.MustCompile(`[+~]deb(\d+)u\d+`),
+	"ubuntu":    regexp.MustCompile(`ubuntu0\.(\d\d\.\d\d)`),
+	"redhat":    regexp.MustCompile(`[._+]el(\d+)`), // "38.el9_4.1", "module+el8.4.0"
+	"rocky":     regexp.MustCompile(`[._+]el(\d+)`),
+	"almalinux": regexp.MustCompile(`[._+]el(\d+)`),
+}
+
+// Scheme orders package versions of one packaging system.
+type Scheme struct {
+	Parse   func(string) (version.EVR, error)
+	Compare func(a, b version.EVR) int
+}
+
+var (
+	dpkgScheme = Scheme{version.ParseDeb, version.CompareDeb}
+	rpmScheme  = Scheme{version.ParseRPM, version.CompareRPM}
+)
+
+// schemes maps advisory data keys to their package version ordering.
+var schemes = map[string]Scheme{
+	"debian": dpkgScheme, "ubuntu": dpkgScheme,
+	"redhat": rpmScheme, "rocky": rpmScheme, "almalinux": rpmScheme,
+}
+
+func schemeFor(distro string) Scheme {
+	if s, ok := schemes[distro]; ok {
+		return s
+	}
+	return dpkgScheme
+}
+
+func (s Scheme) compare(a, b string) (int, error) {
+	va, err := s.Parse(a)
+	if err != nil {
+		return 0, err
+	}
+	vb, err := s.Parse(b)
+	if err != nil {
+		return 0, err
+	}
+	return s.Compare(va, vb), nil
+}
+
+// streamOf is the module stream (major.minor) of an upstream version.
+func streamOf(upstream string) string {
+	parts := strings.SplitN(upstream, ".", 3)
+	if len(parts) < 2 {
+		return upstream
+	}
+	return parts[0] + "." + parts[1]
 }
 
 // ReleaseFromRevision returns the release a package revision encodes, if any.
@@ -87,6 +135,11 @@ type Target struct {
 	Revision    string   // package revision if visible, e.g. "3ubuntu13.18"
 	Packages    []string // candidate source packages (curated map)
 	ReleaseHint string   // release established from other evidence on the same host
+	// NoHintFallback: do not assume the host's release when the observed
+	// version is unknown to the data (used when the distribution itself was
+	// only inferred from other services: the software may be self-built).
+	NoHintFallback bool
+	Note           string // extra context shown in reasons, e.g. CentOS evaluated as Red Hat
 }
 
 // Resolution states.
@@ -154,14 +207,18 @@ func Resolve(ctx context.Context, store Store, t Target) (*Context, error) {
 	if byExact {
 		c.exact = true
 	}
+	// One candidate per release; if several mapped packages (e.g. mariadb and
+	// mariadb-server) match, prefer the earliest in the curated order.
+	slices.SortStableFunc(vers, func(a, b database.PackageVersion) int {
+		return slices.Index(t.Packages, a.Package) - slices.Index(t.Packages, b.Package)
+	})
 	seen := map[string]bool{}
 	var cands []candidate
 	for _, v := range vers {
-		k := v.Release + "/" + v.Package
-		if seen[k] {
+		if seen[v.Release] {
 			continue
 		}
-		seen[k] = true
+		seen[v.Release] = true
 		cd := candidate{release: v.Release, pkg: v.Package}
 		if t.Revision != "" {
 			cd.installed = epochOf(v.Version) + t.Upstream + "-" + t.Revision
@@ -182,7 +239,7 @@ func Resolve(ctx context.Context, store Store, t Target) (*Context, error) {
 			if err != nil {
 				return nil, err
 			}
-			for _, p := range pkgs {
+			if p := firstInOrder(t.Packages, pkgs); p != "" {
 				inRel = append(inRel, candidate{release: rel, pkg: p})
 			}
 		}
@@ -198,14 +255,14 @@ func Resolve(ctx context.Context, store Store, t Target) (*Context, error) {
 				hinted = append(hinted, cd)
 			}
 		}
-		if len(hinted) == 0 && len(cands) == 0 {
+		if len(hinted) == 0 && len(cands) == 0 && !t.NoHintFallback {
 			// The observed version is not in the data, but the host's release
 			// is known from another service: use the package in that release.
 			pkgs, err := store.PackagesInRelease(ctx, t.Distro, t.ReleaseHint, t.Packages)
 			if err != nil {
 				return nil, err
 			}
-			for _, p := range pkgs {
+			if p := firstInOrder(t.Packages, pkgs); p != "" {
 				hinted = append(hinted, candidate{release: t.ReleaseHint, pkg: p})
 			}
 		}
@@ -299,11 +356,18 @@ func (c *Context) Verdict(cve string) Verdict {
 func (c *Context) evaluate(cd candidate, cve string) Verdict {
 	v := Verdict{Distro: c.Target.DistroName, Release: cd.release, Package: cd.pkg, CVE: cve,
 		InstalledVersion: cd.installed}
-	row, ok := pickRow(cd.advisories[cve], c.Target.Revision)
+	rows := cd.advisories[cve]
+	row, ok := pickRow(rows, c.Target.Revision, c.Target.Upstream)
 	if !ok {
 		v.Status = NoData
-		v.Reason = fmt.Sprintf("%s has no entry for %s in %s/%s (usually not affected, or not yet assessed)",
-			c.Target.DistroName, cve, cd.release, cd.pkg)
+		if streams := moduleStreams(rows); len(streams) > 0 {
+			v.Reason = fmt.Sprintf("%s fixed %s only in other module streams of %s in %s (%s); the observed %s "+
+				"is in stream %s", c.Target.DistroName, cve, cd.pkg, cd.release, strings.Join(streams, ", "),
+				c.Target.Upstream, streamOf(c.Target.Upstream))
+		} else {
+			v.Reason = fmt.Sprintf("%s has no entry for %s in %s/%s (usually not affected, or not yet assessed)",
+				c.Target.DistroName, cve, cd.release, cd.pkg)
+		}
 		return v
 	}
 	v.Channel, v.Advisory, v.FixedVersion = row.Channel, row.AdvisoryID, row.FixedVersion
@@ -311,13 +375,20 @@ func (c *Context) evaluate(cd candidate, cve string) Verdict {
 	if row.Channel == "pro" {
 		where += " (Ubuntu Pro/ESM)"
 	}
+	if row.Stream != "" {
+		where += " module stream " + row.Stream
+	}
+	if c.Target.Note != "" {
+		where += " [" + c.Target.Note + "]"
+	}
+	scheme := schemeFor(c.Target.Distro)
 	if row.FixedVersion == "" {
 		v.Status = NoFix
 		v.Reason = fmt.Sprintf("%s lists %s as affected with no fix released", where, cd.pkg) + urgencyNote(row.Urgency)
 		return v
 	}
 	if cd.installed != "" {
-		cmp, err := (version.Dpkg{}).Compare(cd.installed, row.FixedVersion)
+		cmp, err := scheme.compare(cd.installed, row.FixedVersion)
 		switch {
 		case err != nil:
 			v.Status, v.Reason = NoData, fmt.Sprintf("cannot compare %s with %s: %v", cd.installed, row.FixedVersion, err)
@@ -332,13 +403,13 @@ func (c *Context) evaluate(cd candidate, cve string) Verdict {
 	}
 	// Revision not visible: decide from the upstream versions where that is
 	// conclusive for every package of the observed upstream version.
-	fixed, err := version.ParseDeb(row.FixedVersion)
+	fixed, err := scheme.Parse(row.FixedVersion)
 	if err != nil {
 		v.Status, v.Reason = NoData, fmt.Sprintf("cannot parse fixed version %s: %v", row.FixedVersion, err)
 		return v
 	}
-	cmp := version.CompareDeb(version.DebVersion{Epoch: fixed.Epoch, Upstream: c.Target.Upstream},
-		version.DebVersion{Epoch: fixed.Epoch, Upstream: fixed.Upstream})
+	cmp := scheme.Compare(version.EVR{Epoch: fixed.Epoch, Upstream: c.Target.Upstream},
+		version.EVR{Epoch: fixed.Epoch, Upstream: fixed.Upstream})
 	switch {
 	case cmp > 0:
 		v.Status = Fixed
@@ -402,9 +473,24 @@ func (c *Context) Additional(known map[string]bool) []Verdict {
 	return out
 }
 
-// pickRow chooses the advisory row for the host's channel: Ubuntu Pro (ESM)
-// when the installed revision is an ESM build or no standard row exists.
-func pickRow(rows []database.DistroAdvisory, revision string) (database.DistroAdvisory, bool) {
+// pickRow chooses the advisory row that applies to the observation:
+//   - module-stream rows (RHEL AppStream) apply only to the same stream;
+//   - the host's channel: Ubuntu Pro (ESM) when the installed revision is an
+//     ESM build or no standard row exists.
+func pickRow(rows []database.DistroAdvisory, revision, upstream string) (database.DistroAdvisory, bool) {
+	var applicable []database.DistroAdvisory
+	for _, r := range rows {
+		if r.Stream == "" || r.Stream == streamOf(upstream) {
+			applicable = append(applicable, r)
+		}
+	}
+	// Prefer the matching module stream over a stream-less row.
+	for _, r := range applicable {
+		if r.Stream != "" {
+			return r, true
+		}
+	}
+	rows = applicable
 	wantPro := strings.Contains(revision, "esm")
 	var std, pro *database.DistroAdvisory
 	for i := range rows {
@@ -424,6 +510,27 @@ func pickRow(rows []database.DistroAdvisory, revision string) (database.DistroAd
 		return *pro, true
 	}
 	return database.DistroAdvisory{}, false
+}
+
+// moduleStreams lists the module streams present in rows.
+func moduleStreams(rows []database.DistroAdvisory) []string {
+	var out []string
+	for _, r := range rows {
+		if r.Stream != "" && !slices.Contains(out, r.Stream) {
+			out = append(out, r.Stream)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+func firstInOrder(order, have []string) string {
+	for _, p := range order {
+		if slices.Contains(have, p) {
+			return p
+		}
+	}
+	return ""
 }
 
 func stripEpoch(v string) string {

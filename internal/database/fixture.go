@@ -51,6 +51,7 @@ type FixtureDistroAdvisory struct {
 	FixedVersion      string `json:"fixed_version"`
 	AffectedUpstreams string `json:"affected_upstreams"`
 	Urgency           string `json:"urgency"`
+	Stream            string `json:"stream"`
 }
 
 type FixtureCVE struct {
@@ -205,7 +206,9 @@ INSERT INTO distro_packages (cpe_part, cpe_vendor, cpe_product, distro, package,
 	for _, v := range f.DistroVersions {
 		dv, err := version.ParseDeb(v.Version)
 		if err != nil {
-			return err
+			if dv, err = version.ParseRPM(v.Version); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO distro_package_versions (distro, release, package, version, upstream) VALUES (?, ?, ?, ?, ?)`,
@@ -220,10 +223,10 @@ INSERT INTO distro_package_versions (distro, release, package, version, upstream
 		}
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO distro_advisories (source, advisory_id, cve_id, distro, release, channel, package, fixed_version,
-                               affected_upstreams, urgency)
-VALUES ('fixture', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                               affected_upstreams, urgency, stream)
+VALUES ('fixture', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			a.AdvisoryID, a.CVEID, a.Distro, a.Release, channel, a.Package, nullStr(a.FixedVersion), a.AffectedUpstreams,
-			nullStr(a.Urgency)); err != nil {
+			nullStr(a.Urgency), a.Stream); err != nil {
 			return err
 		}
 	}

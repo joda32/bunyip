@@ -57,6 +57,8 @@ type HostReport struct {
 	Hostnames []string `json:"hostnames"`
 	Status    string   `json:"status"`
 	OSCPEs    []string `json:"os_cpes"`
+	// Distro is the distribution all distribution-marked services agree on.
+	Distro string `json:"distro,omitempty"`
 	// DistroRelease is a distribution release established for the host from a
 	// service that exposes its exact package version (e.g. OpenSSH).
 	DistroRelease string          `json:"distro_release,omitempty"`
@@ -103,14 +105,18 @@ func Analyse(ctx context.Context, scan *Scan, engine *matcher.Engine) (*Report, 
 				open = append(open, p)
 			}
 		}
+		hostDistro := hostDistribution(open, engine)
 		hint, err := hostRelease(ctx, open, engine)
 		if err != nil {
 			return nil, err
 		}
 		hr.DistroRelease = hint
+		if hostDistro.Detected() {
+			hr.Distro = hostDistro.Name
+		}
 		for _, p := range open {
 			rep.Summary.OpenPorts++
-			sr, err := assessPort(ctx, p, engine, cache, hint)
+			sr, err := assessPort(ctx, p, engine, cache, hint, hostDistro)
 			if err != nil {
 				return nil, err
 			}
@@ -136,6 +142,28 @@ func observe(p Port, engine *matcher.Engine) identity.Resolution {
 	return engine.Resolver.ResolveObservation(identity.Observation{
 		Product: s.Product, Version: s.Version, ExtraInfo: s.ExtraInfo, OSType: s.OSType, CPEs: s.CPEs,
 	}, "Nmap")
+}
+
+// hostDistribution returns the distribution that every service showing one
+// agrees on (e.g. Apache "(Red Hat Enterprise Linux)"), so services that name
+// none (RHEL's "OpenSSH_8.7") can be evaluated against it. Conflicting
+// evidence yields none.
+func hostDistribution(ports []Port, engine *matcher.Engine) identity.DistroInfo {
+	var found identity.DistroInfo
+	for _, p := range ports {
+		if !p.Service.Probed() {
+			continue
+		}
+		d := observe(p, engine).Distro
+		if !d.Detected() {
+			continue
+		}
+		if found.Detected() && found.Key != d.Key {
+			return identity.DistroInfo{}
+		}
+		found = identity.DistroInfo{Name: d.Name, Key: d.Key}
+	}
+	return found
 }
 
 // hostRelease returns the distribution release that services exposing an
@@ -168,7 +196,8 @@ func hostRelease(ctx context.Context, ports []Port, engine *matcher.Engine) (str
 	return release, nil
 }
 
-func assessPort(ctx context.Context, p Port, engine *matcher.Engine, cache map[string]*matcher.Result, hint string) (ServiceReport, error) {
+func assessPort(ctx context.Context, p Port, engine *matcher.Engine, cache map[string]*matcher.Result, hint string,
+	hostDistro identity.DistroInfo) (ServiceReport, error) {
 	sr := ServiceReport{Port: p.PortID, Protocol: p.Protocol, State: p.State, NmapCPEs: []string{}}
 	s := p.Service
 	if s != nil {
@@ -190,8 +219,17 @@ func assessPort(ctx context.Context, p Port, engine *matcher.Engine, cache map[s
 	sr.Assessment = Assessed
 
 	var din *matcher.DistroInput
-	if res.Distro.Detected() {
+	switch {
+	case res.Distro.Detected():
 		din = &matcher.DistroInput{Info: res.Distro, ReleaseHint: hint}
+	case hostDistro.Detected():
+		// The service names no distribution, but the host does. Assume the
+		// distribution's package only if its data knows this upstream
+		// version (NoHintFallback), since the software may be self-built.
+		inf := hostDistro
+		inf.Inferred = true
+		din = &matcher.DistroInput{Info: inf, ReleaseHint: hint}
+		sr.Distro = inf.Label()
 	}
 	k := cacheKey(res.Candidates, din)
 	result, ok := cache[k]

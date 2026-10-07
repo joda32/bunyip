@@ -154,6 +154,9 @@ type DistroInfo struct {
 	Name     string // display name, e.g. "Ubuntu"
 	Key      string // advisory data key, e.g. "ubuntu"
 	Revision string // Debian package revision when visible, e.g. "3ubuntu13.18"
+	// Inferred: not seen on this service itself but on other services of the
+	// same host (e.g. RHEL's OpenSSH banner names no distribution).
+	Inferred bool
 }
 
 // Detected reports whether any distribution packaging was seen.
@@ -163,6 +166,9 @@ func (d DistroInfo) Detected() bool { return d.Name != "" }
 func (d DistroInfo) Label() string {
 	if d.Revision != "" {
 		return d.Name + " package " + d.Revision
+	}
+	if d.Inferred {
+		return d.Name + " (inferred from other services on the host)"
 	}
 	return d.Name
 }

@@ -327,13 +327,14 @@ type DistroAdvisory struct {
 	FixedVersion      string // "" when no fix has been released
 	AffectedUpstreams []string
 	Urgency           string // distribution's rating, e.g. Debian "unimportant"; "" if none
+	Stream            string // module stream (RHEL AppStream, e.g. "1.20"); "" if none
 }
 
 // DistroAdvisories returns every advisory row for a package in a release.
 func (s *Store) DistroAdvisories(ctx context.Context, distro, pkg, release string) ([]DistroAdvisory, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT advisory_id, cve_id, distro, release, channel, COALESCE(codename, ''), package,
-       COALESCE(fixed_version, ''), affected_upstreams, COALESCE(urgency, '')
+       COALESCE(fixed_version, ''), affected_upstreams, COALESCE(urgency, ''), stream
 FROM distro_advisories WHERE distro = ? AND package = ? AND release = ?
 ORDER BY cve_id, channel`, distro, pkg, release)
 	if err != nil {
@@ -345,7 +346,7 @@ ORDER BY cve_id, channel`, distro, pkg, release)
 		var a DistroAdvisory
 		var ups string
 		if err := rows.Scan(&a.AdvisoryID, &a.CVEID, &a.Distro, &a.Release, &a.Channel, &a.Codename,
-			&a.Package, &a.FixedVersion, &ups, &a.Urgency); err != nil {
+			&a.Package, &a.FixedVersion, &ups, &a.Urgency, &a.Stream); err != nil {
 			return nil, err
 		}
 		a.AffectedUpstreams = strings.Fields(ups)

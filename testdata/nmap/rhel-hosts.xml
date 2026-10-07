@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<!-- HAND-WRITTEN test input in the Nmap 7.94 -oX format: Red Hat-family hosts.
+     As with real scans, OpenSSH on these systems names no distribution ("OpenSSH_8.7");
+     Apache httpd does ("(Red Hat Enterprise Linux)", "(Rocky Linux)", "(AlmaLinux)"). -->
+<nmaprun scanner="nmap" args="nmap -sV -oX rhel-hosts.xml 192.0.2.50-53" start="1791272973" startstr="Tue Oct  6 15:49:33 2026" version="7.94SVN" xmloutputversion="1.05">
+<host><status state="up" reason="echo-reply" reason_ttl="63"/>
+<address addr="192.0.2.50" addrtype="ipv4"/><hostnames><hostname name="rhel9.example.test" type="PTR"/></hostnames>
+<ports>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="ssh" product="OpenSSH" version="8.7" extrainfo="protocol 2.0" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:8.7</cpe></service></port>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="http" product="Apache httpd" version="2.4.57" extrainfo="(Red Hat Enterprise Linux)" method="probed" conf="10"><cpe>cpe:/a:apache:http_server:2.4.57</cpe></service></port>
+</ports></host>
+<host><status state="up" reason="echo-reply" reason_ttl="63"/>
+<address addr="192.0.2.51" addrtype="ipv4"/><hostnames><hostname name="rhel8.example.test" type="PTR"/></hostnames>
+<ports>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="http" product="Apache httpd" version="2.4.37" extrainfo="(Red Hat Enterprise Linux)" method="probed" conf="10"><cpe>cpe:/a:apache:http_server:2.4.37</cpe></service></port>
+<port protocol="tcp" portid="443"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="http" product="nginx" version="1.16.1" tunnel="ssl" method="probed" conf="10"><cpe>cpe:/a:igor_sysoev:nginx:1.16.1</cpe></service></port>
+</ports></host>
+<host><status state="up" reason="echo-reply" reason_ttl="63"/>
+<address addr="192.0.2.52" addrtype="ipv4"/><hostnames><hostname name="rocky8.example.test" type="PTR"/></hostnames>
+<ports>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="ssh" product="OpenSSH" version="8.0" extrainfo="protocol 2.0" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:8.0</cpe></service></port>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="http" product="Apache httpd" version="2.4.37" extrainfo="(Rocky Linux)" method="probed" conf="10"><cpe>cpe:/a:apache:http_server:2.4.37</cpe></service></port>
+</ports></host>
+<host><status state="up" reason="echo-reply" reason_ttl="63"/>
+<address addr="192.0.2.53" addrtype="ipv4"/><hostnames><hostname name="alma9.example.test" type="PTR"/></hostnames>
+<ports>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="ssh" product="OpenSSH" version="8.7" extrainfo="protocol 2.0" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:8.7</cpe></service></port>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="63"/><service name="http" product="Apache httpd" version="2.4.57" extrainfo="(AlmaLinux)" method="probed" conf="10"><cpe>cpe:/a:apache:http_server:2.4.57</cpe></service></port>
+</ports></host>
+<runstats><finished time="1791272999" timestr="Tue Oct  6 15:49:59 2026" elapsed="26.00" exit="success"/><hosts up="4" down="0" total="4"/></runstats>
+</nmaprun>

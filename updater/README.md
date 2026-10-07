@@ -23,6 +23,7 @@ make real-db                    # download/refresh feeds, build ./vulndb.sqlite
 | NVD `modified` feed (changes in the last 8 days) | same | about every 2 hours |
 | Ubuntu security tracker (OSV.dev export, ~770 MB) | `https://osv-vulnerabilities.storage.googleapis.com/Ubuntu/all.zip` | daily |
 | Debian security tracker (OSV.dev export, ~74 MB) | `https://osv-vulnerabilities.storage.googleapis.com/Debian/all.zip` | daily |
+| Red Hat / Rocky Linux / AlmaLinux advisories (OSV.dev, 27 / 5 / 6.5 MB) | `.../Red%20Hat/all.zip`, `.../Rocky%20Linux/all.zip`, `.../AlmaLinux/all.zip` | daily |
 | CISA KEV catalogue | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | when CISA adds entries (typically several times a week) |
 
 How the build uses them:
@@ -86,6 +87,18 @@ Unlike Ubuntu's, Debian's affected-version lists can span the whole archive:
   package of that release.
 
 Debian's urgency (e.g. `unimportant`) is stored and shown on no-fix verdicts.
+
+**Red Hat, Rocky Linux and AlmaLinux** publish per-advisory records only
+(RHSA/RLSA/ALSA and bug/enhancement advisories). They contain fixed versions
+only: no affected lists, no unfixed entries.
+- Only standard RHEL streams are kept (`enterprise_linux:N`, keyed by major
+  release). EUS/AUS/TUS/E4S/ELS minor-release streams and other Red Hat
+  products are skipped.
+- Module builds are kept per stream (upstream major.minor).
+- If several advisories list a CVE for the same release and stream, the
+  earliest fix is kept.
+- Versions are ordered with `rpmversion.py`, a port of rpmvercmp that shares
+  test vectors with Go.
 
 Each download is verified against the MD5 the bucket publishes, and only
 re-downloaded when that changes. `--offline-from` re-verifies it. Use

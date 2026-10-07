@@ -105,16 +105,31 @@ type DistroInput struct {
 	ReleaseHint string // release established from other evidence on the same host
 }
 
+// advisoryDataFor maps distributions without their own advisory data to the
+// data that describes their packages.
+var advisoryDataFor = map[string]struct{ key, name string }{
+	"centos": {"redhat", "Red Hat"},
+}
+
 // distroTarget maps the candidate identities to distribution source packages.
 func (e *Engine) distroTarget(cands []identity.Candidate, in *DistroInput) (distro.Target, bool) {
 	if in == nil || !in.Info.Detected() || in.Info.Key == "" || !cpe.IsSpecific(cands[0].CPE.Version) {
 		return distro.Target{}, false
 	}
 	t := distro.Target{Distro: in.Info.Key, DistroName: in.Info.Name, Upstream: cpe.Unescape(cands[0].CPE.Version),
-		Revision: in.Info.Revision, ReleaseHint: in.ReleaseHint}
+		Revision: in.Info.Revision, ReleaseHint: in.ReleaseHint, NoHintFallback: in.Info.Inferred}
+	if data, ok := advisoryDataFor[t.Distro]; ok {
+		t.Note = fmt.Sprintf("%s evaluated with %s advisories", t.DistroName, data.name)
+		t.Distro = data.key
+	}
+	// OpenSSH: a bare OpenBSD release "8.7" (RHEL's banner) is the portable
+	// 8.7p1 that distributions package (see version.OpenSSH).
+	if cands[0].CPE.Vendor == "openbsd" && cands[0].CPE.Product == "openssh" && !strings.Contains(t.Upstream, "p") {
+		t.Upstream += "p1"
+	}
 	for _, c := range cands {
 		for _, p := range e.distroPkgs[c.CPE.Part+":"+c.CPE.Vendor+":"+c.CPE.Product] {
-			if p.Distro == in.Info.Key && !slices.Contains(t.Packages, p.Package) {
+			if p.Distro == t.Distro && !slices.Contains(t.Packages, p.Package) {
 				t.Packages = append(t.Packages, p.Package)
 			}
 		}

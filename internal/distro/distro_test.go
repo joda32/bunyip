@@ -276,3 +276,91 @@ func TestDebianRevisionUnknownUpstreamComparison(t *testing.T) {
 		t.Errorf("unimportant: %+v", v)
 	}
 }
+
+// Red Hat rows mirroring the real RHSA records in testdata/osv/redhat.
+var rhStore = fakeStore{
+	versions: []database.PackageVersion{
+		{Release: "9", Package: "openssh", Version: "0:8.7p1-30.el9_2"},
+		{Release: "9", Package: "openssh", Version: "0:8.7p1-38.el9_4.1"},
+		{Release: "8", Package: "nginx", Version: "1:1.16.1-2.module+el8.4.0+11155+68135136.1"},
+		{Release: "8", Package: "nginx", Version: "1:1.18.0-3.module+el8.4.0+11152+f736ed63.1"},
+		{Release: "8", Package: "nginx", Version: "1:1.20.1-1.module+el8.5.0+13723+ab304644"},
+	},
+	adv: []database.DistroAdvisory{
+		{CVEID: "CVE-2024-6387", Distro: "redhat", Release: "9", Package: "openssh", FixedVersion: "0:8.7p1-38.el9_4.1", Channel: "standard"},
+		{CVEID: "CVE-2023-38408", Distro: "redhat", Release: "9", Package: "openssh", FixedVersion: "0:8.7p1-30.el9_2", Channel: "standard"},
+		{CVEID: "CVE-2021-23017", Distro: "redhat", Release: "8", Package: "nginx", Stream: "1.16",
+			FixedVersion: "1:1.16.1-2.module+el8.4.0+11155+68135136.1", Channel: "standard"},
+		{CVEID: "CVE-2021-23017", Distro: "redhat", Release: "8", Package: "nginx", Stream: "1.18",
+			FixedVersion: "1:1.18.0-3.module+el8.4.0+11152+f736ed63.1", Channel: "standard"},
+		{CVEID: "CVE-2021-23017", Distro: "redhat", Release: "8", Package: "nginx", Stream: "1.20",
+			FixedVersion: "1:1.20.1-1.module+el8.5.0+13723+ab304644", Channel: "standard"},
+	},
+}
+
+func resolveRH(t *testing.T, tg Target) *Context {
+	t.Helper()
+	tg.Distro, tg.DistroName = "redhat", "Red Hat"
+	c, err := Resolve(context.Background(), redhatStore{rhStore}, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// redhatStore reports Red Hat data as present.
+type redhatStore struct{ fakeStore }
+
+func (redhatStore) HasDistroData(ctx context.Context, d string) (bool, error) {
+	return d == "redhat", nil
+}
+
+func TestRedHatOpenSSH(t *testing.T) {
+	// "(Red Hat Enterprise Linux)" only: release 9 from the upstream version.
+	c := resolveRH(t, Target{Upstream: "8.7p1", Packages: []string{"openssh"}})
+	if c.Status != Resolved || c.Releases[0] != "9" {
+		t.Fatalf("context: %+v", c)
+	}
+	for _, cve := range []string{"CVE-2024-6387", "CVE-2023-38408"} {
+		if v := c.Verdict(cve); v.Status != FixAvailable {
+			t.Errorf("%s: %+v", cve, v)
+		}
+	}
+	// A visible RPM release ("38.el9_4.1") pins RHEL 9 and is compared with rpmvercmp.
+	c = resolveRH(t, Target{Upstream: "8.7p1", Revision: "34.el9_3", Packages: []string{"openssh"}})
+	if c.Installed != "0:8.7p1-34.el9_3" || c.DefinitiveRelease() != "9" {
+		t.Fatalf("context: %+v", c)
+	}
+	if v := c.Verdict("CVE-2023-38408"); v.Status != Fixed {
+		t.Errorf("34.el9_3 >= 30.el9_2: %+v", v)
+	}
+	if v := c.Verdict("CVE-2024-6387"); v.Status != Vulnerable {
+		t.Errorf("34.el9_3 < 38.el9_4.1: %+v", v)
+	}
+}
+
+func TestRedHatModuleStreams(t *testing.T) {
+	for upstream, want := range map[string]Status{"1.16.1": FixAvailable, "1.18.0": FixAvailable, "1.20.1": FixAvailable} {
+		c := resolveRH(t, Target{Upstream: upstream, Packages: []string{"nginx"}})
+		v := c.Verdict("CVE-2021-23017")
+		if v.Status != want || !strings.Contains(v.Reason, "module stream "+streamOf(upstream)) {
+			t.Errorf("nginx %s: %+v", upstream, v)
+		}
+	}
+	// nginx 1.20.2 on a host known to be RHEL 8: newer than the 1.20 stream's fix.
+	c := resolveRH(t, Target{Upstream: "1.20.2", Packages: []string{"nginx"}, ReleaseHint: "8"})
+	if v := c.Verdict("CVE-2021-23017"); v.Status != Fixed {
+		t.Errorf("1.20.2: %+v", v)
+	}
+	// nginx 1.22.1: no fix in its stream; other streams' fixes must not be borrowed.
+	c = resolveRH(t, Target{Upstream: "1.22.1", Packages: []string{"nginx"}, ReleaseHint: "8"})
+	v := c.Verdict("CVE-2021-23017")
+	if v.Status != NoData || !strings.Contains(v.Reason, "other module streams") || !strings.Contains(v.Reason, "1.16, 1.18, 1.20") {
+		t.Errorf("1.22.1: %+v", v)
+	}
+	// Distribution only inferred from other services: no release assumed for an unknown version.
+	c = resolveRH(t, Target{Upstream: "1.22.1", Packages: []string{"nginx"}, ReleaseHint: "8", NoHintFallback: true})
+	if c.Status != UnknownRelease {
+		t.Errorf("inferred distro must not borrow the host release: %+v", c)
+	}
+}

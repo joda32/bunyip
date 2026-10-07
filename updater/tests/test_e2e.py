@@ -174,3 +174,41 @@ def test_debian_advisories_against_real_records(vulndb_bin, real_db):
     assert bullseye["distro_release"] == "11"
     old = verdicts(bullseye["services"][0])
     assert old["CVE-2025-26465"] == ("VULNERABLE", True)  # DLA-4057-1 fixed it in +deb11u4
+
+
+def test_redhat_family_against_real_records(vulndb_bin, real_db):
+    """Real NVD + real RHSA/RLSA/ALSA records; distributions inferred per host."""
+    p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/rhel-hosts.xml"),
+                        "--format", "json"], capture_output=True, text=True, check=True)
+    hosts = {h["address"]: h for h in json.loads(p.stdout)["report"]["hosts"]}
+
+    def service(addr, port):
+        return next(s for s in hosts[addr]["services"] if s["port"] == port)
+
+    def verdicts(svc):
+        return {v["cve"]: v["distro"]["status"] for v in svc["result"]["vulnerabilities"]}
+
+    # RHEL 9: OpenSSH's banner names no distribution; Apache's does.
+    assert hosts["192.0.2.50"]["distro"] == "Red Hat"
+    ssh = service("192.0.2.50", 22)
+    assert ssh["distro"].startswith("Red Hat (inferred")
+    assert ssh["result"]["distro"]["releases"] == ["9"]  # 8.7p1 is RHEL 9's OpenSSH
+    v = verdicts(ssh)
+    assert v["CVE-2024-6387"] == "FIX_AVAILABLE"  # RHSA-2024:4312, 0:8.7p1-38.el9_4.1
+    assert v["CVE-2023-38408"] == "FIX_AVAILABLE"  # RHSA-2023:4412, 0:8.7p1-30.el9_2
+    fix = next(x for x in ssh["result"]["vulnerabilities"] if x["cve"] == "CVE-2024-6387")["distro"]
+    assert fix["fixed_version"] == "0:8.7p1-38.el9_4.1" and fix["advisory"] == "RHSA-2024:4312"
+
+    # RHEL 8: nginx 1.16.1 belongs to the 1.16 module stream.
+    nginx = service("192.0.2.51", 443)
+    d = next(x for x in nginx["result"]["vulnerabilities"] if x["cve"] == "CVE-2021-23017")["distro"]
+    assert d["status"] == "FIX_AVAILABLE" and d["release"] == "8"
+    assert d["fixed_version"] == "1:1.16.1-2.module+el8.4.0+11155+68135136.1" and "module stream 1.16" in d["reason"]
+
+    # Rocky Linux 8 and AlmaLinux 9 use their own advisories.
+    rocky = verdicts(service("192.0.2.52", 22))
+    assert rocky["CVE-2023-38408"] == "FIX_AVAILABLE"  # RLSA-2023:4419
+    alma_ssh = service("192.0.2.53", 22)
+    assert alma_ssh["result"]["distro"]["releases"] == ["9"]
+    alma = verdicts(alma_ssh)
+    assert alma["CVE-2024-6387"] == "FIX_AVAILABLE" and alma["CVE-2023-38408"] == "FIX_AVAILABLE"

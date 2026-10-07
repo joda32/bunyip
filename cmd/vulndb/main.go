@@ -42,7 +42,8 @@ Usage:
 
 Commands:
   query --cpe CPE [--format text|json]   find candidate CVEs for a CPE (2.2 or 2.3)
-        [--distro ubuntu|debian [--package-version VER]]  also evaluate distribution advisories
+        [--distro NAME [--package-version VER]]  also evaluate distribution advisories
+                                         (ubuntu, debian, redhat, rocky, almalinux, centos)
   nmap FILE [--format text|json]         assess services in Nmap XML output (-oX); FILE "-" = stdin
   info                                   show database provenance and age
   db init [--fixture FILE] [--force]     create a new database (optionally loading a fixture)
@@ -159,7 +160,7 @@ func cmdQuery(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	g.register(fs)
 	cpeArg := fs.String("cpe", "", "CPE 2.3 formatted string or CPE 2.2 URI")
 	formatArg := fs.String("format", "text", "output format: text or json")
-	distroArg := fs.String("distro", "", "distribution the software was installed from (ubuntu, debian)")
+	distroArg := fs.String("distro", "", "distribution the software was installed from (ubuntu, debian, redhat, rocky, almalinux, centos)")
 	pkgVerArg := fs.String("package-version", "", "installed distribution package version, e.g. 1:9.6p1-3ubuntu13.18")
 	if err := parseSub(fs, args); err != nil {
 		return err
@@ -285,16 +286,21 @@ func distroInput(name, pkgVersion string) (*matcher.DistroInput, error) {
 		}
 		return nil, nil
 	}
-	names := map[string]string{"ubuntu": "Ubuntu", "debian": "Debian"}
+	names := map[string]string{"ubuntu": "Ubuntu", "debian": "Debian", "redhat": "Red Hat", "rocky": "Rocky Linux",
+		"almalinux": "AlmaLinux", "centos": "CentOS"}
 	display, ok := names[strings.ToLower(name)]
 	if !ok {
-		return nil, fmt.Errorf("query: unsupported --distro %q (supported: debian, ubuntu)", name)
+		return nil, fmt.Errorf("query: unsupported --distro %q (supported: almalinux, centos, debian, redhat, rocky, ubuntu)", name)
 	}
 	info := identity.DistroInfo{Name: display, Key: strings.ToLower(name)}
 	if pkgVersion != "" {
-		v, err := version.ParseDeb(pkgVersion)
+		parse := version.ParseDeb
+		if info.Key != "ubuntu" && info.Key != "debian" {
+			parse = version.ParseRPM
+		}
+		v, err := parse(pkgVersion)
 		if err != nil || v.Revision == "" {
-			return nil, fmt.Errorf("query: --package-version %q must be a Debian version with a revision", pkgVersion)
+			return nil, fmt.Errorf("query: --package-version %q must be a package version with a revision/release", pkgVersion)
 		}
 		info.Revision = v.Revision
 	}

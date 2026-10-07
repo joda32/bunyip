@@ -90,8 +90,46 @@ Quirks found in real data:
 Revisions encode the release (`+deb12u3`), which pins Debian hosts even when
 the exact package version is absent from the data.
 
-Other OSV.dev exports in the same format: Red Hat, Rocky Linux, AlmaLinux,
-SUSE and Alpine. They use RPM/apk versions, which need their own comparators.
+## Red Hat, Rocky Linux, AlmaLinux via OSV.dev (in use)
+
+| Export | Size (unzipped) | Records |
+|---|---|---|
+| Red Hat | 27 MB (266 MB) | 23,571 (RHSA 23,129, RHBA 345, RHEA 97) |
+| Rocky Linux | 5 MB (14 MB) | 4,362 (RLSA, RXSA) |
+| AlmaLinux | 6.5 MB (34 MB) | 6,022 (ALSA, ALBA, ALEA) |
+
+Common to all three:
+- Per-advisory records only: one record lists several CVEs (in `upstream`; in
+  `related` for AlmaLinux).
+- Only `fixed` events, no affected-version lists, so there is no "affected, no
+  fix" information.
+- Package names are binary RPMs (`openssh`, `openssh-server`, …).
+
+Red Hat's ecosystems mix several things:
+- standard RHEL (`Red Hat:enterprise_linux:9::baseos`, `::appstream`,
+  RHEL 7's `::server`/`::workstation`/…, and `enterprise_linux:10.2`);
+- extended-support minor streams (`rhel_eus`, `rhel_aus`, `rhel_tus`,
+  `rhel_e4s`, `rhel_els`);
+- other products (OpenShift, JBoss, Satellite).
+
+Only standard RHEL is used. Rocky (`Rocky Linux:8`) and AlmaLinux
+(`AlmaLinux:9`) are plain major releases.
+
+Quirks found in real data:
+- AppStream module builds: 82,275 of 629,267 Red Hat fixed versions contain
+  `.module`. CVE-2021-23017 (nginx) was fixed on RHEL 8 in three streams
+  (1.16, 1.18, 1.20).
+- Later advisories re-list old CVEs. AlmaLinux `ALSA-2026:69266` lists
+  CVE-2023-38408, fixed in `ALSA-2023:4419`.
+- Coverage differs: Rocky's export has no RHEL 9 regreSSHion advisory, while
+  Red Hat's and AlmaLinux's do.
+
+Network visibility: RHEL-family OpenSSH banners carry no distribution
+(`OpenSSH_8.7`). Apache shows `(Red Hat Enterprise Linux)` / `(Rocky Linux)` /
+`(AlmaLinux)`. Package releases (`38.el9_4.1`) are never visible.
+
+Other OSV.dev exports in the same format: SUSE and Alpine (apk versions, which
+need their own comparator).
 
 ## CVE List V5 / CISA Vulnrichment (evaluated, deferred)
 

@@ -187,8 +187,9 @@ Upstream version matching cannot see fixes a distribution has backported into
 its own packages. When a service shows distribution packaging (e.g. Nmap's
 `OpenSSH 9.6p1 Ubuntu 3ubuntu13.18`, `Apache httpd 2.4.52 (Ubuntu)`), each
 candidate CVE is also evaluated against that distribution's security
-advisories. Ubuntu and Debian are supported, from the OSV.dev exports of their
-security trackers.
+advisories: Ubuntu, Debian, Red Hat Enterprise Linux, Rocky Linux and
+AlmaLinux, from the OSV.dev exports of their security data. CentOS is
+evaluated with Red Hat's advisories, and the verdict says so.
 
 **Package.** The candidate CPEs map to distribution source packages through
 the curated `distro_packages` table (`data/distro_packages.json`), e.g.
@@ -196,7 +197,7 @@ the curated `distro_packages` table (`data/distro_packages.json`), e.g.
 
 **Release.** Inferred from the published package versions:
 - a revision that encodes its release is decisive: Debian `+deb12u3` → 12,
-  Ubuntu `0ubuntu0.22.04.2` → 22.04;
+  Ubuntu `0ubuntu0.22.04.2` → 22.04, RPM `38.el9_4.1` → 9;
 - with the package revision visible, a release that published exactly
   `<upstream>-<revision>` is preferred;
 - otherwise, any release that shipped the observed upstream version;
@@ -219,6 +220,20 @@ the curated `distro_packages` table (`data/distro_packages.json`), e.g.
 `FIXED` results stay in the output, but they are excluded from match counts
 and listed separately ("fixed in the Ubuntu package").
 
+**Host-level distribution.** In `vulndb nmap`, when the distribution-marked
+services on a host agree (e.g. Apache `(Red Hat Enterprise Linux)`), services
+showing no distribution (RHEL's `OpenSSH_8.7`) are evaluated against it. This
+happens only when the advisory data knows the observed upstream version,
+because the software could be self-built. OpenSSH's bare `8.7` is read as
+`8.7p1`, the portable release distributions package.
+
+**Module streams (RHEL AppStream).** Fixed versions built as modules
+(`1:1.16.1-2.module+el8.4.0+…`) belong to a stream, the upstream major.minor
+(`1.16`). A fix applies only to an observation in the same stream. If only
+other streams were fixed, the verdict is `NO_DATA`, naming those streams. On
+RHEL 8, CVE-2021-23017 was fixed separately in the nginx 1.16, 1.18 and 1.20
+streams.
+
 **Distribution-only findings.** For a single resolved release, any advisory
 whose verdict is `VULNERABLE` is reported as a finding (`distro_only: true`),
 even when NVD has no matching rule. Such a verdict needs either an installed
@@ -239,6 +254,12 @@ installed revision containing `esm` uses Pro rows; otherwise standard rows,
 falling back to Pro when the release has only those. FIPS, Realtime and
 vendor-kernel streams are not loaded.
 
-Version comparison uses the dpkg algorithm (`version.Dpkg`: epoch, upstream,
-revision, `~` sorting first). The installed epoch is taken from the
-distribution's own versions of the package.
+Version comparison uses dpkg ordering for Debian/Ubuntu (`version.Dpkg`) and
+rpmvercmp for the Red Hat family (`version.RPM`: epoch, version, release, `~`
+and `^`). The installed epoch is taken from the distribution's own versions of
+the package.
+
+**Per-advisory sources** (Debian DSA/DLA; RHSA/RLSA/ALSA) can list the same CVE
+in several advisories. The earliest fixed version per release and stream is
+kept, because later advisories re-list CVEs. For example, AlmaLinux
+`ALSA-2026:69266` re-lists CVE-2023-38408, which was fixed in `ALSA-2023:4419`.

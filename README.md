@@ -21,13 +21,14 @@ exact matching rules are in [`docs/matching.md`](docs/matching.md).
 - Not proof of vulnerability: a version/banner match is a **candidate
   vulnerability**. The version only *appears* to fall in an affected range.
 - Not a patch-state audit. Distribution backports (fixes shipped without
-  changing the upstream version) are evaluated only for Ubuntu and Debian, and
-  only as far as the scan shows the installed package version. Results for
-  other distributions (RHEL, SUSE, Alpine, …) can be false positives.
+  changing the upstream version) are evaluated for Ubuntu, Debian, RHEL, Rocky
+  Linux, AlmaLinux and CentOS, only as far as the scan reveals the installed
+  package. Results for other distributions (SUSE, Alpine, …) can be false
+  positives.
 - Does not run, download or ship exploit code; it only records that exploit
   references exist.
 
-## Status: milestone 5
+## Status: milestone 6
 
 Implemented:
 - **Query engine (Go):** CPE 2.2/2.3 parsing and normalisation, version
@@ -40,17 +41,18 @@ Implemented:
 - **Identity resolution:** curated aliases map the vendor/product names Nmap
   reports to the names NVD uses (e.g. `mysql:mysql` → `oracle:mysql`).
   Distribution packages (Ubuntu, Debian, RHEL, …) are detected.
-- **Ubuntu and Debian security advisories:** for distribution-packaged services,
+- **Distribution security advisories (Ubuntu, Debian, RHEL, Rocky Linux,
+  AlmaLinux; CentOS via RHEL):** for distribution-packaged services,
   each candidate CVE is checked against the distribution's own fix data (FIXED /
   VULNERABLE / FIX_AVAILABLE / NO_FIX). This removes backport false positives
   and adds CVEs NVD lacks data for. See [docs/matching.md](docs/matching.md#9-distribution-advisories-internaldistro).
 - **Updater (Python, [`updater/`](updater/README.md)):** builds a real database
-  from the NVD CVE JSON 2.0 feeds, the CISA KEV catalogue, Ubuntu's and Debian's
+  from the NVD CVE JSON 2.0 feeds, the CISA KEV catalogue, five distributions'
   advisories (OSV.dev exports), `data/aliases.json` and
   `data/distro_packages.json`.
 
-Not yet: advisories for RPM-based distributions, product-name resolution when
-no CPE is reported, the CVE List as a second source (evaluated and deferred,
+Not yet: SUSE/Alpine advisories, product-name resolution when no CPE is
+reported, the CVE List as a second source (evaluated and deferred,
 see [docs/data-sources.md](docs/data-sources.md)), and the NSE adapter.
 
 ## Build
@@ -244,7 +246,7 @@ Flags on a CVE line mark results to review: `CONDITIONAL` (another condition,
 such as a specific OS, was not evaluated), `ransomware` (known use per KEV), and
 `via alias` (found only through a curated alias identity).
 
-### Ubuntu and Debian hosts
+### Distribution-packaged hosts
 
 A real scan of an Ubuntu 24.04 machine (`OpenSSH 9.6p1 Ubuntu 3ubuntu13.18`):
 
@@ -266,7 +268,19 @@ Debian works the same way. A revision such as `2+deb12u3` pins Debian 12 even
 when that exact version is not in the data. Debian 11 (LTS) fixes come from
 DLA advisories.
 
-Only OpenSSH shows the package revision in its banner. Apache, nginx, Postfix
+Red Hat-family hosts (RHEL, Rocky Linux, AlmaLinux, CentOS):
+- **Distribution inferred per host.** Their OpenSSH banner names no
+  distribution (`OpenSSH_8.7`), so it is taken from other services on the host
+  (Apache `(Red Hat Enterprise Linux)`). It is used only if the advisory data
+  knows that upstream version, because the software might be self-built.
+- **No package release is visible,** so verdicts are `FIX_AVAILABLE`, `FIXED`
+  or `VULNERABLE` by upstream version.
+- **AppStream module streams** (nginx 1.16 / 1.18 / 1.20 on RHEL 8) are judged
+  only by their own stream's fixes.
+- **Red Hat-family advisories contain only fixes**, so there is no `NO_FIX`;
+  missing data is `NO_DATA`.
+
+Only OpenSSH on Debian/Ubuntu shows the package revision in its banner. Apache, nginx, Postfix
 and others show only "(Ubuntu)" or "(Debian)", so their verdicts are about the
 release:
 - `FIXED` when no package of that upstream version in the release is affected;
@@ -278,6 +292,7 @@ For a single CPE, pass the distribution yourself:
 ```bash
 bin/vulndb query --cpe cpe:/a:openbsd:openssh:9.6p1 --distro ubuntu --package-version 1:9.6p1-3ubuntu13.18
 bin/vulndb query --cpe cpe:/a:openbsd:openssh:9.2p1 --distro debian --package-version 1:9.2p1-2+deb12u3
+bin/vulndb query --cpe cpe:/a:openbsd:openssh:8.7p1 --distro redhat --package-version 0:8.7p1-34.el9_3
 ```
 
 ## Utility commands
@@ -343,9 +358,9 @@ schema/schema.sql    database schema (embedded in the binary)
 updater/             Python updater: NVD + KEV -> vulndb.sqlite
 testdata/fixtures/   synthetic test data
 testdata/nvd/        real NVD/KEV records for updater and end-to-end tests
-testdata/contract/   shared Go/Python CPE canonicalisation vectors
+testdata/contract/   shared Go/Python vectors (CPE canonicalisation, RPM ordering)
 testdata/nmap/       a real Nmap scan and hand-written multi-host samples
-testdata/osv/        real Ubuntu and Debian OSV advisory records
+testdata/osv/        real Ubuntu, Debian, Red Hat, Rocky and AlmaLinux OSV advisory records
 docs/matching.md     matching semantics
 docs/data-sources.md source coverage measurements and decisions
 ```
