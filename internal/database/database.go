@@ -17,7 +17,7 @@ import (
 )
 
 // SchemaVersion is the schema version this build understands.
-const SchemaVersion = "6"
+const SchemaVersion = "7"
 
 // Sentinel errors so the CLI can report failures clearly.
 var (

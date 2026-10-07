@@ -373,6 +373,12 @@ failed verify), `2` usage error (unknown command or flag, unsupported
   recent CVEs (see above). An empty result is not evidence of no vulnerability.
 - Exploit evidence is limited to references NVD tagged `Exploit`, and none of it
   is verified.
+- Releases past end of life are flagged (`data/distro_releases.json`): their
+  distributions no longer publish advisory data. Example: Debian 11, whose LTS
+  ended 2026-08-31.
+- Windows hosts are essentially not assessed. Their services carry only OS
+  CPEs, and patch levels are not visible to an unauthenticated scan (see
+  docs/data-sources.md, "Field trial").
 - Debian 11 (LTS) verdicts exist only for CVEs with a DLA/DSA advisory.
   Debian's per-CVE data barely covers LTS, so most other CVEs are `NO_DATA`
   there. On a real bookworm OpenSSH, 26 upstream matches split into FIXED,

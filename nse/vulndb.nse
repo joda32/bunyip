@@ -178,7 +178,8 @@ action = function(host, port)
     return "ERROR: " .. err
   end
   local c = resp.counts or {}
-  if not request.options.show_undetermined and (c.matches or 0) == 0 and (c.undetermined or 0) == 0 then
+  if not request.options.show_undetermined and (c.matches or 0) == 0 and (c.undetermined or 0) == 0
+      and #(resp.notes or {}) == 0 then
     return nil -- nothing to report for this port (vulndb.showall lists everything)
   end
 

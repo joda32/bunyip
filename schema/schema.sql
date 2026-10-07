@@ -164,9 +164,23 @@ CREATE TABLE distro_packages (
     source      TEXT NOT NULL
 );
 
+-- Curated release lifecycle (data/distro_releases.json): a release past its
+-- end of life gets no security fixes (or only paid extended ones), and
+-- distributions stop publishing advisory data for it.
+CREATE TABLE distro_releases (
+    distro         TEXT NOT NULL,
+    release        TEXT NOT NULL,
+    codename       TEXT,
+    eol            TEXT NOT NULL,  -- end of regular security support (YYYY-MM-DD)
+    extended_until TEXT,           -- end of extended support, if known
+    extended       TEXT,           -- extended support offering, e.g. 'Ubuntu Pro (ESM)'
+    source         TEXT NOT NULL,
+    PRIMARY KEY (distro, release)
+) WITHOUT ROWID;
+
 CREATE INDEX idx_distro_adv_lookup   ON distro_advisories (distro, package, release, cve_id);
 CREATE INDEX idx_distro_adv_cve      ON distro_advisories (cve_id);
 CREATE INDEX idx_distro_pkgver_up    ON distro_package_versions (distro, package, upstream);
 CREATE INDEX idx_distro_packages_cpe ON distro_packages (cpe_part, cpe_vendor, cpe_product);
 
-INSERT INTO database_metadata (key, value) VALUES ('schema_version', '6');
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '7');

@@ -35,6 +35,9 @@ func WriteNmapText(w io.Writer, r *nmap.Report) error {
 		s.HostsUp, s.HostsDown, s.OpenPorts, s.Assessed, s.Unidentified, s.NotProbed)
 	p.f("Candidate vulnerabilities: %d version matches (%d in CISA KEV, %d with public exploit evidence), %d undetermined\n",
 		s.VersionMatches, s.KnownExploited, s.PublicExploit, s.Undetermined)
+	if s.EndOfLife > 0 {
+		p.f("END OF LIFE: %d service(s) run on a distribution release past its end of life (no further security updates)\n", s.EndOfLife)
+	}
 	if s.DistroFixed > 0 || s.DistroOnly > 0 {
 		p.f("Distribution advisories: %d upstream matches already fixed in the installed/released package, "+
 			"%d findings only the distribution data shows\n", s.DistroFixed, s.DistroOnly)

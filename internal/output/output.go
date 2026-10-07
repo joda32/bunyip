@@ -123,6 +123,9 @@ func WriteText(w io.Writer, r *matcher.Result) error {
 func distroContextLabel(r *matcher.Result) string {
 	d := r.Distro
 	s := fmt.Sprintf("%s: %s", d.Target.DistroName, d.Status)
+	if d.EndOfLife != "" {
+		s += " [END OF LIFE since " + d.EndOfLife + "]"
+	}
 	if d.Package != "" {
 		s += fmt.Sprintf(" (%s %s", d.Package, strings.Join(d.Releases, ", "))
 		if d.Installed != "" {

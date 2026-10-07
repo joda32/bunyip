@@ -105,6 +105,14 @@ re-downloaded when that changes. `--offline-from` re-verifies it. Use
 `--no-distro` to build without it. Mapped packages with no advisories are
 reported at the end of a build.
 
+## Release lifecycle
+
+`data/distro_releases.json` lists each supported distribution release's end
+of regular security support, plus any extended support (Ubuntu Pro ESM, RHEL
+ELS, Debian ELTS). It is loaded into `distro_releases` and lets reports flag
+services on end-of-life releases. Verify the dates against the vendors'
+lifecycle pages when updating.
+
 ## Aliases
 
 `data/aliases.json` lists hand-reviewed aliases from identities that Nmap

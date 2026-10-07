@@ -381,3 +381,25 @@ WHERE distro = ? AND release = ? AND package IN (`+placeholders(len(packages))+`
 	}
 	return out, wrapQueryErr(rows.Err())
 }
+
+// Lifecycle is a distribution release's support lifecycle.
+type Lifecycle struct {
+	EOL           string `json:"eol"`                      // end of regular security support (YYYY-MM-DD)
+	ExtendedUntil string `json:"extended_until,omitempty"` // end of extended support, if known
+	Extended      string `json:"extended,omitempty"`       // e.g. "Ubuntu Pro (ESM)"
+}
+
+// ReleaseLifecycle returns the lifecycle of a release, or nil if unknown.
+func (s *Store) ReleaseLifecycle(ctx context.Context, distro, release string) (*Lifecycle, error) {
+	var l Lifecycle
+	err := s.db.QueryRowContext(ctx, `
+SELECT eol, COALESCE(extended_until, ''), COALESCE(extended, '') FROM distro_releases
+WHERE distro = ? AND release = ?`, distro, release).Scan(&l.EOL, &l.ExtendedUntil, &l.Extended)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, wrapQueryErr(err)
+	}
+	return &l, nil
+}

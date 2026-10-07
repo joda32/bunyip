@@ -286,3 +286,39 @@ def load_package_map(path: Path) -> list[PackageMapRow]:
                 seen.add(key)
                 rows.append(PackageMapRow(v[0], v[1], v[2], distro, p, source))
     return rows
+
+
+# --- release lifecycle ------------------------------------------------------
+
+@dataclass(frozen=True)
+class ReleaseRow:
+    distro: str
+    release: str
+    codename: str | None
+    eol: str
+    extended_until: str | None
+    extended: str | None
+    source: str
+
+
+def load_releases(path: Path) -> list[ReleaseRow]:
+    """Read data/distro_releases.json (strict: dates must be YYYY-MM-DD)."""
+    import datetime
+    doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    source = doc.get("source")
+    if not source:
+        raise ValueError(f"{path}: missing source")
+    rows, seen = [], set()
+    for i, r in enumerate(doc.get("releases", [])):
+        key = (r.get("distro"), r.get("release"))
+        if not all(key) or key in seen:
+            raise ValueError(f"{path}: releases[{i}]: missing or duplicate distro/release {key}")
+        seen.add(key)
+        for f in ("eol", "extended_until"):
+            if r.get(f) is not None:
+                datetime.date.fromisoformat(r[f])
+        if not r.get("eol"):
+            raise ValueError(f"{path}: releases[{i}]: eol is required")
+        rows.append(ReleaseRow(r["distro"], r["release"], r.get("codename"), r["eol"], r.get("extended_until"),
+                               r.get("extended"), source))
+    return rows

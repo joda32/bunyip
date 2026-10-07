@@ -49,6 +49,7 @@ type Summary struct {
 	DistroPackages int `json:"distro_packages"` // assessed services with distro packaging
 	DistroFixed    int `json:"distro_fixed"`    // (service, CVE) pairs fixed in the distribution package
 	DistroOnly     int `json:"distro_only"`     // (service, CVE) pairs found only via distribution advisories
+	EndOfLife      int `json:"end_of_life"`     // assessed services on an end-of-life distribution release
 }
 
 type HostReport struct {
@@ -276,6 +277,9 @@ func (s *Summary) add(sr ServiceReport) {
 	}
 	if sr.Result == nil {
 		return
+	}
+	if d := sr.Result.Distro; d != nil && d.EndOfLife != "" {
+		s.EndOfLife++
 	}
 	for _, v := range sr.Result.Vulnerabilities {
 		if v.Distro != nil && v.Distro.Status == distro.Fixed {

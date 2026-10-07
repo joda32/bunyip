@@ -72,14 +72,15 @@ def feed_order(feeds: list[Feed]) -> list[Feed]:
 
 def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
           allow_small: bool = False, log=print, alias_rows: list | None = None,
-          distros: list[DistroInput] | None = None, package_map: list | None = None) -> Stats:
+          distros: list[DistroInput] | None = None, package_map: list | None = None,
+          releases: list | None = None) -> Stats:
     out = Path(out)
     tmp = out.with_name(f".{out.name}.building")
     tmp.unlink(missing_ok=True)
     conn = sqlite3.connect(tmp, isolation_level=None)
     try:
         stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows or [],
-                       distros or [], package_map or [])
+                       distros or [], package_map or [], releases or [])
         conn.close()
         os.replace(tmp, out)
         return stats
@@ -89,7 +90,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
         raise
 
 
-def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, distros, package_map) -> Stats:
+def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, distros, package_map, releases) -> Stats:
     # The file is private until renamed, so durability during the load is
     # unnecessary; integrity is checked explicitly before the rename.
     conn.execute("PRAGMA journal_mode = OFF")
@@ -119,6 +120,12 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, dist
     _load_aliases(conn, alias_rows, stats, log)
     for di in distros:
         _load_distro(conn, di, package_map, stats, log)
+    conn.execute("BEGIN")
+    conn.executemany(
+        "INSERT INTO distro_releases (distro, release, codename, eol, extended_until, extended, source)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [(r.distro, r.release, r.codename, r.eol, r.extended_until, r.extended, r.source) for r in releases])
+    conn.execute("COMMIT")
     _write_metadata(conn, ordered, catalogue, stats, distros)
     _self_check(conn, allow_small, bool(distros))
     conn.executescript(DROP_BUILD_INDEXES)

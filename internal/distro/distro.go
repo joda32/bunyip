@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"offline-vulndb/internal/database"
 	"offline-vulndb/internal/version"
@@ -59,7 +60,11 @@ type Store interface {
 	PackageVersionsByUpstream(ctx context.Context, distro string, packages []string, upstream string) ([]database.PackageVersion, error)
 	DistroAdvisories(ctx context.Context, distro, pkg, release string) ([]database.DistroAdvisory, error)
 	PackagesInRelease(ctx context.Context, distro, release string, packages []string) ([]string, error)
+	ReleaseLifecycle(ctx context.Context, distro, release string) (*database.Lifecycle, error)
 }
+
+// Now is the clock used for end-of-life decisions (replaceable in tests).
+var Now = time.Now
 
 // releaseInRevision extracts a release encoded in package revisions:
 // Debian security/point updates ("2+deb12u3" -> "12") and Ubuntu
@@ -140,6 +145,9 @@ type Target struct {
 	// only inferred from other services: the software may be self-built).
 	NoHintFallback bool
 	Note           string // extra context shown in reasons, e.g. CentOS evaluated as Red Hat
+	// LifecycleDistro is the distribution whose lifecycle applies (e.g.
+	// "centos" while advisories come from "redhat"); defaults to Distro.
+	LifecycleDistro string
 }
 
 // Resolution states.
@@ -159,12 +167,17 @@ type candidate struct {
 
 // Context is a resolved advisory context for one observed service.
 type Context struct {
-	Target       Target   `json:"-"`
-	Status       string   `json:"status"`
-	Releases     []string `json:"releases,omitempty"`
-	Package      string   `json:"package,omitempty"`
-	Installed    string   `json:"installed_version,omitempty"`
-	Reason       string   `json:"reason"`
+	Target    Target   `json:"-"`
+	Status    string   `json:"status"`
+	Releases  []string `json:"releases,omitempty"`
+	Package   string   `json:"package,omitempty"`
+	Installed string   `json:"installed_version,omitempty"`
+	Reason    string   `json:"reason"`
+	// Lifecycle of the resolved release; EndOfLife is set (to the date) when
+	// regular security support has ended, so missing advisory data and
+	// unfixed issues should be read in that light.
+	Lifecycle    *database.Lifecycle `json:"lifecycle,omitempty"`
+	EndOfLife    string              `json:"end_of_life,omitempty"`
 	candidates   []candidate
 	exact        bool   // release established from an exact package version or revision
 	fromRevision string // release encoded in the package revision, if that is how it was found
@@ -293,6 +306,9 @@ func Resolve(ctx context.Context, store Store, t Target) (*Context, error) {
 			t.DistroName, strings.Join(t.Packages, "/"), t.Upstream)
 	case 1:
 		c.Status, c.Package, c.Installed = Resolved, cands[0].pkg, cands[0].installed
+		if err := c.lifecycle(ctx, store, cands[0].release); err != nil {
+			return nil, err
+		}
 		how := fmt.Sprintf("%s %s ships in %s %s", cands[0].pkg, t.Upstream, t.DistroName, cands[0].release)
 		switch {
 		case c.fromRevision != "":
@@ -309,6 +325,40 @@ func Resolve(ctx context.Context, store Store, t Target) (*Context, error) {
 			t.DistroName, strings.Join(c.Releases, ", "))
 	}
 	return c, nil
+}
+
+// lifecycle records whether the resolved release is past end of life.
+func (c *Context) lifecycle(ctx context.Context, store Store, release string) error {
+	key := c.Target.LifecycleDistro
+	if key == "" {
+		key = c.Target.Distro
+	}
+	l, err := store.ReleaseLifecycle(ctx, key, release)
+	if err != nil || l == nil {
+		return err
+	}
+	c.Lifecycle = l
+	if eol, err := time.Parse("2006-01-02", l.EOL); err == nil && Now().After(eol.Add(24*time.Hour)) {
+		c.EndOfLife = l.EOL
+	}
+	return nil
+}
+
+// EOLNote describes an end-of-life release for operators.
+func (c *Context) EOLNote() string {
+	if c.EndOfLife == "" {
+		return ""
+	}
+	s := fmt.Sprintf("%s %s reached end of life on %s: no further regular security updates or advisory data",
+		c.Target.DistroName, c.Releases[0], c.EndOfLife)
+	if l := c.Lifecycle; l.Extended != "" {
+		s += " (fixes only via " + l.Extended
+		if l.ExtendedUntil != "" {
+			s += " until " + l.ExtendedUntil
+		}
+		s += ")"
+	}
+	return s
 }
 
 // DefinitiveRelease returns the release when it was established from an
@@ -367,6 +417,9 @@ func (c *Context) evaluate(cd candidate, cve string) Verdict {
 		} else {
 			v.Reason = fmt.Sprintf("%s has no entry for %s in %s/%s (usually not affected, or not yet assessed)",
 				c.Target.DistroName, cve, cd.release, cd.pkg)
+		}
+		if c.EndOfLife != "" {
+			v.Reason += "; " + c.EOLNote()
 		}
 		return v
 	}

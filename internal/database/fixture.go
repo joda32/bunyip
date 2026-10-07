@@ -26,6 +26,15 @@ type Fixture struct {
 	DistroPackages  []FixtureDistroPackage  `json:"distro_packages"`
 	DistroVersions  []FixtureDistroVersion  `json:"distro_package_versions"`
 	DistroAdvisory  []FixtureDistroAdvisory `json:"distro_advisories"`
+	DistroReleases  []FixtureDistroRelease  `json:"distro_releases"`
+}
+
+type FixtureDistroRelease struct {
+	Distro        string `json:"distro"`
+	Release       string `json:"release"`
+	EOL           string `json:"eol"`
+	ExtendedUntil string `json:"extended_until"`
+	Extended      string `json:"extended"`
 }
 
 type FixtureDistroPackage struct {
@@ -192,6 +201,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`,
 }
 
 func importDistro(ctx context.Context, tx *sql.Tx, f *Fixture) error {
+	for _, r := range f.DistroReleases {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO distro_releases (distro, release, eol, extended_until, extended, source) VALUES (?, ?, ?, ?, ?, 'fixture')`,
+			r.Distro, r.Release, r.EOL, nullStr(r.ExtendedUntil), nullStr(r.Extended)); err != nil {
+			return err
+		}
+	}
 	for _, p := range f.DistroPackages {
 		bits := strings.Split(p.CPE, ":")
 		if len(bits) != 3 {

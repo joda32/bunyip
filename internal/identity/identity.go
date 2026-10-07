@@ -192,10 +192,13 @@ func (r *Resolver) ResolveObservation(o Observation, source string) Resolution {
 		}
 		res.Candidates = append(res.Candidates, r.ResolveCPE(c, source)...)
 	}
-	if len(res.Candidates) == 0 && o.Product != "" {
+	switch {
+	case len(res.Candidates) == 0 && o.Product != "":
 		res.Notes = append(res.Notes, fmt.Sprintf(
 			"No application CPE reported for %q; product-name resolution is not supported yet, so it was not assessed.",
 			strings.TrimSpace(o.Product+" "+o.Version)))
+	case len(res.Candidates) == 0:
+		res.Notes = append(res.Notes, "Service responded but was not identified (no product or CPE), so it was not assessed.")
 	}
 	res.Distro = DetectDistro(o, res.PlatformCPEs)
 	if res.Distro.Detected() {

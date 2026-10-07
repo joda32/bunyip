@@ -1,0 +1,31 @@
+{
+  "comment": "Curated distribution release lifecycle. 'eol' = end of the vendor's regular security support for the release (Debian: end of LTS; Ubuntu: end of standard support; RHEL/Rocky/AlmaLinux/CentOS: end of maintenance support). 'extended_until'/'extended' = paid or separate extended support (Ubuntu Pro ESM, RHEL ELS, Debian ELTS). Dates as published by each vendor; VERIFY when updating. Releases not listed are treated as supported.",
+  "source": "curated:vendor-lifecycle-2026-10-07",
+  "releases": [
+    {"distro": "debian", "release": "9", "codename": "stretch", "eol": "2022-06-30", "extended": "Freexian ELTS"},
+    {"distro": "debian", "release": "10", "codename": "buster", "eol": "2024-06-30", "extended": "Freexian ELTS"},
+    {"distro": "debian", "release": "11", "codename": "bullseye", "eol": "2026-08-31", "extended": "Freexian ELTS"},
+    {"distro": "debian", "release": "12", "codename": "bookworm", "eol": "2028-06-30"},
+    {"distro": "debian", "release": "13", "codename": "trixie", "eol": "2030-06-30"},
+
+    {"distro": "ubuntu", "release": "14.04", "codename": "trusty", "eol": "2019-04-30", "extended_until": "2024-04-30", "extended": "Ubuntu Pro (ESM)"},
+    {"distro": "ubuntu", "release": "16.04", "codename": "xenial", "eol": "2021-04-30", "extended_until": "2026-04-30", "extended": "Ubuntu Pro (ESM)"},
+    {"distro": "ubuntu", "release": "18.04", "codename": "bionic", "eol": "2023-05-31", "extended_until": "2028-04-30", "extended": "Ubuntu Pro (ESM)"},
+    {"distro": "ubuntu", "release": "20.04", "codename": "focal", "eol": "2025-05-29", "extended_until": "2030-04-30", "extended": "Ubuntu Pro (ESM)"},
+    {"distro": "ubuntu", "release": "22.04", "codename": "jammy", "eol": "2027-06-30", "extended_until": "2032-04-30", "extended": "Ubuntu Pro (ESM)"},
+    {"distro": "ubuntu", "release": "24.04", "codename": "noble", "eol": "2029-05-31", "extended_until": "2034-04-30", "extended": "Ubuntu Pro (ESM)"},
+    {"distro": "ubuntu", "release": "25.04", "codename": "plucky", "eol": "2026-01-15"},
+    {"distro": "ubuntu", "release": "25.10", "codename": "questing", "eol": "2026-07-09"},
+
+    {"distro": "redhat", "release": "6", "eol": "2020-11-30", "extended_until": "2029-06-30", "extended": "RHEL ELS"},
+    {"distro": "redhat", "release": "7", "eol": "2024-06-30", "extended_until": "2028-06-30", "extended": "RHEL ELS"},
+    {"distro": "redhat", "release": "8", "eol": "2029-05-31"},
+    {"distro": "redhat", "release": "9", "eol": "2032-05-31"},
+    {"distro": "centos", "release": "7", "eol": "2024-06-30"},
+    {"distro": "centos", "release": "8", "eol": "2021-12-31"},
+    {"distro": "rocky", "release": "8", "eol": "2029-05-31"},
+    {"distro": "rocky", "release": "9", "eol": "2032-05-31"},
+    {"distro": "almalinux", "release": "8", "eol": "2029-03-01"},
+    {"distro": "almalinux", "release": "9", "eol": "2032-05-31"}
+  ]
+}

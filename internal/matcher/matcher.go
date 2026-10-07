@@ -117,7 +117,8 @@ func (e *Engine) distroTarget(cands []identity.Candidate, in *DistroInput) (dist
 		return distro.Target{}, false
 	}
 	t := distro.Target{Distro: in.Info.Key, DistroName: in.Info.Name, Upstream: cpe.Unescape(cands[0].CPE.Version),
-		Revision: in.Info.Revision, ReleaseHint: in.ReleaseHint, NoHintFallback: in.Info.Inferred}
+		Revision: in.Info.Revision, ReleaseHint: in.ReleaseHint, NoHintFallback: in.Info.Inferred,
+		LifecycleDistro: in.Info.Key}
 	if data, ok := advisoryDataFor[t.Distro]; ok {
 		t.Note = fmt.Sprintf("%s evaluated with %s advisories", t.DistroName, data.name)
 		t.Distro = data.key
@@ -309,6 +310,9 @@ func (e *Engine) Query(ctx context.Context, cands []identity.Candidate, in *Dist
 
 	if res.Distro == nil || (res.Distro.Status != distro.Resolved && res.Distro.Status != distro.Ambiguous) {
 		res.Warnings = append(res.Warnings, backportWarning)
+	}
+	if res.Distro != nil && res.Distro.EndOfLife != "" {
+		res.Warnings = append(res.Warnings, res.Distro.EOLNote()+".")
 	}
 	if res.IdentityConfidence != Exact {
 		res.Warnings = append(res.Warnings,

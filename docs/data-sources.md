@@ -209,3 +209,28 @@ Genuine matches exist (3CX, Apache ActiveMQ, Arkeia), but each needs a human
 decision. The products are a long tail of niche and embedded software; common
 internal-network services already carry CPEs. Such services are reported as
 `UNIDENTIFIED`.
+
+## Field trial: Windows-heavy lab (2026-10-07)
+
+An unauthenticated `nmap -sV --top-ports 1000` of a Ludus lab (5 Windows hosts,
+3 Linux hosts) took 119 s with the `vulndb` NSE script enabled.
+
+- **Windows (Server 2016/2022, Windows 11): nothing assessable.**
+  - SMB, RDP, RPC, LDAP and Kerberos carry only `cpe:/o:microsoft:windows` or
+    no CPE. Nmap did not identify OpenSSH for Windows, Simple DNS Plus had no
+    version, and IIS shows the "recorded against Windows" caveat.
+  - Exact OS builds are visible through `rdp-ntlm-info` / `smb-os-discovery`
+    (10.0.14393, 10.0.20348, 10.0.22621), but the patch level is not. NVD
+    Windows rules key on build + revision (e.g. `10.0.20348.2340`), so an
+    unauthenticated scan can say "this build has N CVEs, patch level unknown",
+    not "vulnerable".
+- **Debian 11 routers: the release is end of life.** OpenSSH
+  `8.4p1 Debian 5+deb11u7` resolved to Debian 11, which reached end of LTS on
+  2026-08-31. Neither Debian's OSV export nor its Security Tracker covers it
+  any more. Only DLA-covered CVEs get verdicts; the rest are now flagged as
+  end-of-life rather than looking like ordinary gaps.
+- **Debian 12 (fully updated, `+deb12u10`):** 26 upstream matches became 12
+  fixed in the package, 9 Debian NO_FIX (mostly untriaged 2026 CVEs) and 5
+  without data.
+- **Services without a version** (Unbound) produce "version not detected" rather
+  than dozens of undetermined CVEs.

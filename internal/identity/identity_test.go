@@ -97,8 +97,9 @@ func TestResolveObservationEdgeCases(t *testing.T) {
 		t.Errorf("unidentified product not reported: %+v", noCPE)
 	}
 
+	// Two unusable CPEs and no product: both CPEs are reported, plus "not identified".
 	bad := r.ResolveObservation(Observation{CPEs: []string{"cpe:/a:bad vendor:x", "cpe:/a:apache"}}, "nmap")
-	if len(bad.Candidates) != 0 || len(bad.Notes) != 2 {
+	if len(bad.Candidates) != 0 || len(bad.Notes) != 3 || !strings.Contains(bad.Notes[2], "not identified") {
 		t.Errorf("malformed/insufficient CPEs not reported: %+v", bad)
 	}
 

@@ -240,7 +240,11 @@ func notAssessedLine(sr *ServiceReport) string {
 func renderNSE(resp *NSEResponse, res *matcher.Result) []string {
 	c := resp.Counts
 	head := fmt.Sprintf("%d candidate CVEs (%d in CISA KEV, %d with public exploit evidence)", c.Matches, c.KEV, c.Exploit)
-	if c.Undetermined > 0 {
+	switch {
+	case c.Undetermined > 0 && res.IdentityConfidence == matcher.Low:
+		head = fmt.Sprintf("version not detected: %d CVEs recorded for %s %s could not be evaluated",
+			c.Undetermined, res.Vendor, res.Product)
+	case c.Undetermined > 0:
 		head += fmt.Sprintf(", %d undetermined", c.Undetermined)
 	}
 	lines := []string{head}
@@ -253,6 +257,9 @@ func renderNSE(resp *NSEResponse, res *matcher.Result) []string {
 			s += fmt.Sprintf("; %d more fixed in the package", c.DistroFixed)
 		}
 		lines = append(lines, "Distribution: "+s)
+		if d.EndOfLife != "" {
+			lines = append(lines, "END OF LIFE: "+d.EOLNote())
+		}
 	}
 	for _, v := range resp.Vulns {
 		cvss := "CVSS n/a"
@@ -281,6 +288,9 @@ func renderNSE(resp *NSEResponse, res *matcher.Result) []string {
 	}
 	if hidden := c.Matches - countMatches(resp.Vulns); hidden > 0 {
 		lines = append(lines, fmt.Sprintf("... %d more (vulndb.max / vulndb.mincvss limit the list; full detail: vulndb nmap on -oX output)", hidden))
+	}
+	for _, n := range resp.Notes {
+		lines = append(lines, "Note: "+n)
 	}
 	return lines
 }

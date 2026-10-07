@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"offline-vulndb/internal/database"
 )
@@ -53,6 +54,16 @@ func (f fakeStore) PackagesInRelease(ctx context.Context, d, rel string, pkgs []
 	return out, nil
 }
 
+func (f fakeStore) ReleaseLifecycle(ctx context.Context, d, rel string) (*database.Lifecycle, error) {
+	switch d + "/" + rel {
+	case "debian/11":
+		return &database.Lifecycle{EOL: "2026-08-31", Extended: "Freexian ELTS"}, nil
+	case "debian/12":
+		return &database.Lifecycle{EOL: "2028-06-30"}, nil
+	}
+	return nil, nil
+}
+
 func adv(cve, rel, pkg, channel, fixed string, ups ...string) database.DistroAdvisory {
 	distro := "ubuntu"
 	if !strings.Contains(rel, ".") {
@@ -94,6 +105,8 @@ var store = fakeStore{
 		{AdvisoryID: "OSV-CVE-2007-2243", CVEID: "CVE-2007-2243", Distro: "debian", Release: "13", Channel: "standard",
 			Package: "openssh", Urgency: "unimportant"},
 		adv("CVE-2099-0004", "13", "openssh", "standard", "1:10.2p1-1"), // fixed by a newer upstream
+		// Debian 11: only a DLA record (real DLA-4057-1); no per-CVE data any more.
+		adv("CVE-2025-26465", "11", "openssh", "standard", "1:8.4p1-5+deb11u4", "8.4p1"),
 	},
 }
 
@@ -362,5 +375,33 @@ func TestRedHatModuleStreams(t *testing.T) {
 	c = resolveRH(t, Target{Upstream: "1.22.1", Packages: []string{"nginx"}, ReleaseHint: "8", NoHintFallback: true})
 	if c.Status != UnknownRelease {
 		t.Errorf("inferred distro must not borrow the host release: %+v", c)
+	}
+}
+
+// Debian 11 reached end of life on 2026-08-31 (the Ludus lab routers run it):
+// missing advisory data must say so instead of looking like an ordinary gap.
+func TestEndOfLifeRelease(t *testing.T) {
+	Now = func() time.Time { return time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC) }
+	defer func() { Now = time.Now }()
+
+	c := resolveDebian(t, Target{Upstream: "8.4p1", Revision: "5+deb11u7"})
+	if c.Status != Resolved || c.EndOfLife != "2026-08-31" {
+		t.Fatalf("context: %+v", c)
+	}
+	if v := c.Verdict("CVE-2025-26465"); v.Status != Fixed {
+		t.Errorf("DLA fix still applies: %+v", v)
+	}
+	v := c.Verdict("CVE-2023-38408")
+	if v.Status != NoData || !strings.Contains(v.Reason, "reached end of life on 2026-08-31") ||
+		!strings.Contains(v.Reason, "Freexian ELTS") {
+		t.Errorf("EOL reason missing: %+v", v)
+	}
+	if b := resolveDebian(t, Target{Upstream: "9.2p1", Revision: "2+deb12u3"}); b.EndOfLife != "" || b.Lifecycle == nil {
+		t.Errorf("bookworm is supported: %+v", b)
+	}
+	// Before the EOL date the release is still supported.
+	Now = func() time.Time { return time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC) }
+	if c := resolveDebian(t, Target{Upstream: "8.4p1", Revision: "5+deb11u7"}); c.EndOfLife != "" {
+		t.Errorf("EOL flagged on the last supported day: %+v", c)
 	}
 }

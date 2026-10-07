@@ -259,6 +259,22 @@ even when NVD has no matching rule. Such a verdict needs either an installed
 version older than the fix, or a fix in a newer upstream version. `NO_FIX` rows never add findings on their own: Ubuntu marks
 new CVEs as affected before triage.
 
+**End of life.** `distro_releases` (`data/distro_releases.json`, curated from
+vendor lifecycle pages) records each release's end of regular security
+support, plus any extended offering (Ubuntu Pro ESM, RHEL ELS, Debian ELTS).
+Distributions stop publishing advisory data for releases past end of life; the
+Debian Security Tracker no longer contains Debian 11 at all.
+
+So when the resolved release is past its EOL date:
+- the distribution context carries `end_of_life`;
+- `NO_DATA` verdicts say the release reached end of life (and how fixes are
+  still available, if they are);
+- reports count the services on such releases.
+
+A real scan of Debian 11 routers (LTS ended 2026-08-31) showed why this is
+needed. Before the change, CVEs Debian had fixed in 2023 looked like ordinary
+data gaps.
+
 **Data trust.** Affected-version lists are used only where they describe the
 release:
 - Ubuntu's lists;
