@@ -125,6 +125,23 @@ is a different (Semi-Annual Channel) build. Check new rows against the NVD
 CPE dictionary and Microsoft's lifecycle pages. It is loaded into
 `windows_builds` (`--windows-builds PATH` to use another file).
 
+## Product names
+
+`data/product_names.json` maps Nmap product names that come without an
+application CPE to NVD vendor:product identities, and marks Windows built-ins
+as OS components. Each entry also states whether Nmap's version field is the
+product version (`"version": "nmap"`) or not (`"none"`). Regex patterns must
+be anchored and portable to Go (no lookaround or back-references).
+
+```bash
+vulndb-update review-products --db vulndb.sqlite   # candidates from /usr/share/nmap/nmap-service-probes
+```
+
+The review only proposes names whose normalised form is an NVD product.
+Check each one: that the NVD product really is this software (many are not),
+and what Nmap's `v/` template captures. Add accepted names to `products`,
+false matches to `rejected`. A build logs targets that have no NVD rules.
+
 ## Aliases
 
 `data/aliases.json` lists hand-reviewed aliases from identities that Nmap

@@ -18,6 +18,7 @@ package identity
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"offline-vulndb/internal/cpe"
@@ -57,9 +58,94 @@ type Candidate struct {
 	Reason     string
 }
 
-// Resolver applies curated aliases.
+// Resolver applies curated aliases and product names.
 type Resolver struct {
-	aliases map[string][]database.Alias // keyed by part:vendor:product (canonical values)
+	aliases    map[string][]database.Alias // keyed by part:vendor:product (canonical values)
+	exactNames map[string][]database.ProductName
+	regexNames []nameRule // in pattern order; the first matching pattern wins
+}
+
+type nameRule struct {
+	re      *regexp.Regexp
+	entries []database.ProductName // one per target vendor:product
+}
+
+// AddProductNames indexes the curated Nmap product names.
+func (r *Resolver) AddProductNames(names []database.ProductName) error {
+	if r.exactNames == nil {
+		r.exactNames = map[string][]database.ProductName{}
+	}
+	byPattern := map[string]int{}
+	for _, n := range names {
+		if n.Match != "regex" {
+			r.exactNames[n.Pattern] = append(r.exactNames[n.Pattern], n)
+			continue
+		}
+		i, ok := byPattern[n.Pattern]
+		if !ok {
+			re, err := regexp.Compile(n.Pattern)
+			if err != nil {
+				return fmt.Errorf("product name pattern %q: %w", n.Pattern, err)
+			}
+			i = len(r.regexNames)
+			byPattern[n.Pattern] = i
+			r.regexNames = append(r.regexNames, nameRule{re: re})
+		}
+		r.regexNames[i].entries = append(r.regexNames[i].entries, n)
+	}
+	return nil
+}
+
+// lookupName returns the curated entries for an Nmap product string: exact
+// names first, otherwise the first matching pattern.
+func (r *Resolver) lookupName(product string) []database.ProductName {
+	if n := r.exactNames[product]; len(n) > 0 {
+		return n
+	}
+	for _, rule := range r.regexNames {
+		if rule.re.MatchString(product) {
+			return rule.entries
+		}
+	}
+	return nil
+}
+
+// nameCandidates turns curated product-name entries into identities. The
+// version comes from Nmap's version field only where the curation says it
+// is the product version.
+func nameCandidates(o Observation, entries []database.ProductName) ([]Candidate, []string) {
+	var out []Candidate
+	var notes []string
+	product := strings.TrimSpace(o.Product)
+	for _, n := range entries {
+		if n.Kind != "product" {
+			continue
+		}
+		ver := ""
+		if f := strings.Fields(o.Version); n.Version == "nmap" && len(f) > 0 {
+			ver = f[0]
+		}
+		c := cpe.CPE{Part: n.Part, Vendor: n.Vendor, Product: n.Product, Version: cpe.EscapeValue(ver),
+			Update: cpe.Any, Edition: cpe.Any, Language: cpe.Any, SWEdition: cpe.Any, TargetSW: cpe.Any,
+			TargetHW: cpe.Any, Other: cpe.Any}
+		conf, reason := Confidence(n.Confidence), fmt.Sprintf("Curated product name %q -> %s:%s", product, n.Vendor, n.Product)
+		if ver == "" {
+			conf = Low
+			reason += " (no product version)"
+		}
+		out = append(out, Candidate{CPE: c, Confidence: conf, Source: "product-name:" + n.Source, Reason: reason})
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	if entries[0].Version == "none" && strings.TrimSpace(o.Version) != "" {
+		notes = append(notes, fmt.Sprintf("Nmap's version %q for %q is not the product version, so it was not used.",
+			strings.TrimSpace(o.Version), product))
+	}
+	if entries[0].Note != "" {
+		notes = append(notes, entries[0].Note)
+	}
+	return out, notes
 }
 
 // NewResolver indexes vendor/product aliases. Product-name aliases (no
@@ -143,6 +229,9 @@ type Observation struct {
 
 // Resolution is the outcome of resolving an Observation.
 type Resolution struct {
+	// OSComponent is set ("windows") when the service is an operating-system
+	// built-in whose vulnerabilities NVD records against the OS itself.
+	OSComponent  string
 	Candidates   []Candidate
 	PlatformCPEs []string   // OS/hardware CPEs reported with the service, not queried
 	Distro       DistroInfo // detected distribution packaging (zero value: none)
@@ -192,10 +281,36 @@ func (r *Resolver) ResolveObservation(o Observation, source string) Resolution {
 		}
 		res.Candidates = append(res.Candidates, r.ResolveCPE(c, source)...)
 	}
+	var named []database.ProductName
+	if p := strings.TrimSpace(o.Product); p != "" {
+		named = r.lookupName(p)
+	}
+	for _, n := range named {
+		if n.Kind == "os_component" {
+			res.OSComponent = n.OS
+			note := "Windows component: covered by the host's Windows build assessment " +
+				"(NVD records its vulnerabilities against Windows itself)."
+			if len(res.Candidates) > 0 {
+				note = "Windows component: NVD records most of its vulnerabilities against Windows itself, so results " +
+					"for this CPE are incomplete; see the host's Windows build assessment."
+			}
+			if n.Note != "" {
+				note += " " + n.Note
+			}
+			res.Notes = append(res.Notes, note)
+			break
+		}
+	}
+	if len(res.Candidates) == 0 && res.OSComponent == "" {
+		cands, notes := nameCandidates(o, named)
+		res.Candidates = append(res.Candidates, cands...)
+		res.Notes = append(res.Notes, notes...)
+	}
 	switch {
+	case res.OSComponent != "":
 	case len(res.Candidates) == 0 && o.Product != "":
 		res.Notes = append(res.Notes, fmt.Sprintf(
-			"No application CPE reported for %q; product-name resolution is not supported yet, so it was not assessed.",
+			"No application CPE reported for %q and the name is not in the curated product-name map, so it was not assessed.",
 			strings.TrimSpace(o.Product+" "+o.Version)))
 	case len(res.Candidates) == 0:
 		res.Notes = append(res.Notes, "Service responded but was not identified (no product or CPE), so it was not assessed.")

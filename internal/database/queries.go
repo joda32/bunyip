@@ -433,3 +433,38 @@ func (s *Store) WindowsBuilds(ctx context.Context) ([]WindowsBuild, error) {
 	}
 	return out, wrapQueryErr(rows.Err())
 }
+
+// ProductName is a curated Nmap product name (table product_names).
+type ProductName struct {
+	Pattern    string
+	Match      string // "exact" or "regex"
+	Kind       string // "product" or "os_component"
+	Part       string
+	Vendor     string
+	Product    string
+	OS         string
+	Version    string // "nmap": Nmap's version field is the product version; "none": ignore it
+	Confidence string
+	Note       string
+	Source     string
+}
+
+// ProductNames loads the curated product-name map (small table).
+func (s *Store) ProductNames(ctx context.Context) ([]ProductName, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT pattern, match, kind, part, vendor, product, os, version, confidence, note, source
+		FROM product_names ORDER BY kind, match, pattern, vendor, product`)
+	if err != nil {
+		return nil, wrapQueryErr(err)
+	}
+	defer rows.Close()
+	var out []ProductName
+	for rows.Next() {
+		var n ProductName
+		if err := rows.Scan(&n.Pattern, &n.Match, &n.Kind, &n.Part, &n.Vendor, &n.Product, &n.OS, &n.Version,
+			&n.Confidence, &n.Note, &n.Source); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, wrapQueryErr(rows.Err())
+}

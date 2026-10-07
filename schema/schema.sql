@@ -192,9 +192,29 @@ CREATE TABLE windows_builds (
     PRIMARY KEY (build, kind)
 ) WITHOUT ROWID;
 
+-- Curated Nmap product names (data/product_names.json) for services Nmap
+-- fingerprints without an application CPE. kind 'product' maps the name to
+-- an NVD vendor:product; kind 'os_component' marks operating-system
+-- built-ins (e.g. "Microsoft Windows RPC") whose vulnerabilities NVD records
+-- against the OS itself.
+CREATE TABLE product_names (
+    pattern    TEXT NOT NULL,         -- Nmap product string, or a regular expression
+    match      TEXT NOT NULL CHECK (match IN ('exact', 'regex')),
+    kind       TEXT NOT NULL CHECK (kind IN ('product', 'os_component')),
+    part       TEXT NOT NULL DEFAULT '',   -- product: CPE part/vendor/product (canonical)
+    vendor     TEXT NOT NULL DEFAULT '',
+    product    TEXT NOT NULL DEFAULT '',
+    os         TEXT NOT NULL DEFAULT '',   -- os_component: e.g. 'windows'
+    version    TEXT NOT NULL CHECK (version IN ('nmap', 'none')), -- is Nmap's version field the product version?
+    confidence TEXT NOT NULL CHECK (confidence IN ('HIGH', 'MEDIUM')),
+    note       TEXT NOT NULL DEFAULT '',
+    source     TEXT NOT NULL,
+    PRIMARY KEY (pattern, kind, vendor, product)
+) WITHOUT ROWID;
+
 CREATE INDEX idx_distro_adv_lookup   ON distro_advisories (distro, package, release, cve_id);
 CREATE INDEX idx_distro_adv_cve      ON distro_advisories (cve_id);
 CREATE INDEX idx_distro_pkgver_up    ON distro_package_versions (distro, package, upstream);
 CREATE INDEX idx_distro_packages_cpe ON distro_packages (cpe_part, cpe_vendor, cpe_product);
 
-INSERT INTO database_metadata (key, value) VALUES ('schema_version', '8');
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '9');

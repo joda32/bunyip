@@ -103,7 +103,7 @@ func TestQueryJSONFromCPE22(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, r.stdout)
 	}
-	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "8" || doc.Database.Dataset != "synthetic-fixture" {
+	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "9" || doc.Database.Dataset != "synthetic-fixture" {
 		t.Errorf("unexpected envelope: %+v", doc)
 	}
 	res := doc.Result
@@ -209,7 +209,7 @@ func TestInfoVerifyStats(t *testing.T) {
 	db := initDB(t)
 
 	r := cli("--db", db, "info")
-	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    8") ||
+	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    9") ||
 		!strings.Contains(r.stdout, "synthetic-fixture") || !strings.Contains(r.stdout, "Data age:") ||
 		!strings.Contains(r.stdout, "CVEs without CPE applicability data: 1 of 13") {
 		t.Errorf("info: exit %d\n%s%s", r.code, r.stdout, r.stderr)
@@ -702,7 +702,11 @@ func TestNmapWindowsBuilds(t *testing.T) {
 		t.Errorf("undetermined KEV entry listed:\n%s", r.stdout)
 	}
 	for _, want := range []string{
+		"Hosts up 7, down 0 | open ports 10: assessed 2, OS components 8, unidentified 0, not probed 0",
 		"Windows: 4 host(s) assessed at build level (patch level not visible; CVEs apply unless patched)",
+		"389/tcp ldap Microsoft Windows Active Directory LDAP\n    Note: Windows component: covered by the host's Windows build",
+		"Identity: cpe:2.3:a:clamav:clamav:0.103.2:*:*:*:*:*:*:* [HIGH] (curated product name)",
+		"CVE-0000-0911    HIGH      CVSS 7.5  exploit:NO  KEV:NO  MATCH",
 		"Windows: Windows Server 2022 (build 10.0.20348) [HIGH]",
 		"Evidence: rdp-ntlm-info on 3389/tcp Product_Version 10.0.20348",
 		"Server release because: Microsoft Windows Kerberos on 88/tcp (domain controllers run Windows Server)",

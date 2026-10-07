@@ -233,6 +233,29 @@
      ]
     }
    ]
+  },
+  {
+   "cve_id": "CVE-0000-0911",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] ClamAV before 0.103.3 (reached through a curated product name; Nmap reports no CPE).",
+   "cvss_v3_score": 7.5,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:a:clamav:clamav:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "0.103.3"
+        }
+       ]
+      }
+     ]
+    }
+   ]
   }
  ],
  "kev": [
@@ -327,6 +350,45 @@
    ],
    "eol": "2025-10-14",
    "support": "support ended 2025-10-14"
+  }
+ ],
+ "product_names": [
+  {
+   "pattern": "Microsoft Windows Kerberos",
+   "kind": "os_component",
+   "os": "windows",
+   "version": "none",
+   "confidence": "HIGH"
+  },
+  {
+   "pattern": "Microsoft Windows Active Directory LDAP",
+   "kind": "os_component",
+   "os": "windows",
+   "version": "none",
+   "confidence": "HIGH"
+  },
+  {
+   "pattern": "Microsoft Terminal Services",
+   "kind": "os_component",
+   "os": "windows",
+   "version": "none",
+   "confidence": "HIGH"
+  },
+  {
+   "pattern": "^(Microsoft )?Windows .*microsoft-ds$",
+   "match": "regex",
+   "kind": "os_component",
+   "os": "windows",
+   "version": "none",
+   "confidence": "HIGH"
+  },
+  {
+   "pattern": "ClamAV",
+   "kind": "product",
+   "vendor": "clamav",
+   "product": "clamav",
+   "version": "nmap",
+   "confidence": "HIGH"
   }
  ]
 }

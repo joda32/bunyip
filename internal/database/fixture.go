@@ -28,6 +28,20 @@ type Fixture struct {
 	DistroAdvisory  []FixtureDistroAdvisory `json:"distro_advisories"`
 	DistroReleases  []FixtureDistroRelease  `json:"distro_releases"`
 	WindowsBuilds   []FixtureWindowsBuild   `json:"windows_builds"`
+	ProductNames    []FixtureProductName    `json:"product_names"`
+}
+
+// FixtureProductName is one product_names row; Match defaults to "exact".
+type FixtureProductName struct {
+	Pattern    string `json:"pattern"`
+	Match      string `json:"match"`
+	Kind       string `json:"kind"`
+	Vendor     string `json:"vendor"`
+	Product    string `json:"product"`
+	OS         string `json:"os"`
+	Version    string `json:"version"`
+	Confidence string `json:"confidence"`
+	Note       string `json:"note"`
 }
 
 type FixtureWindowsBuild struct {
@@ -212,6 +226,21 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`,
 INSERT INTO windows_builds (build, kind, name, cpes, eol, support, source) VALUES (?, ?, ?, ?, ?, ?, 'fixture')`,
 			w.Build, w.Kind, w.Name, strings.Join(w.CPEs, " "), w.EOL, w.Support); err != nil {
 			return fmt.Errorf("windows build %d: %w", w.Build, err)
+		}
+	}
+	for _, n := range f.ProductNames {
+		match, part := n.Match, ""
+		if match == "" {
+			match = "exact"
+		}
+		if n.Kind == "product" {
+			part = "a"
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO product_names (pattern, match, kind, part, vendor, product, os, version, confidence, note, source)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'fixture')`,
+			n.Pattern, match, n.Kind, part, n.Vendor, n.Product, n.OS, n.Version, n.Confidence, n.Note); err != nil {
+			return fmt.Errorf("product name %q: %w", n.Pattern, err)
 		}
 	}
 	return tx.Commit()

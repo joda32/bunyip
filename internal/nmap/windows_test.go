@@ -133,8 +133,26 @@ func TestAnalyseWindowsBuilds(t *testing.T) {
 	if !slices.Contains(rep.Warnings, windows.PatchNote) {
 		t.Errorf("patch-level note missing: %v", rep.Warnings)
 	}
-	// Windows OS identities never become per-service findings.
-	if rep.Summary.VersionMatches != 0 {
-		t.Errorf("service matches: %+v", rep.Summary)
+	// Windows built-ins are OS components, covered by the build assessment;
+	// Kerberos keeps its (LOW) application CPE. ClamAV is identified through
+	// its curated product name, since Nmap reports no CPE for it.
+	if rep.Summary.OSComponents != 8 || rep.Summary.VersionMatches != 1 {
+		t.Errorf("summary: %+v", rep.Summary)
+	}
+	svc := map[int]ServiceReport{}
+	for _, s := range byAddr["192.0.2.10"].Services {
+		svc[s.Port] = s
+	}
+	if svc[389].Assessment != OSComponent || svc[3389].Assessment != OSComponent || svc[88].Assessment != Assessed {
+		t.Errorf("dc services: 88=%s 389=%s 3389=%s", svc[88].Assessment, svc[389].Assessment, svc[3389].Assessment)
+	}
+	av := byAddr["192.0.2.16"].Services[0]
+	if av.Assessment != Assessed || av.Result == nil || len(av.Result.Vulnerabilities) != 1 ||
+		av.Result.Vulnerabilities[0].CVE != "CVE-0000-0911" || av.Result.Identities[0].Confidence != identity.High ||
+		!strings.HasPrefix(av.Result.Identities[0].Source, "product-name:") {
+		t.Errorf("clamav: %+v", av)
+	}
+	if len(byAddr["192.0.2.16"].Windows) != 0 {
+		t.Errorf("non-Windows host assessed as Windows")
 	}
 }

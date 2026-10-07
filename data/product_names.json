@@ -1,0 +1,633 @@
+{
+  "comment": "Curated Nmap product names for services Nmap fingerprints without an application CPE. Each entry was reviewed by hand: automatic name matching against NVD mostly finds the wrong software (see docs/data-sources.md). 'products' map a name to NVD vendor:product identities; 'version' says whether Nmap's version field is the product version ('nmap') or something else, such as a protocol version ('none'). 'os_components' are operating-system built-ins whose vulnerabilities NVD records against the OS itself. 'match' is 'exact' (default) or 'regex' (RE2/Python-compatible, anchored by the author). Candidates: vulndb-update review-products. 'rejected' lists names whose NVD candidate was reviewed and found to be different software, too generic, or a protocol rather than a product.",
+  "source": "curated:nmap-7.94-review-2026-10-07",
+  "os_components": [
+    {
+      "pattern": "Microsoft Windows RPC",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft Windows RPC over HTTP",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft RPC",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft Windows Active Directory LDAP",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft Windows Kerberos",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft Terminal Services",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft Terminal Service",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft Windows Wins",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft Windows UPnP",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft HTTPAPI httpd",
+      "os": "windows",
+      "note": "HTTP.sys, the Windows kernel HTTP stack."
+    },
+    {
+      "pattern": "Microsoft Distributed Transaction Coordinator",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft Windows Deployment Services tftpd",
+      "os": "windows"
+    },
+    {
+      "pattern": "Microsoft Telnet Service telnetd",
+      "os": "windows"
+    },
+    {
+      "pattern": "^Microsoft Windows ((XP|10|2012 R2|Mobile) )?netbios-(ssn|ns)$",
+      "match": "regex",
+      "os": "windows"
+    },
+    {
+      "pattern": "^Microsoft Windows .*telnetd$",
+      "match": "regex",
+      "os": "windows"
+    },
+    {
+      "pattern": "^(Microsoft )?Windows .*microsoft-ds$",
+      "match": "regex",
+      "os": "windows"
+    },
+    {
+      "pattern": "^Microsoft Windows (\\S+ )?daytime$",
+      "match": "regex",
+      "os": "windows"
+    }
+  ],
+  "products": [
+    {
+      "pattern": "ClamAV",
+      "cpes": [
+        "clamav:clamav",
+        "clam_anti-virus:clamav"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "Kamailio",
+      "cpes": [
+        "kamailio:kamailio"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^Kerio MailServer( (smtpd|nntpd))?$",
+      "cpes": [
+        "kerio:kerio_mailserver"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH",
+      "match": "regex"
+    },
+    {
+      "pattern": "Darwin Streaming Server",
+      "cpes": [
+        "apple:darwin_streaming_server"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^Hiawatha( httpd)?$",
+      "cpes": [
+        "hiawatha-webserver:hiawatha"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH",
+      "match": "regex"
+    },
+    {
+      "pattern": "HylaFAX",
+      "cpes": [
+        "hylafax:hylafax"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^(Rockliffe )?MailSite( (imapd|pop3d))?$",
+      "cpes": [
+        "rockliffe:mailsite",
+        "mailsite:mailsite"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH",
+      "match": "regex"
+    },
+    {
+      "pattern": "Texas Imperial Software WFTPD",
+      "cpes": [
+        "texas_imperial_software:wftpd"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "glFTPd",
+      "cpes": [
+        "glftpd:glftpd"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^hMailServer( (smtpd|pop3d|imapd))?$",
+      "cpes": [
+        "hmailserver:hmailserver"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH",
+      "match": "regex",
+      "note": "Nmap reports the product version only for some hMailServer banners."
+    },
+    {
+      "pattern": "Portable SDK for UPnP",
+      "cpes": [
+        "portable_sdk_for_upnp_project:portable_sdk_for_upnp"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH",
+      "note": "libupnp; Nmap's version is the library version from the SERVER header."
+    },
+    {
+      "pattern": "Tarantool",
+      "cpes": [
+        "tarantool:tarantool"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "nostromo",
+      "cpes": [
+        "nazgul:nostromo"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "lwIP",
+      "cpes": [
+        "lwip_project:lwip"
+      ],
+      "version": "nmap",
+      "confidence": "MEDIUM",
+      "note": "Embedded TCP/IP library; the device firmware may patch it without changing the version."
+    },
+    {
+      "pattern": "mitmproxy",
+      "cpes": [
+        "mitmproxy:mitmproxy"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "tnftpd",
+      "cpes": [
+        "netbsd:tnftpd",
+        "luke_mewburn:tnftpd"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "WAR-FTPD",
+      "cpes": [
+        "jarle_aase:war_ftpd"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "FreeFTPd",
+      "cpes": [
+        "freeftpd:freeftpd"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "SlimFTPd",
+      "cpes": [
+        "whitsoft_development:slimftpd"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^ArGoSoft Mail Server( pop3d)?$",
+      "cpes": [
+        "argosoft:argosoft_mail_server",
+        "argosoft:mail_server"
+      ],
+      "version": "none",
+      "confidence": "HIGH",
+      "note": "Nmap's version is the parenthesised build, not the product version.",
+      "match": "regex"
+    },
+    {
+      "pattern": "OpenSMTPD",
+      "cpes": [
+        "opensmtpd:opensmtpd",
+        "openbsd:opensmtpd"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "Pandora FMS",
+      "cpes": [
+        "artica:pandora_fms",
+        "pandorafms:pandora_fms"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "Easy Software Products CUPS",
+      "cpes": [
+        "easy_software_products:cups",
+        "apple:cups"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "apcupsd",
+      "cpes": [
+        "apcupsd:apcupsd",
+        "apc:apcupsd"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "SLURM",
+      "cpes": [
+        "schedmd:slurm"
+      ],
+      "version": "none",
+      "confidence": "HIGH",
+      "note": "Nmap's version is the API version."
+    },
+    {
+      "pattern": "Reprise License Manager",
+      "cpes": [
+        "reprisesoftware:reprise_license_manager"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "SAP MaxDB",
+      "cpes": [
+        "sap:maxdb"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "InterSystems Cache database",
+      "cpes": [
+        "intersystems:cache_database"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "Cisco Integrated Management Controller",
+      "cpes": [
+        "cisco:integrated_management_controller"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "Cisco Web Security Appliance",
+      "cpes": [
+        "cisco:web_security_appliance"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "SonicWall SSL VPN",
+      "cpes": [
+        "sonicwall:ssl_vpn"
+      ],
+      "version": "none",
+      "confidence": "MEDIUM"
+    },
+    {
+      "pattern": "Genetec Security Center",
+      "cpes": [
+        "genetec:security_center"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "oVirt",
+      "cpes": [
+        "ovirt:ovirt"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "Openwsman",
+      "cpes": [
+        "openwsman:openwsman",
+        "openwsman_project:openwsman"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^(Qualcomm )?[Qq]popper( pop3d)?$",
+      "cpes": [
+        "qualcomm:qpopper"
+      ],
+      "version": "none",
+      "confidence": "HIGH",
+      "match": "regex"
+    },
+    {
+      "pattern": "DameWare Mini Remote Control",
+      "cpes": [
+        "solarwinds:dameware_mini_remote_control",
+        "dameware:mini_remote_control"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "Apple Remote Desktop",
+      "cpes": [
+        "apple:apple_remote_desktop",
+        "apple:remote_desktop"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "HP Jetadmin",
+      "cpes": [
+        "hp:jetadmin"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "Arkeia Network Backup",
+      "cpes": [
+        "arkeia:network_backup"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "CouchDB httpd",
+      "cpes": [
+        "apache:couchdb"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "cPanel httpd",
+      "cpes": [
+        "cpanel:cpanel"
+      ],
+      "version": "nmap",
+      "confidence": "MEDIUM",
+      "note": "Nmap's version is the cpsrvd version, which normally tracks the cPanel release."
+    },
+    {
+      "pattern": "Wibu CodeMeter httpd",
+      "cpes": [
+        "wibu:codemeter"
+      ],
+      "version": "nmap",
+      "confidence": "MEDIUM",
+      "note": "Nmap's version is the WIBU-SYSTEMS HTTP server version reported by the CodeMeter runtime."
+    },
+    {
+      "pattern": "VMware VirtualCenter httpd",
+      "cpes": [
+        "vmware:virtualcenter",
+        "vmware:vmware_virtualcenter"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^JAMES (smtpd|pop3d|nntpd)$",
+      "match": "regex",
+      "cpes": [
+        "apache:james"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "monit httpd",
+      "cpes": [
+        "tildeslash:monit",
+        "mmonit:monit"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^(YAWS|Yaws) httpd$",
+      "match": "regex",
+      "cpes": [
+        "yaws:yaws"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "SonicWALL Email Security smtpd",
+      "cpes": [
+        "sonicwall:email_security"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^WinGate (httpd|ftpd|pop3d)$",
+      "match": "regex",
+      "cpes": [
+        "qbik:wingate",
+        "wingate:wingate"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "GlobalSCAPE EFT Server httpd",
+      "cpes": [
+        "globalscape:eft_server"
+      ],
+      "version": "nmap",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "WhatsUp Gold httpd",
+      "cpes": [
+        "progress:whatsup_gold",
+        "ipswitch:whatsup_gold"
+      ],
+      "version": "none",
+      "confidence": "HIGH",
+      "note": "Nmap's version is the embedded web server's, not the WhatsUp Gold release."
+    },
+    {
+      "pattern": "McAfee Agent httpd",
+      "cpes": [
+        "mcafee:agent",
+        "mcafee:mcafee_agent"
+      ],
+      "version": "none",
+      "confidence": "HIGH",
+      "note": "Nmap's version is the agent HTTP server's, not the McAfee Agent release."
+    },
+    {
+      "pattern": "MoveIT DMZ sshd",
+      "cpes": [
+        "ipswitch:moveit_dmz"
+      ],
+      "version": "none",
+      "confidence": "HIGH",
+      "note": "Nmap's version is the SSH library's."
+    },
+    {
+      "pattern": "Coldfusion httpd",
+      "cpes": [
+        "adobe:coldfusion"
+      ],
+      "version": "none",
+      "confidence": "MEDIUM",
+      "note": "Nmap identifies ColdFusion from a generic placeholder Server header; confirm before acting."
+    },
+    {
+      "pattern": "Ipswitch iMail smtpd",
+      "cpes": [
+        "ipswitch:imail"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^Merak Mail [Ss]erver (smtpd|pop3d|imapd)$",
+      "match": "regex",
+      "cpes": [
+        "merak:mail_server",
+        "icewarp:merak_mail_server"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    },
+    {
+      "pattern": "^(?i:(SeattleLab )?SLMail (smtpd|imapd|pop3d))$",
+      "match": "regex",
+      "cpes": [
+        "seattlelab:slmail",
+        "seattle_lab_software:slmail"
+      ],
+      "version": "none",
+      "confidence": "HIGH"
+    }
+  ],
+  "rejected": [
+    "AOL smtpd",
+    "Amazon S3 httpd",
+    "Antiweb",
+    "Arc httpd",
+    "Catwalk",
+    "Catwalk httpd",
+    "Cfingerd",
+    "Citrix NetScaler httpd",
+    "Diablo nntpd",
+    "Drizzle",
+    "EDA httpd",
+    "FTPServer",
+    "Facebook httpd",
+    "Fake identd",
+    "Firefly",
+    "Freenet",
+    "Gatling httpd",
+    "Git",
+    "Golden ftpd",
+    "Helix DNA Server",
+    "Hermes pop3d",
+    "Hermes smtpd",
+    "KVM daemon",
+    "Lasso httpd",
+    "Linux telnetd",
+    "Matrix ftpd",
+    "Medusa httpd",
+    "Mercury smtpd",
+    "MikroTik httpd",
+    "Minecraft",
+    "Mini web server",
+    "Motion-httpd",
+    "NEWS httpd",
+    "NTP",
+    "Nucleus ftpd",
+    "OpenFlow",
+    "Panda imapd",
+    "Personal FTPd",
+    "Proxy+ pop3d",
+    "Quake 1 server",
+    "Router httpd",
+    "SHTTPD",
+    "Service Location Protocol",
+    "Shareaza",
+    "Spotify",
+    "VDR",
+    "VNC",
+    "Web",
+    "Web-Server httpd",
+    "WinVNC",
+    "Windows Ftp Server",
+    "authd",
+    "cfingerd",
+    "gatling ftpd",
+    "mpd",
+    "print server",
+    "pyftpd",
+    "quark",
+    "simple httpd",
+    "telnet",
+    "vm-pop3d",
+    "webserver"
+  ]
+}

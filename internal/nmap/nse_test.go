@@ -140,3 +140,17 @@ func TestNSERequestErrors(t *testing.T) {
 		t.Error("missing target port accepted")
 	}
 }
+
+func TestNSEOSComponent(t *testing.T) {
+	e := fixtureEngineFrom(t, "../../testdata/fixtures/windows.json")
+	body := `{"version": 1, "host": {"address": "192.0.2.10", "hostnames": [], "os_cpes": []},
+ "ports": [{"protocol": "tcp", "port": 389, "state": "open", "name": "ldap", "product": "Microsoft Windows Active Directory LDAP",
+   "version": "", "extrainfo": "", "ostype": "Windows", "tunnel": "", "method": "probed", "conf": 10, "cpes": ["cpe:/o:microsoft:windows"]}],
+ "target": {"protocol": "tcp", "port": 389},
+ "options": {"max": 10, "mincvss": 0, "show_undetermined": false, "show_distro_fixed": false}}`
+	resp := answer(t, e, body, nil)
+	if resp.Assessment != string(OSComponent) || len(resp.Lines) == 0 ||
+		!strings.HasPrefix(resp.Lines[0], "Windows component: assessed per host from its build") {
+		t.Errorf("%+v", resp)
+	}
+}

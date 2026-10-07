@@ -33,8 +33,11 @@ func WriteNmapText(w io.Writer, r *nmap.Report) error {
 	p := &printer{w: w}
 	s := r.Summary
 	p.f("Nmap scan: %s\n", orDash(r.Scan.Args))
-	p.f("Hosts up %d, down %d | open ports %d: assessed %d, unidentified %d, not probed %d\n",
-		s.HostsUp, s.HostsDown, s.OpenPorts, s.Assessed, s.Unidentified, s.NotProbed)
+	p.f("Hosts up %d, down %d | open ports %d: assessed %d, ", s.HostsUp, s.HostsDown, s.OpenPorts, s.Assessed)
+	if s.OSComponents > 0 {
+		p.f("OS components %d, ", s.OSComponents)
+	}
+	p.f("unidentified %d, not probed %d\n", s.Unidentified, s.NotProbed)
 	p.f("Candidate vulnerabilities: %d version matches (%d in CISA KEV, %d with public exploit evidence), %d undetermined\n",
 		s.VersionMatches, s.KnownExploited, s.PublicExploit, s.Undetermined)
 	if s.EndOfLife > 0 {
@@ -98,8 +101,11 @@ func writeServiceText(p *printer, sr nmap.ServiceReport) {
 	if res := sr.Result; res != nil {
 		for _, id := range res.Identities {
 			p.f("    Identity: %s [%s]", id.CPE, id.Confidence)
-			if strings.HasPrefix(id.Source, "alias:") {
+			switch {
+			case strings.HasPrefix(id.Source, "alias:"):
 				p.f(" (curated alias)")
+			case strings.HasPrefix(id.Source, "product-name:"):
+				p.f(" (curated product name)")
 			}
 			p.f("\n")
 		}

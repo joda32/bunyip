@@ -347,3 +347,18 @@ func hexVal(c byte) (byte, bool) {
 	}
 	return 0, false
 }
+
+// EscapeValue returns the canonical formatted-string form of a literal value
+// (e.g. a version reported by a scanner): special characters, including
+// wildcard characters, are escaped and letters lower-cased. An empty value
+// is ANY.
+func EscapeValue(v string) string {
+	if v == "" {
+		return Any
+	}
+	var b strings.Builder
+	for i := 0; i < len(v); i++ {
+		writeLiteral(&b, v[i])
+	}
+	return keepLiteral(b.String())
+}

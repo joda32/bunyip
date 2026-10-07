@@ -90,7 +90,15 @@ func New(ctx context.Context, store *database.Store) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &Engine{Store: store, Resolver: identity.NewResolver(aliases), distroPkgs: map[string][]database.DistroPackage{}}
+	names, err := store.ProductNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	resolver := identity.NewResolver(aliases)
+	if err := resolver.AddProductNames(names); err != nil {
+		return nil, err
+	}
+	e := &Engine{Store: store, Resolver: resolver, distroPkgs: map[string][]database.DistroPackage{}}
 	for _, p := range pkgs {
 		k := p.Part + ":" + p.Vendor + ":" + p.Product
 		e.distroPkgs[k] = append(e.distroPkgs[k], p)

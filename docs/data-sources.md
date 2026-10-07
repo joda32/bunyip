@@ -195,7 +195,7 @@ CPEs since about 2017, so an IIS CPE cannot find them. This is reported as a
 note rather than "solved" with a mapping, since an IIS version does not
 identify a Windows build.
 
-## Nmap services without CPEs (evaluated 2026-10-07; not automated)
+## Nmap services without CPEs (evaluated 2026-10-07; curated, not automated)
 
 Nmap 7.94 has 7,352 match lines with a product name but no application CPE
 (6,069 distinct names, 471 templated).
@@ -207,8 +207,28 @@ Nmap 7.94 has 7,352 match lines with a product name but no application CPE
 
 Genuine matches exist (3CX, Apache ActiveMQ, Arkeia), but each needs a human
 decision. The products are a long tail of niche and embedded software; common
-internal-network services already carry CPEs. Such services are reported as
-`UNIDENTIFIED`.
+internal-network services already carry CPEs.
+
+**Curation (2026-10-07).** `vulndb-update review-products` lists no-CPE names
+whose normalised form (optionally without a trailing role word such as
+`smtpd`) is an NVD product. The first pass reviewed the 154 exact
+candidates plus the enterprise-relevant role-word ones; it gave:
+- 56 product entries (29 where Nmap's version is the product version), e.g.
+  ClamAV, CouchDB, cPanel, Apache JAMES, Kamailio, OpenSMTPD, hMailServer,
+  monit, nostromo, libupnp;
+- 62 rejected: different software of the same name, generic names (`Web`,
+  `telnet`), protocol rather than product (`NTP`, whose version field is the
+  NTP version), and Citrix NetScaler, whose NVD product (`citrix:netscaler`)
+  lacks the ADC CVEs, so a match would understate exposure;
+- 17 Windows built-in patterns, which NVD covers only through Windows OS
+  CPEs and are now `OS_COMPONENT`.
+
+Nmap's version field needs its own check per entry: SLURM's is the API
+version, MOVEit DMZ's the SSH library's, WhatsUp Gold's and McAfee Agent's
+belong to an embedded HTTP server. Those entries use the name only, so their
+CVEs are reported as "version not detected" rather than matched. The review
+still lists about 300 unreviewed candidates, mostly small Windows FTP/mail
+servers from the 2000s.
 
 ## Field trial: Windows-heavy lab (2026-10-07)
 
@@ -241,6 +261,9 @@ An unauthenticated `nmap -sV --top-ports 1000` of a Ludus lab (5 Windows hosts,
     ranges that end at 21H2 builds (`< 10.0.22000.1413`).
   - The workstation runs Windows 11 22H2, out of support since 2025-10-14
     (Enterprise), which the report flags.
+  - With the product-name map, the scan's 19 `UNIDENTIFIED` ports became 18
+    `OS_COMPONENT` (RPC, LDAP, SMB, RDP, …) and 1 genuinely unidentified
+    (an SSH service Nmap could not name).
 - **Debian 11 routers: the release is end of life.** OpenSSH
   `8.4p1 Debian 5+deb11u7` resolved to Debian 11, which reached end of LTS on
   2026-08-31. Neither Debian's OSV export nor its Security Tracker covers it

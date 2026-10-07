@@ -292,6 +292,33 @@ func TestVerifyDetectsBadWindowsBuild(t *testing.T) {
 	}
 }
 
+func TestVerifyDetectsBadProductNamePattern(t *testing.T) {
+	path := newFixtureDB(t)
+	rw, err := openRW(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Valid in Python, unsupported by Go's RE2.
+	if _, err := rw.Exec(`INSERT INTO product_names (pattern, match, kind, os, version, confidence, source)
+		VALUES ('^(?!Samba).*netbios-ns$', 'regex', 'os_component', 'windows', 'none', 'HIGH', 'test')`); err != nil {
+		t.Fatal(err)
+	}
+	rw.Close()
+
+	s, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	checks, err := s.Verify(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasStatus(checks, "product name map", CheckFail) {
+		t.Errorf("unsupported regex not detected: %+v", checks)
+	}
+}
+
 func TestImportRejectsBadCriteria(t *testing.T) {
 	ctx := context.Background()
 	s, err := Create(ctx, filepath.Join(t.TempDir(), "bad.sqlite"))

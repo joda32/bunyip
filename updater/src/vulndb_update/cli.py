@@ -5,7 +5,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, aliases, build, fetch, kev, jsonstream, osv, windows
+from . import __version__, aliases, build, fetch, kev, jsonstream, osv, productnames, windows
 
 # src/vulndb_update/cli.py -> repository root is three levels up.
 _REPO = Path(__file__).resolve().parents[3]
@@ -14,6 +14,7 @@ _REPO_ALIASES = _REPO / "data" / "aliases.json"
 _REPO_PACKAGES = _REPO / "data" / "distro_packages.json"
 _REPO_RELEASES = _REPO / "data" / "distro_releases.json"
 _REPO_WINDOWS = _REPO / "data" / "windows_builds.json"
+_REPO_PRODUCT_NAMES = _REPO / "data" / "product_names.json"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="curated release lifecycle (default: data/distro_releases.json)")
     b.add_argument("--windows-builds", type=Path, default=_REPO_WINDOWS,
                    help="curated Windows build map (default: data/windows_builds.json)")
+    b.add_argument("--product-names", type=Path, default=_REPO_PRODUCT_NAMES,
+                   help="curated Nmap product names (default: data/product_names.json)")
     b.add_argument("--allow-small", action="store_true",
                    help="skip the completeness floors (for tests and partial builds)")
     b.add_argument("--quiet", action="store_true")
@@ -49,12 +52,20 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--db", required=True, type=Path, help="a built vulndb.sqlite")
     r.add_argument("--nmap-probes", type=Path, default=Path("/usr/share/nmap/nmap-service-probes"))
     r.add_argument("--aliases", type=Path, default=_REPO_ALIASES)
+
+    rp = sub.add_parser("review-products",
+                        help="propose product-name mappings for human review from Nmap's service probes")
+    rp.add_argument("--db", required=True, type=Path, help="a built vulndb.sqlite")
+    rp.add_argument("--nmap-probes", type=Path, default=Path("/usr/share/nmap/nmap-service-probes"))
+    rp.add_argument("--product-names", type=Path, default=_REPO_PRODUCT_NAMES)
     args = p.parse_args(argv)
 
     log = (lambda *a, **k: None) if getattr(args, "quiet", False) else (lambda *a, **k: print(*a, **k, flush=True))
     try:
         if args.command == "review-aliases":
             return _review(args)
+        if args.command == "review-products":
+            return _review_products(args)
         return _build(args, log)
     except (fetch.FetchError, build.BuildError, kev.KEVError, jsonstream.StreamError,
             aliases.AliasError, OSError, ValueError) as e:
@@ -69,6 +80,7 @@ def _build(args, log) -> int:
     package_map = osv.load_package_map(args.distro_packages)
     releases = osv.load_releases(args.distro_releases)
     windows_builds = windows.load(args.windows_builds)
+    product_names = productnames.load(args.product_names)
     wanted = [] if args.no_distro else (args.distro or sorted(osv.DISTROS))
     start = time.monotonic()
     distros = []
@@ -94,7 +106,7 @@ def _build(args, log) -> int:
     stats = build.build(args.out, args.schema.read_text(encoding="utf-8"), feeds, kev_path,
                         allow_small=args.allow_small, log=log, alias_rows=alias_rows,
                         distros=distros, package_map=package_map, releases=releases,
-                        windows_builds=windows_builds)
+                        windows_builds=windows_builds, product_names=product_names)
     log(f"Done in {time.monotonic() - start:.0f}s: {stats.loaded} CVEs loaded, "
         f"{stats.replaced} updated by overlay, {stats.unchanged} unchanged, "
         f"{stats.rejected} rejected, {len(stats.skipped_rules)} unparseable rules skipped")
@@ -102,6 +114,8 @@ def _build(args, log) -> int:
         log(f"  skipped: {msg}")
     for prefix in stats.aliases_without_rules:
         log(f"  alias target without NVD rules: {prefix}")
+    for t in stats.product_names_without_rules:
+        log(f"  product-name target without NVD rules: {t}")
     for p in stats.unmapped_packages:
         log(f"  mapped package with no advisories: {p}")
     return 0
@@ -114,6 +128,17 @@ def _review(args) -> int:
     for c in cands:
         print(f"[{c.kind}] {c.observed}  (Nmap: {c.nmap_product!r})")
         print(f"    NVD has: {'; '.join(c.targets)}")
+    return 0
+
+
+def _review_products(args) -> int:
+    cands = productnames.review(args.db, args.nmap_probes, args.product_names)
+    print(f"{len(cands)} product-name candidates for review (curated and rejected names excluded).")
+    print("For each: check the NVD product really is this software, and whether Nmap's version (v/ template)")
+    print("is the product version. Add accepted names to data/product_names.json, false matches to 'rejected'.\n")
+    for c in cands:
+        print(f"{c.nmap_product!r}  (Nmap version: {', '.join(c.versions)})")
+        print("    NVD has: " + "; ".join(f"{v}:{p} ({n} CVEs)" for v, p, n in c.targets))
     return 0
 
 

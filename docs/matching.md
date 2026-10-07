@@ -48,13 +48,40 @@ For Nmap services, `vulndb nmap` also:
   (`cpe:/o:linux:linux_kernel`) as the service;
 - does not assess services Nmap only guessed from the port number
   (`method="table"`);
-- reports services that have a product name but no application CPE as
-  `UNIDENTIFIED` (no guessing);
+- resolves services that have a product name but no application CPE through
+  the curated product-name map (below); names not in it are `UNIDENTIFIED`
+  (no guessing);
 - detects distribution packaging from the version or extra-info text
   (`9.6p1 Ubuntu 3ubuntu13.18`) or from OS CPEs, and attaches a backport
   warning;
 - attaches product caveats (IIS vulnerabilities are recorded against Windows
   CPEs).
+
+### Product names without a CPE
+
+Nmap fingerprints many services without an application CPE. Automatic
+matching of their names against NVD mostly finds the wrong software
+(`Amazon S3 httpd` → a WordPress plugin, `Catwalk` → a theme vendor), so the
+map (`data/product_names.json`, table `product_names`) is curated entry by
+entry. `vulndb-update review-products` proposes candidates from Nmap's probe
+database. A name is matched exactly, or by an anchored regular expression for
+Nmap's per-protocol variants (`hMailServer smtpd|pop3d|imapd`). The map is
+consulted only when Nmap reported no application CPE.
+
+- **Products** map the name to one or more NVD vendor:product identities.
+  Each entry also records whether Nmap's version field is the product version
+  (`version: nmap`) or something else, such as a protocol, API or library
+  version (`version: none`; SLURM's "API 2.7", MOVEit DMZ's SSH library).
+  Only the first word of the version field is used (`0.103.2 (27019)` →
+  `0.103.2`), escaped as a literal. Confidence is the entry's (HIGH or
+  MEDIUM) with a version, and LOW without one.
+- **OS components** are operating-system built-ins whose vulnerabilities NVD
+  records against the OS itself (Windows RPC, Active Directory LDAP, Terminal
+  Services, SMB, Kerberos, HTTP.sys): no application product exists to look
+  up. Such ports are reported as `OS_COMPONENT` and covered by the host's
+  Windows build assessment (section 10). If Nmap does report an application
+  CPE for one (Kerberos → `microsoft:kerberos`), that CPE is still queried
+  and the note says its results are incomplete.
 
 ## 2. Candidate lookup (`internal/database`)
 
@@ -183,8 +210,9 @@ first one supplies `match_confidence`, `matched_cpe` and `match_reason`.
 | EXACT | observed CPE with a concrete version |
 | HIGH | curated alias: the same product under a renamed or acquired vendor |
 | MEDIUM | curated alias: the same product embedded or rebranded by another vendor |
-| LOW | observed CPE without a version (product only), or any alias of one |
-| UNKNOWN | reserved for product-name resolution (later milestone) |
+| HIGH / MEDIUM | curated product name with a version: as curated (MEDIUM when the version is indirect, e.g. cPanel's cpsrvd) |
+| LOW | observed CPE without a version (product only), any alias of one, or a curated product name without a usable version |
+| UNKNOWN | not used for candidates |
 
 Version applicability is reported separately as `version_status`.
 

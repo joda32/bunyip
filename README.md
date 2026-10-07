@@ -47,6 +47,11 @@ Implemented:
   each candidate CVE is checked against the distribution's own fix data (FIXED /
   VULNERABLE / FIX_AVAILABLE / NO_FIX). This removes backport false positives
   and adds CVEs NVD lacks data for. See [docs/matching.md](docs/matching.md#9-distribution-advisories-internaldistro).
+- **Product names without a CPE:** a curated map (`data/product_names.json`)
+  identifies services Nmap names but gives no application CPE (ClamAV,
+  CouchDB, cPanel, Apache JAMES, …), and marks Windows built-ins (RPC, LDAP,
+  SMB, RDP) as OS components covered by the Windows assessment.
+  `vulndb-update review-products` proposes further candidates for review.
 - **Windows hosts at build level:** `vulndb nmap` reads the build that
   `rdp-ntlm-info` / `smb-os-discovery` report (`10.0.20348`), maps it to the
   release's NVD identities (`data/windows_builds.json`) and lists the CVEs that
@@ -57,9 +62,7 @@ Implemented:
   advisories (OSV.dev exports), `data/aliases.json` and
   `data/distro_packages.json`.
 
-Not yet: SUSE/Alpine advisories, product-name resolution when no CPE is
-reported (evaluated: a long-tail curation job, see
-[docs/data-sources.md](docs/data-sources.md)), the CVE List as a second source (evaluated and deferred,
+Not yet: SUSE/Alpine advisories, the CVE List as a second source (evaluated and deferred,
 see [docs/data-sources.md](docs/data-sources.md)).
 
 ## Build
@@ -253,8 +256,12 @@ Candidate vulnerabilities: 8 version matches (2 in CISA KEV, 4 with public explo
 ```
 
 Each open port is one of:
-- `ASSESSED`: an application CPE was looked up, plus any curated aliases.
-- `UNIDENTIFIED`: the service was fingerprinted but has no application CPE.
+- `ASSESSED`: an application CPE (reported by Nmap, or from a curated product
+  name) was looked up, plus any curated aliases.
+- `OS_COMPONENT`: a Windows built-in (RPC, LDAP, SMB, RDP, …), covered by the
+  host's Windows build assessment.
+- `UNIDENTIFIED`: the service was fingerprinted but has no application CPE and
+  its name is not in the curated map.
 - `NOT_PROBED`: Nmap only guessed the service from the port number.
 
 OS and hardware CPEs are listed but never queried as if they were the service.
@@ -442,6 +449,7 @@ data/aliases.json    curated vendor/product aliases (loaded into the database)
 data/distro_packages.json  curated CPE -> distribution source package map
 data/distro_releases.json  curated distribution release lifecycle (end of life)
 data/windows_builds.json   curated Windows build -> release, NVD CPEs, lifecycle
+data/product_names.json    curated Nmap product names (no CPE) -> NVD identity or OS component
 schema/schema.sql    database schema (embedded in the binary)
 updater/             Python updater: NVD + KEV -> vulndb.sqlite
 testdata/fixtures/   synthetic test data

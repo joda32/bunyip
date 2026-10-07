@@ -20,6 +20,10 @@ const (
 	Assessed     Assessment = "ASSESSED"     // identity resolved and looked up
 	Unidentified Assessment = "UNIDENTIFIED" // service probed, but no usable application CPE
 	NotProbed    Assessment = "NOT_PROBED"   // service only guessed from the port number
+	// OSComponent: an operating-system built-in (e.g. Windows RPC) whose
+	// vulnerabilities NVD records against the OS; covered by the host's
+	// Windows build assessment, not per port.
+	OSComponent Assessment = "OS_COMPONENT"
 )
 
 // Report is the vulnerability assessment of one Nmap scan.
@@ -44,6 +48,7 @@ type Summary struct {
 	Assessed       int `json:"assessed"`
 	Unidentified   int `json:"unidentified"`
 	NotProbed      int `json:"not_probed"`
+	OSComponents   int `json:"os_components"`
 	VersionMatches int `json:"version_matches"` // (service, CVE) pairs with version MATCH
 	KnownExploited int `json:"known_exploited"` // ... of which in CISA KEV
 	PublicExploit  int `json:"public_exploit"`  // ... of which with exploit evidence
@@ -270,6 +275,9 @@ func assessPort(ctx context.Context, p Port, engine *matcher.Engine, cache map[s
 	sr.Distro, sr.PlatformCPEs, sr.Notes = res.Distro.Label(), res.PlatformCPEs, res.Notes
 	if len(res.Candidates) == 0 {
 		sr.Assessment = Unidentified
+		if res.OSComponent != "" {
+			sr.Assessment = OSComponent
+		}
 		return sr, nil
 	}
 	sr.Assessment = Assessed
@@ -345,6 +353,8 @@ func (s *Summary) add(sr ServiceReport) {
 		s.Unidentified++
 	case NotProbed:
 		s.NotProbed++
+	case OSComponent:
+		s.OSComponents++
 	}
 	if sr.Result == nil {
 		return

@@ -230,8 +230,11 @@ func buildNSEResponse(sr *ServiceReport, opts NSEOptions) *NSEResponse {
 }
 
 func notAssessedLine(sr *ServiceReport) string {
-	if sr.Assessment == NotProbed {
+	switch sr.Assessment {
+	case NotProbed:
 		return "not assessed: service guessed from the port number (run with -sV)"
+	case OSComponent:
+		return "Windows component: assessed per host from its build (vulndb nmap on -oX output of a -sC scan)"
 	}
 	return "not assessed: no application CPE for this service"
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"offline-vulndb/internal/cpe"
@@ -30,7 +31,7 @@ type Check struct {
 var requiredTables = []string{
 	"database_metadata", "cves", "cve_configurations", "cve_config_nodes",
 	"cve_matches", "exploit_evidence", "kev", "aliases",
-	"distro_advisories", "distro_package_versions", "distro_packages", "distro_releases", "windows_builds",
+	"distro_advisories", "distro_package_versions", "distro_packages", "distro_releases", "windows_builds", "product_names",
 }
 
 // Verify runs integrity and consistency checks. It returns an error only if
@@ -115,6 +116,25 @@ func (s *Store) Verify(ctx context.Context) ([]Check, error) {
 		add("windows build map", CheckOK, fmt.Sprintf("%d builds", len(builds)))
 	} else {
 		add("windows build map", CheckFail, fmt.Sprintf("%d bad entr(ies), e.g. %s", len(badBuilds), badBuilds[0]))
+	}
+
+	// Product-name regexes must compile in Go (they were validated in Python).
+	names, err := s.ProductNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var badNames []string
+	for _, n := range names {
+		if n.Match == "regex" {
+			if _, err := regexp.Compile(n.Pattern); err != nil {
+				badNames = append(badNames, fmt.Sprintf("%q: %v", n.Pattern, err))
+			}
+		}
+	}
+	if len(badNames) == 0 {
+		add("product name map", CheckOK, fmt.Sprintf("%d entries", len(names)))
+	} else {
+		add("product name map", CheckFail, fmt.Sprintf("%d bad pattern(s), e.g. %s", len(badNames), badNames[0]))
 	}
 	return checks, nil
 }
