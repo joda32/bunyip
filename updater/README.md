@@ -134,10 +134,17 @@ product version (`"version": "nmap"`) or not (`"none"`). Regex patterns must
 be anchored and portable to Go (no lookaround or back-references).
 
 ```bash
-vulndb-update review-products --db vulndb.sqlite   # candidates from /usr/share/nmap/nmap-service-probes
+vulndb-update review-products --db vulndb.sqlite                 # candidates from /usr/share/nmap/nmap-service-probes
+vulndb-update review-products --db vulndb.sqlite --from-scan scan.xml ...  # candidates from captured nmap -sV -oX
 ```
 
-The review only proposes names whose normalised form is an NVD product.
+`--from-scan` reads one or more `nmap -sV -oX` files and proposes the services
+that were fingerprinted (have a product) but carry no application CPE, with the
+version string actually observed and how many ports showed it. Use it only on
+scans of authorised targets, such as your own lab. The probe-DB form needs no
+scanning at all.
+
+Both forms only propose names whose normalised form is an NVD product.
 Check each one: that the NVD product really is this software (many are not),
 and what Nmap's `v/` template captures. Add accepted names to `products`,
 false matches to `rejected`. A build logs targets that have no NVD rules.

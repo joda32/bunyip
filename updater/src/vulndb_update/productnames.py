@@ -111,7 +111,6 @@ def targets_without_rules(conn: sqlite3.Connection, rows: list[ProductName]) -> 
 _P = re.compile(r" p/([^/]*)/")
 _V = re.compile(r" v/([^/]*)/")
 
-
 # Role words Nmap appends to a product name ("hMailServer smtpd").
 _ROLE_SUFFIXES = {"smtpd", "pop3d", "imapd", "ftpd", "httpd", "sshd", "telnetd", "nntpd", "ldapd", "daemon"}
 
@@ -123,15 +122,67 @@ def _norm(s: str) -> str:
 @dataclass
 class Candidate:
     nmap_product: str
-    versions: list[str]  # Nmap version templates, e.g. ['$1', '<none>']
+    versions: list[str]           # observed version strings, or Nmap v/ templates
     targets: list[tuple[str, str, int]]  # (vendor, product, CVE count)
+    seen: int = 0                 # live scan: how many hosts/ports showed it
+
+
+def _load_curation(curated: Path) -> tuple[set, list[str]]:
+    """Product names already decided: curated patterns (exact) and the
+    rejected list, plus curated regex patterns handled separately."""
+    rows = load(curated) if Path(curated).exists() else []
+    done = {r.pattern for r in rows if r.match == "exact"}
+    done_regex = [r.pattern for r in rows if r.match == "regex"]
+    if Path(curated).exists():
+        doc = json.loads(Path(curated).read_text(encoding="utf-8"))
+        done |= set(doc.get("rejected", []))
+    return done, done_regex
+
+
+def _load_products(db: Path) -> dict[str, list[tuple[str, int]]]:
+    """NVD application products (vendor, CVE count) keyed by product."""
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        prods: dict[str, list[tuple[str, int]]] = defaultdict(list)
+        for v, p, n in conn.execute(
+                "SELECT criteria_vendor, criteria_product, COUNT(DISTINCT cve_id) FROM cve_matches"
+                " WHERE criteria_part = 'a' AND vulnerable = 1 GROUP BY 1, 2"):
+            prods[p].append((v, n))
+        return prods
+    finally:
+        conn.close()
+
+
+def _candidates(names: dict, with_cpe: set, seen: dict, done: set, done_regex: list[str],
+                prods: dict) -> list[Candidate]:
+    """Shared logic: an Nmap product name with no application CPE whose
+    normalised form (optionally minus a trailing role word) is an NVD
+    product, alone or after a vendor-like prefix. Curated and rejected names
+    are skipped."""
+    def covered(name: str) -> bool:
+        return name in done or any(re.fullmatch(p, name) for p in done_regex)
+
+    out = []
+    for name in sorted(n for n in names if n not in with_cpe and not covered(n)):
+        full = _norm(name).split("_")
+        variants = [full]
+        if len(full) > 1 and full[-1] in _ROLE_SUFFIXES:
+            variants.append(full[:-1])
+        targets = []
+        for toks in variants:
+            for i in range(len(toks)):
+                prod, prefix = "_".join(toks[i:]), "_".join(toks[:i])
+                for v, n in prods.get(prod, []):
+                    if i == 0 or prefix in (v, v.replace("_", "")):
+                        targets.append((v, prod, n))
+        if targets:
+            out.append(Candidate(name, [x for x, _ in names[name].most_common()],
+                                  sorted(set(targets)), seen.get(name, 0)))
+    return out
 
 
 def review(db: Path, probes: Path, curated: Path) -> list[Candidate]:
-    """Nmap product names without an application CPE whose normalised name is
-    an NVD product (alone or after a vendor-like prefix). Only proposals:
-    each needs a human decision, including whether Nmap's version field is
-    the product version."""
+    """Candidates drawn from Nmap's service-probe database (no scanning)."""
     names: dict[str, Counter] = defaultdict(Counter)
     with_cpe = set()
     for line in Path(probes).read_text(encoding="utf-8", errors="replace").splitlines():
@@ -145,38 +196,32 @@ def review(db: Path, probes: Path, curated: Path) -> list[Candidate]:
             continue
         v = _V.search(line)
         names[m.group(1)][v.group(1) if v else "<none>"] += 1
-    rows = load(curated) if Path(curated).exists() else []
-    done = {r.pattern for r in rows if r.match == "exact"}
-    done_regex = [r.pattern for r in rows if r.match == "regex"]
-    doc = json.loads(Path(curated).read_text(encoding="utf-8")) if Path(curated).exists() else {}
-    done |= set(doc.get("rejected", []))
+    done, done_regex = _load_curation(curated)
+    return _candidates(names, with_cpe, {}, done, done_regex, _load_products(db))
 
-    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    try:
-        prods: dict[str, list[tuple[str, int]]] = defaultdict(list)
-        for v, p, n in conn.execute(
-                "SELECT criteria_vendor, criteria_product, COUNT(DISTINCT cve_id) FROM cve_matches"
-                " WHERE criteria_part = 'a' AND vulnerable = 1 GROUP BY 1, 2"):
-            prods[p].append((v, n))
-    finally:
-        conn.close()
 
-    out = []
-    def covered(name: str) -> bool:
-        return name in done or any(re.fullmatch(p, name) for p in done_regex)
+def review_scan(db: Path, scans: list[Path], curated: Path) -> list[Candidate]:
+    """Candidates drawn from captured `nmap -sV -oX` output: services that
+    were fingerprinted (have a product) but carry no application CPE. Use on
+    scans of authorised targets only (e.g. your own lab)."""
+    import xml.etree.ElementTree as ET
 
-    for name in sorted(n for n in names if n not in with_cpe and not covered(n)):
-        full = _norm(name).split("_")
-        variants = [full]
-        if len(full) > 1 and full[-1] in _ROLE_SUFFIXES:
-            variants.append(full[:-1])
-        targets = []
-        for toks in variants:
-            for i in range(len(toks)):
-                p, prefix = "_".join(toks[i:]), "_".join(toks[:i])
-                for v, n in prods.get(p, []):
-                    if i == 0 or prefix in (v, v.replace("_", "")):
-                        targets.append((v, p, n))
-        if targets:
-            out.append(Candidate(name, [t for t, _ in names[name].most_common()], sorted(set(targets))))
-    return out
+    names: dict[str, Counter] = defaultdict(Counter)
+    with_cpe = set()
+    seen: Counter = Counter()
+    for path in scans:
+        # nmap-produced XML; no DTD. Read attributes/text only.
+        for _, el in ET.iterparse(str(path)):
+            if el.tag != "service":
+                continue
+            product = (el.get("product") or "").strip()
+            if product and el.get("method") == "probed":
+                cpes = [c.text or "" for c in el.findall("cpe")]
+                if any(c.startswith(("cpe:/a:", "cpe:2.3:a:")) for c in cpes):
+                    with_cpe.add(product)
+                else:
+                    names[product][(el.get("version") or "<none>").strip() or "<none>"] += 1
+                    seen[product] += 1
+            el.clear()
+    done, done_regex = _load_curation(curated)
+    return _candidates(names, with_cpe, seen, done, done_regex, _load_products(db))

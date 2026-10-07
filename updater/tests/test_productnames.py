@@ -101,3 +101,43 @@ def test_review(tmp_path):
     cands = productnames.review(db, probes, curated)
     assert [(c.nmap_product, c.versions, c.targets) for c in cands] == [
         ("hMailServer smtpd", ["$1"], [("hmailserver", "hmailserver", 1)])]
+
+
+def test_review_scan(tmp_path):
+    from conftest import SCHEMA
+    db = tmp_path / "v.sqlite"
+    conn = sqlite3.connect(db)
+    conn.executescript(SCHEMA.read_text())
+    # NVD products: distcc (matches distccd after role-word strip) and
+    # unrealircd. vsftpd/openssh/apache are present too but those services
+    # carry an application CPE in the scan, so they are not proposed.
+    for i, (v, p) in enumerate([("samba", "rsync"), ("distcc_project", "distcc"), ("unrealircd", "unrealircd"),
+                                ("gnu", "inetutils")]):
+        conn.execute("INSERT INTO cves (cve_id, description) VALUES (?, 'x')", (f"CVE-0000-{i}",))
+        conn.execute("INSERT INTO cve_matches (cve_id, criteria, criteria_part, criteria_vendor, criteria_product,"
+                     " vulnerable) VALUES (?, ?, 'a', ?, ?, 1)", (f"CVE-0000-{i}", f"cpe:2.3:a:{v}:{p}:*:*:*:*:*:*:*:*", v, p))
+    conn.commit()
+    conn.close()
+
+    import shutil
+    xml = tmp_path / "ms2.xml"
+    shutil.copy("tests/data_ms2.xml", xml)
+
+    # Empty curated map: UnrealIRCd maps to the NVD product unrealircd and is
+    # seen on two ports; its version field is <none>.
+    cands = {c.nmap_product: c for c in productnames.review_scan(db, [xml], write(tmp_path, []))}
+    assert "UnrealIRCd" in cands
+    u = cands["UnrealIRCd"]
+    assert u.targets == [("unrealircd", "unrealircd", 1)] and u.seen == 2 and u.versions == ["<none>"]
+    # Services carrying an application CPE are never proposed.
+    assert "vsftpd" not in cands and "OpenSSH" not in cands and "Apache httpd" not in cands
+    # method="table" (guessed) services have no product and are ignored.
+    assert "telnet" not in cands
+    # distccd is a single token and does not fuzzy-match the product "distcc".
+    assert "distccd" not in cands
+
+    # Curation and rejection exclude names.
+    curated = write(tmp_path, [prod(pattern="UnrealIRCd", cpes=["unrealircd:unrealircd"], version="none")],
+                    rejected=["Metasploitable root shell"])
+    cands2 = {c.nmap_product for c in productnames.review_scan(db, [xml], curated)}
+    assert "UnrealIRCd" not in cands2

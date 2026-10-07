@@ -57,6 +57,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="propose product-name mappings for human review from Nmap's service probes")
     rp.add_argument("--db", required=True, type=Path, help="a built vulndb.sqlite")
     rp.add_argument("--nmap-probes", type=Path, default=Path("/usr/share/nmap/nmap-service-probes"))
+    rp.add_argument("--from-scan", type=Path, nargs="+", metavar="SCAN.xml",
+                    help="propose from captured `nmap -sV -oX` output instead of the probe DB "
+                         "(authorised targets only, e.g. your own lab)")
     rp.add_argument("--product-names", type=Path, default=_REPO_PRODUCT_NAMES)
     args = p.parse_args(argv)
 
@@ -132,12 +135,18 @@ def _review(args) -> int:
 
 
 def _review_products(args) -> int:
-    cands = productnames.review(args.db, args.nmap_probes, args.product_names)
-    print(f"{len(cands)} product-name candidates for review (curated and rejected names excluded).")
-    print("For each: check the NVD product really is this software, and whether Nmap's version (v/ template)")
-    print("is the product version. Add accepted names to data/product_names.json, false matches to 'rejected'.\n")
+    if args.from_scan:
+        cands = productnames.review_scan(args.db, args.from_scan, args.product_names)
+        src = f"{len(args.from_scan)} scan file(s)"
+    else:
+        cands = productnames.review(args.db, args.nmap_probes, args.product_names)
+        src = "Nmap's probe database"
+    print(f"{len(cands)} product-name candidates from {src} (curated and rejected names excluded).")
+    print("For each: check the NVD product really is this software, and whether Nmap's version is the")
+    print("product version. Add accepted names to data/product_names.json, false matches to 'rejected'.\n")
     for c in cands:
-        print(f"{c.nmap_product!r}  (Nmap version: {', '.join(c.versions)})")
+        seen = f", seen on {c.seen} port(s)" if c.seen else ""
+        print(f"{c.nmap_product!r}  (version: {', '.join(c.versions)}{seen})")
         print("    NVD has: " + "; ".join(f"{v}:{p} ({n} CVEs)" for v, p, n in c.targets))
     return 0
 

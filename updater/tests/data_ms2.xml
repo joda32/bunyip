@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<nmaprun scanner="nmap" args="-sV" start="0" version="7.95">
+<host><status state="up"/><address addr="10.0.0.5" addrtype="ipv4"/>
+<ports>
+<port protocol="tcp" portid="21"><state state="open"/><service name="ftp" product="vsftpd" version="2.3.4" method="probed" conf="10"><cpe>cpe:/a:vsftpd:vsftpd:2.3.4</cpe></service></port>
+<port protocol="tcp" portid="22"><state state="open"/><service name="ssh" product="OpenSSH" version="4.7p1 Debian 8ubuntu1" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:4.7p1</cpe></service></port>
+<port protocol="tcp" portid="512"><state state="open"/><service name="exec" product="netkit-rsh rexecd" method="probed" conf="10"/></port>
+<port protocol="tcp" portid="1524"><state state="open"/><service name="bindshell" product="Metasploitable root shell" method="probed" conf="10"/></port>
+<port protocol="tcp" portid="6667"><state state="open"/><service name="irc" product="UnrealIRCd" method="probed" conf="10"/></port>
+<port protocol="tcp" portid="6697"><state state="open"/><service name="irc" product="UnrealIRCd" method="probed" conf="10"/></port>
+<port protocol="tcp" portid="3632"><state state="open"/><service name="distccd" product="distccd" version="v1" extrainfo="(GNU) 4.2.4" method="probed" conf="10"/></port>
+<port protocol="tcp" portid="8787"><state state="open"/><service name="drb" product="Ruby DRb RMI" method="probed" conf="10"/></port>
+<port protocol="tcp" portid="80"><state state="open"/><service name="http" product="Apache httpd" version="2.2.8" method="probed" conf="10"><cpe>cpe:/a:apache:http_server:2.2.8</cpe></service></port>
+<port protocol="tcp" portid="23"><state state="open"/><service name="telnet" method="table" conf="3"/></port>
+</ports></host>
+</nmaprun>
