@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"offline-vulndb/internal/build"
 	"offline-vulndb/internal/bundle"
 	"offline-vulndb/internal/database"
 	"offline-vulndb/internal/identity"
@@ -115,6 +116,8 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		err = cmdNmap(ctx, g, rest[1:], stdin, stdout, stderr)
 	case "ingest":
 		err = cmdIngest(ctx, g, rest[1:], stdin, stdout, stderr)
+	case "build":
+		err = cmdBuild(ctx, g, rest[1:], stdout, stderr)
 	case "nse":
 		err = cmdNSE(ctx, g, rest[1:], stdout, stderr)
 	case "info":
@@ -373,6 +376,45 @@ func firstN(s []string, n int) []string {
 		return s[:n]
 	}
 	return s
+}
+
+func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.Writer) error {
+	fs := newFlagSet("build", stderr)
+	out := fs.String("out", "vulndb.sqlite", "database file to create")
+	offlineFrom := fs.String("offline-from", "", "directory of already-downloaded NVD feeds + KEV (required for now)")
+	allowSmall := fs.Bool("allow-small", false, "skip completeness floors (tests/partial builds)")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return err
+		}
+		return usageError{err.Error()}
+	}
+	if *offlineFrom == "" {
+		return usageError{"build: --offline-from DIR is required (network fetch not yet implemented)"}
+	}
+	gzs, err := filepath.Glob(filepath.Join(*offlineFrom, "nvdcve-2.0-*.json.gz"))
+	if err != nil {
+		return err
+	}
+	if len(gzs) == 0 {
+		return usageError{"build: no nvdcve-2.0-*.json.gz feeds in " + *offlineFrom}
+	}
+	var feeds []build.Feed
+	for _, gz := range gzs {
+		name := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(gz), "nvdcve-2.0-"), ".json.gz")
+		feeds = append(feeds, build.Feed{Name: name, GzPath: gz, LastModified: build.ReadMeta(gz)})
+	}
+	kev := filepath.Join(*offlineFrom, "known_exploited_vulnerabilities.json")
+	stats, err := build.BuildNVDKEV(ctx, *out, feeds, kev, build.Options{
+		AllowSmall: *allowSmall,
+		Log:        func(f string, a ...any) { fmt.Fprintf(stderr, f+"\n", a...) },
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "Built %s: %d loaded, %d replaced, %d unchanged, %d rejected, %d rules skipped\n",
+		*out, stats.Loaded, stats.Replaced, stats.Unchanged, stats.Rejected, len(stats.SkippedRules))
+	return nil
 }
 
 // distroInput builds the distribution context for `query`. The package

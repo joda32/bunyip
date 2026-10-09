@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"offline-vulndb/internal/cpe"
 	"offline-vulndb/internal/version"
@@ -308,12 +309,7 @@ func exploits(refs []nvdReference) []Exploit {
 			continue
 		}
 		seen[r.URL] = true
-		// Match the Python metadata: sorted keys, no HTML escaping.
-		var buf bytes.Buffer
-		enc := json.NewEncoder(&buf)
-		enc.SetEscapeHTML(false)
-		_ = enc.Encode(map[string]any{"reference_source": r.Source, "tags": r.Tags})
-		out = append(out, Exploit{Reference: r.URL, MetadataJSON: trimNewline(buf.String())})
+		out = append(out, Exploit{Reference: r.URL, MetadataJSON: metaJSON(r.Source, r.Tags)})
 	}
 	return out
 }
@@ -336,9 +332,20 @@ func firstNonEmpty(xs ...string) string {
 	return ""
 }
 
-func trimNewline(s string) string {
-	if len(s) > 0 && s[len(s)-1] == '\n' {
-		return s[:len(s)-1]
+// metaJSON renders exploit metadata to match the Python updater's
+// json.dumps(sort_keys=True) output: keys sorted (reference_source, tags),
+// ", "/": " separators, and no HTML escaping.
+func metaJSON(source string, tags []string) string {
+	q := func(v string) string {
+		var b bytes.Buffer
+		e := json.NewEncoder(&b)
+		e.SetEscapeHTML(false)
+		_ = e.Encode(v)
+		return strings.TrimRight(b.String(), "\n")
 	}
-	return s
+	parts := make([]string, len(tags))
+	for i, t := range tags {
+		parts[i] = q(t)
+	}
+	return "{\"reference_source\": " + q(source) + ", \"tags\": [" + strings.Join(parts, ", ") + "]}"
 }
