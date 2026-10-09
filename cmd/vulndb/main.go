@@ -381,7 +381,8 @@ func firstN(s []string, n int) []string {
 func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("build", stderr)
 	out := fs.String("out", "vulndb.sqlite", "database file to create")
-	offlineFrom := fs.String("offline-from", "", "directory of already-downloaded NVD feeds + KEV (required for now)")
+	offlineFrom := fs.String("offline-from", "", "build from already-downloaded feeds + KEV in this directory")
+	cache := fs.String("cache", "", "download cache; fetch NVD feeds + KEV into it over the network")
 	allowSmall := fs.Bool("allow-small", false, "skip completeness floors (tests/partial builds)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -389,26 +390,31 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 		}
 		return usageError{err.Error()}
 	}
-	if *offlineFrom == "" {
-		return usageError{"build: --offline-from DIR is required (network fetch not yet implemented)"}
+	if (*offlineFrom == "") == (*cache == "") {
+		return usageError{"build: give exactly one of --offline-from DIR or --cache DIR"}
 	}
-	gzs, err := filepath.Glob(filepath.Join(*offlineFrom, "nvdcve-2.0-*.json.gz"))
-	if err != nil {
-		return err
-	}
-	if len(gzs) == 0 {
-		return usageError{"build: no nvdcve-2.0-*.json.gz feeds in " + *offlineFrom}
-	}
+	logf := func(f string, a ...any) { fmt.Fprintf(stderr, f+"\n", a...) }
 	var feeds []build.Feed
-	for _, gz := range gzs {
-		name := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(gz), "nvdcve-2.0-"), ".json.gz")
-		feeds = append(feeds, build.Feed{Name: name, GzPath: gz, LastModified: build.ReadMeta(gz)})
+	var kev string
+	var err error
+	if *cache != "" {
+		fetcher := build.NewFetcher("offline-vulndb-builder", logf)
+		if feeds, err = fetcher.SyncNVD(*cache, build.FeedNames(time.Now().UTC().Year())); err != nil {
+			return err
+		}
+		if kev, err = fetcher.SyncKEV(*cache); err != nil {
+			return err
+		}
+	} else {
+		if feeds, err = build.LocalFeeds(*offlineFrom); err != nil {
+			return err
+		}
+		if len(feeds) == 0 {
+			return usageError{"build: no nvdcve-2.0-*.meta feeds in " + *offlineFrom}
+		}
+		kev = filepath.Join(*offlineFrom, "known_exploited_vulnerabilities.json")
 	}
-	kev := filepath.Join(*offlineFrom, "known_exploited_vulnerabilities.json")
-	stats, err := build.BuildNVDKEV(ctx, *out, feeds, kev, build.Options{
-		AllowSmall: *allowSmall,
-		Log:        func(f string, a ...any) { fmt.Fprintf(stderr, f+"\n", a...) },
-	})
+	stats, err := build.BuildNVDKEV(ctx, *out, feeds, kev, build.Options{AllowSmall: *allowSmall, Log: logf})
 	if err != nil {
 		return err
 	}
