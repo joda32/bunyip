@@ -1,0 +1,25 @@
+Offline VulnDB
+Copyright (c) 2026 Willem Mouton
+
+This project is dual-licensed under either of
+
+  * MIT license        (LICENSE-MIT)
+  * Apache License 2.0 (LICENSE-APACHE)
+
+at your option.
+
+Third-party data (not source code; fetched at build/update time, not shipped
+in this repository):
+
+- NVD CVE JSON 2.0 feeds and CISA KEV catalogue — U.S. Government works,
+  public domain.
+- OSV.dev distribution security advisories (Ubuntu, Debian, Red Hat, Rocky,
+  AlmaLinux) — under their respective upstream licenses.
+- webappanalyzer web technology fingerprints
+  (https://github.com/enthec/webappanalyzer) — GPL-3.0. The `http_tech`
+  technology->CPE map is derived from its `cpe` fields by
+  scripts/gen_http_tech.py and is fetched/generated at build time; it is not
+  distributed as part of this source tree.
+
+Nmap's service-probe database, when used by `vulndb-update review-products`,
+is read from the local Nmap installation and is not redistributed here.

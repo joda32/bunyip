@@ -482,3 +482,19 @@ docs/data-sources.md source coverage measurements and decisions
 docs/deployment.md   build -> signed bundle -> offline import
 nse/vulndb.nse       Nmap script adapter (nmap -sV --script vulndb)
 ```
+
+## License
+
+Dual-licensed under either of
+
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+- Apache License 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+
+at your option. Unless you state otherwise, any contribution you submit for
+inclusion is dual-licensed as above, without additional terms.
+
+Vulnerability and fingerprint **data** is fetched at build/update time under
+its own license and is not part of this source tree — see [NOTICE](NOTICE).
+In particular the web technology → CPE map is derived from the GPL-3.0
+[webappanalyzer](https://github.com/enthec/webappanalyzer) corpus by
+`scripts/gen_http_tech.py`.
