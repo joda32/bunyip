@@ -169,6 +169,19 @@ far more (see below). Revisit for the Linux kernel CNA data (needs a
 `Linux/Linux` → `linux:linux_kernel` mapping and git/semver/backport
 semantics), or if CISA ADP coverage grows.
 
+**Re-verified 2026-10-09** against the cached CVE List, scoped to the 2025–26
+gap (52,146 CVEs with no NVD applicability, rejections excluded): CVE List
+adds any application CPE for 3,424 (6.6%), and only 963 are for a
+vendor:product this database already has rules for. Those 963 are dominated by
+web applications and libraries (gpac, assimp, erlang/otp, dedecms, bagisto,
+and a long tail of PHP web apps) — not services `nmap -sV` identifies by
+product. The Nmap-fingerprintable network services among them are a handful
+(WebSphere, IBM MQ, open5gs). Conclusion stands: a full ingest yields well
+under ~100 matchable network-service CVEs, and most of the latent value needs
+[[HTTP app fingerprinting]] first (headers/title → product) before a web-app
+CPE is matchable at all. Deferred again; revisit after HTTP app
+fingerprinting, or for the Linux-kernel CNA data specifically.
+
 ## Nmap identities vs NVD names (`vulndb-update review-aliases`)
 
 Nmap 7.94 `nmap-service-probes`: 11,917 match lines and 2,052 distinct CPE
