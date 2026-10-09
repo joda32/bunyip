@@ -316,6 +316,7 @@ func (r *Resolver) ResolveObservation(o Observation, source string) Resolution {
 		res.Notes = append(res.Notes, "Service responded but was not identified (no product or CPE), so it was not assessed.")
 	}
 	res.Distro = DetectDistro(o, res.PlatformCPEs)
+	stripDebRevision(res.Candidates, res.Distro.Revision)
 	if res.Distro.Detected() {
 		res.Notes = append(res.Notes, fmt.Sprintf(
 			BackportNotePrefix+" (%s): the vendor may have backported security fixes without "+
@@ -368,8 +369,8 @@ func DetectDistro(o Observation, platformCPEs []string) DistroInfo {
 	for _, m := range distroMarkers {
 		if strings.Contains(text, m.marker) {
 			d := DistroInfo{Name: m.name, Key: m.key}
-			if rev := packageSuffix(o.Version); rev != "" && dpkgDistros[m.key] && validRevision(rev) {
-				d.Revision = rev
+			if dpkgDistros[m.key] {
+				d.Revision = debRevision(o.Version)
 			}
 			return d
 		}
@@ -386,17 +387,58 @@ func DetectDistro(o Observation, platformCPEs []string) DistroInfo {
 	return DistroInfo{}
 }
 
-// packageSuffix returns the distribution part of a version string such as
-// "9.6p1 Ubuntu 3ubuntu13.18" -> "3ubuntu13.18".
-func packageSuffix(v string) string {
+// debRevision extracts the Debian/Ubuntu package revision from an observed
+// version, whether the banner gives it space-separated as Nmap does for
+// OpenSSH ("8.4p1 Debian 5+deb11u7") or bakes the whole package version into
+// one token ("9.18.39-0ubuntu0.24.04.7", "1:9.6p1-3ubuntu13.18"). It returns
+// "" when there is no revision. A revision must contain a digit, so an
+// upstream hyphen suffix like "1.0-beta" is not mistaken for one.
+func debRevision(v string) string {
 	f := strings.Fields(v)
+	if len(f) == 0 {
+		return ""
+	}
 	if len(f) >= 3 {
-		return f[len(f)-1]
+		if r := f[len(f)-1]; validRevision(r) && hasDigit(r) {
+			return r
+		}
+	}
+	if evr, err := version.ParseDeb(f[0]); err == nil && evr.Revision != "" && hasDigit(evr.Revision) {
+		return evr.Revision
 	}
 	return ""
+}
+
+func hasDigit(s string) bool {
+	return strings.ContainsAny(s, "0123456789")
 }
 
 func validRevision(rev string) bool {
 	_, err := version.ParseDeb("0-" + rev)
 	return err == nil
+}
+
+// stripDebRevision rewrites application candidate CPE versions that carry the
+// detected Debian/Ubuntu package revision (e.g. Nmap's single-token
+// "9.18.39-0ubuntu0.24.04.7") down to the clean upstream version ("9.18.39").
+// The full package version is neither a valid upstream for NVD rule matching
+// (the comparator rejects it) nor a release key for advisory lookup; the
+// revision is kept separately on the DistroInfo. Only a candidate whose
+// version carries exactly this revision is touched, so clean CPEs (OpenSSH's
+// "9.6p1") and unrelated versions are left alone.
+func stripDebRevision(cands []Candidate, revision string) {
+	if revision == "" {
+		return
+	}
+	for i := range cands {
+		c := &cands[i].CPE
+		if c.Part != "a" || !cpe.IsSpecific(c.Version) {
+			continue
+		}
+		evr, err := version.ParseDeb(cpe.Unescape(c.Version))
+		if err != nil || evr.Revision != revision {
+			continue
+		}
+		cands[i].CPE.Version = cpe.EscapeValue(evr.Upstream)
+	}
 }

@@ -131,7 +131,7 @@ func TestDetectDistro(t *testing.T) {
 		{Observation{Version: "7.4"}, []string{"cpe:2.3:o:canonical:ubuntu_linux:*:*:*:*:*:*:*:*"}, "Ubuntu"},
 		{Observation{Version: "9.8p1", ExtraInfo: "protocol 2.0"}, nil, ""},
 		{Observation{Version: "2.4.49"}, []string{"cpe:2.3:o:linux:linux_kernel:*:*:*:*:*:*:*:*"}, ""},
-		{Observation{Version: "8.0.33-0ubuntu0.22.04.2 Ubuntu weird!rev"}, nil, "Ubuntu"}, // invalid revision ignored
+		{Observation{Version: "8.0.33-0ubuntu0.22.04.2 Ubuntu weird!rev"}, nil, "Ubuntu package 0ubuntu0.22.04.2"}, // revision read from the first-field package version
 	}
 	for _, tt := range tests {
 		if got := DetectDistro(tt.o, tt.cpes).Label(); got != tt.want {

@@ -33,7 +33,7 @@ func TestPEP440Compare(t *testing.T) {
 		{"1.0.post1", "1.0.post2", -1},
 		{"1.0.post1.dev1", "1.0.post1", -1}, // dev qualifies the post
 		{"1.0.dev1", "1.0", -1},
-		{"1.0a1.dev1", "1.0a1", -1},         // dev qualifies the pre
+		{"1.0a1.dev1", "1.0a1", -1}, // dev qualifies the pre
 		// implicit post-release and aliases
 		{"1.0-1", "1.0.post1", 0},
 		{"1.0.rev2", "1.0.post2", 0},

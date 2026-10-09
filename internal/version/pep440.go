@@ -20,7 +20,7 @@ import (
 // pre-release, pre-releases sort before the final release, the final release
 // sorts before post-releases, and a dev segment sorts before the pre/post/
 // final it qualifies. Trailing zeros in the release are insignificant
-// (1.0 == 1.0.0). A local version (``+abc``) sorts after the same public
+// (1.0 == 1.0.0). A local version (“+abc“) sorts after the same public
 // version.
 //
 // A version outside PEP 440 grammar (e.g. a distro revision like
