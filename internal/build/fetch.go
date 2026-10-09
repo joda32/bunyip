@@ -2,8 +2,11 @@ package build
 
 import (
 	"compress/gzip"
+	"crypto/md5"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,6 +46,7 @@ type Meta struct {
 type Fetcher struct {
 	FeedBase     string
 	KEVURL       string
+	OSVBase      string
 	Allowed      map[string]bool
 	Client       *http.Client
 	UserAgent    string
@@ -282,3 +286,116 @@ func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
 }
+
+const osvBase = "https://osv-vulnerabilities.storage.googleapis.com/"
+
+// SyncOSV brings a cached OSV ecosystem export up to date, re-downloading only
+// when the bucket's published MD5 (x-goog-hash) changes, and verifying every
+// download against it. Returns the local zip path.
+func (f *Fetcher) SyncOSV(cache, ecosystem string) (string, error) {
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		return "", err
+	}
+	base := f.osvBase()
+	rawURL := base + url.PathEscape(ecosystem) + "/all.zip"
+	zipPath := filepath.Join(cache, "osv-"+ecosystem+"-all.zip")
+	metaPath := filepath.Join(cache, "osv-"+ecosystem+"-all.meta.json")
+
+	md5b64, err := f.osvMD5(rawURL)
+	if err != nil {
+		return "", err
+	}
+	if md5b64 == "" {
+		return "", fmt.Errorf("%s: no MD5 published; refusing unverifiable download", rawURL)
+	}
+	var cached struct {
+		MD5 string `json:"md5"`
+	}
+	if t, err := os.ReadFile(metaPath); err == nil {
+		_ = jsonUnmarshal(t, &cached)
+	}
+	if cached.MD5 == md5b64 && fileExists(zipPath) {
+		f.Log("  OSV %s: unchanged", ecosystem)
+		return zipPath, nil
+	}
+	f.Log("  OSV %s: downloading", ecosystem)
+	if err := f.download(rawURL, zipPath); err != nil {
+		return "", err
+	}
+	got, err := md5Base64(zipPath)
+	if err != nil {
+		return "", err
+	}
+	if got != md5b64 {
+		os.Remove(zipPath)
+		return "", fmt.Errorf("%s: MD5 mismatch with published x-goog-hash", rawURL)
+	}
+	os.WriteFile(metaPath, []byte(`{"md5":`+jsonString(md5b64)+`}`), 0o644)
+	return zipPath, nil
+}
+
+func (f *Fetcher) osvBase() string {
+	if f.OSVBase != "" {
+		return f.OSVBase
+	}
+	return osvBase
+}
+
+// osvMD5 issues a HEAD and returns the base64 MD5 from the x-goog-hash header.
+func (f *Fetcher) osvMD5(raw string) (string, error) {
+	if err := f.checkURL(raw); err != nil {
+		return "", err
+	}
+	req, err := http.NewRequest(http.MethodHead, raw, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", f.UserAgent)
+	resp, err := f.Client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if err := f.checkURL(resp.Request.URL.String()); err != nil {
+		return "", err
+	}
+	for _, h := range resp.Header.Values("x-goog-hash") {
+		for _, part := range strings.Split(h, ",") {
+			part = strings.TrimSpace(part)
+			if strings.HasPrefix(part, "md5=") {
+				return part[len("md5="):], nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// LocalOSV returns the cached export zip for an ecosystem, or "" if absent.
+func LocalOSV(dir, ecosystem string) string {
+	p := filepath.Join(dir, "osv-"+ecosystem+"-all.zip")
+	if fileExists(p) {
+		return p
+	}
+	return ""
+}
+
+func md5Base64(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(h.Sum(nil)), nil
+}
+
+func jsonString(s string) string {
+	b, _ := jsonMarshal(s)
+	return string(b)
+}
+
+func jsonMarshal(v any) ([]byte, error)   { return json.Marshal(v) }
+func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }

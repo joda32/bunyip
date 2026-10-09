@@ -20,6 +20,11 @@ const DATASET = "nvd+kev"
 type Options struct {
 	AllowSmall bool // skip the completeness floors (tests/partial builds)
 	Log        func(string, ...any)
+	// Optional distribution data. When Distros is non-empty, the package map
+	// and release lifecycle are loaded too.
+	PackageMap []PackageMapRow
+	Releases   []ReleaseRow
+	Distros    []DistroInput
 }
 
 // Stats summarises a build.
@@ -113,6 +118,12 @@ func BuildNVDKEV(ctx context.Context, out string, feeds []Feed, kevPath string, 
 		return stats, err
 	}
 	log("  KEV %s: %d entries", cat.CatalogVersion, len(cat.Rows))
+
+	if len(opts.Distros) > 0 || len(opts.PackageMap) > 0 || len(opts.Releases) > 0 {
+		if _, err := loadDistros(ctx, db, opts.Distros, opts.PackageMap, opts.Releases, log); err != nil {
+			return stats, err
+		}
+	}
 
 	if err := writeMetadata(ctx, db, ordered, cat, &stats); err != nil {
 		return stats, err

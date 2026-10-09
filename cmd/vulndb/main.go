@@ -384,6 +384,9 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	offlineFrom := fs.String("offline-from", "", "build from already-downloaded feeds + KEV in this directory")
 	cache := fs.String("cache", "", "download cache; fetch NVD feeds + KEV into it over the network")
 	allowSmall := fs.Bool("allow-small", false, "skip completeness floors (tests/partial builds)")
+	noDistro := fs.Bool("no-distro", false, "build without distribution advisories")
+	pkgMapPath := fs.String("distro-packages", "data/distro_packages.json", "curated CPE -> distro package map")
+	releasesPath := fs.String("distro-releases", "data/distro_releases.json", "curated distribution release lifecycle")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return err
@@ -414,7 +417,34 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 		}
 		kev = filepath.Join(*offlineFrom, "known_exploited_vulnerabilities.json")
 	}
-	stats, err := build.BuildNVDKEV(ctx, *out, feeds, kev, build.Options{AllowSmall: *allowSmall, Log: logf})
+	bopts := build.Options{AllowSmall: *allowSmall, Log: logf}
+	if !*noDistro {
+		if bopts.PackageMap, err = build.LoadPackageMap(*pkgMapPath); err != nil {
+			return err
+		}
+		if bopts.Releases, err = build.LoadReleases(*releasesPath); err != nil {
+			return err
+		}
+		for _, name := range []string{"ubuntu", "debian", "redhat", "rocky", "almalinux"} {
+			d := build.Distros[name]
+			var zipPath string
+			if *cache != "" {
+				osv := build.NewFetcher("offline-vulndb-builder", logf)
+				exp, ferr := osv.SyncOSV(*cache, d.Ecosystem)
+				if ferr != nil {
+					return ferr
+				}
+				zipPath = exp
+			} else {
+				zipPath = filepath.Join(*offlineFrom, "osv-"+d.Ecosystem+"-all.zip")
+				if _, statErr := os.Stat(zipPath); statErr != nil {
+					continue // this distro's export not present offline
+				}
+			}
+			bopts.Distros = append(bopts.Distros, build.DistroInput{Distro: d, ZipPath: zipPath})
+		}
+	}
+	stats, err := build.BuildNVDKEV(ctx, *out, feeds, kev, bopts)
 	if err != nil {
 		return err
 	}
