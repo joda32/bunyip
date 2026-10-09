@@ -387,7 +387,8 @@ func TestNmapText(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Hosts up 2, down 1 | open ports 6: assessed 4, unidentified 1, not probed 1",
-		"8 version matches (2 in CISA KEV, 3 with public exploit evidence), 1 undetermined",
+		"7 version matches (2 in CISA KEV, 3 with public exploit evidence), 1 undetermined",
+		"Platform conditions decided by the host OS: 0 confirmed, 1 excluded",
 		"Distribution advisories: 1 upstream matches already fixed in the installed/released package, 1 findings only",
 		"Distribution release (from an exact package version on this host): 22.04",
 		"installed 1:8.9p1-3ubuntu0.10",
@@ -397,7 +398,7 @@ func TestNmapText(t *testing.T) {
 		"192.0.2.20 (web01.example.test)",
 		"22/tcp ssh OpenSSH 8.9p1 Ubuntu 3ubuntu0.10",
 		"CVE-0000-0001    CRITICAL  CVSS 9.8  exploit:YES KEV:YES MATCH",
-		"[CONDITIONAL]",
+		"+ 1 not applicable on this host: CVE-0000-0005 applies only on microsoft:windows; the host runs Ubuntu",
 		"cpe:2.3:a:f5:nginx:1.20.1:*:*:*:*:*:*:* [HIGH] (curated alias)",
 		"CVE-0000-0101    HIGH      CVSS 7.7  exploit:YES KEV:NO  MATCH  [via alias, HIGH]",
 		"25/tcp smtp\n    Not assessed: service guessed from port number",
@@ -456,7 +457,7 @@ func TestNmapJSONFlagsAfterFileAndStdin(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if doc.OutputVersion != "1" || doc.Report.Summary.Assessed != 4 || doc.Report.Summary.VersionMatches != 8 {
+	if doc.OutputVersion != "1" || doc.Report.Summary.Assessed != 4 || doc.Report.Summary.VersionMatches != 7 {
 		t.Errorf("summary: %+v", doc.Report.Summary)
 	}
 	svcs := doc.Report.Hosts[0].Services
@@ -707,7 +708,7 @@ func TestNmapWindowsBuilds(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Hosts up 7, down 0 | open ports 13: assessed 5, OS components 8, unidentified 0, not probed 0",
-		"Platform conditions decided by the host's Windows release: 3 confirmed, 2 excluded (apply only on other operating systems)",
+		"Platform conditions decided by the host OS: 3 confirmed, 2 excluded (apply only on other operating systems)",
 		"CVE-0000-0920    HIGH      CVSS 8.1  exploit:NO  KEV:NO  MATCH  [Windows platform confirmed]",
 		"+ 1 not applicable on this host: CVE-0000-0921 applies only on linux:linux_kernel, apple:macos; the",
 		"Windows: 4 host(s) assessed at build level (patch level not visible; CVEs apply unless patched)",

@@ -102,11 +102,13 @@ func TestNSEOptions(t *testing.T) {
 	e := fixtureEngine(t)
 	apache := func(r *NSERequest) { r.Target.Port = 80 }
 	all := answer(t, e, ubuntuRequest, apache)
-	if all.Counts.Matches != 4 || all.Counts.Undetermined != 1 || len(all.Vulns) != 4 {
+	// CVE-0000-0005 is "Apache running on Windows"; on this Ubuntu host it is
+	// PLATFORM_EXCLUDED, so it is neither counted nor shown.
+	if all.Counts.Matches != 3 || all.Counts.Undetermined != 1 || len(all.Vulns) != 3 {
 		t.Fatalf("apache: %+v", all.Counts)
 	}
 	limited := answer(t, e, ubuntuRequest, func(r *NSERequest) { apache(r); r.Options.Max = 2 })
-	if len(limited.Vulns) != 2 || !strings.Contains(strings.Join(limited.Lines, "\n"), "... 2 more") {
+	if len(limited.Vulns) != 2 || !strings.Contains(strings.Join(limited.Lines, "\n"), "... 1 more") {
 		t.Errorf("max: %+v", limited.Lines)
 	}
 	high := answer(t, e, ubuntuRequest, func(r *NSERequest) { apache(r); r.Options.MinCVSS = 8 })
@@ -116,7 +118,7 @@ func TestNSEOptions(t *testing.T) {
 		}
 	}
 	showall := answer(t, e, ubuntuRequest, func(r *NSERequest) { apache(r); r.Options.ShowUnknown = true })
-	if len(showall.Vulns) != 5 {
+	if len(showall.Vulns) != 4 { // 3 matches + 1 undetermined; the excluded CVE stays hidden
 		t.Errorf("showall: %d", len(showall.Vulns))
 	}
 }

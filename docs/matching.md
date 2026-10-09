@@ -200,30 +200,35 @@ With a single supplied CPE we can only evaluate one rule at a time, so:
 - a vulnerable rule in a **negated node** is never reported as MATCH (it is
   downgraded to UNKNOWN).
 
-### Platform conditions on Windows hosts
+### Platform conditions ("running on" an OS)
 
-In `vulndb nmap`, a host whose Windows build was assessed (section 10) has a
-known operating system. For its services, a CONDITIONAL CVE whose only open
-condition is the other node of an AND configuration ("Tomcat running on
-Windows") is decided against that release (`matcher.ApplyPlatform`). The
+In `vulndb nmap`, a host with a known operating system — a Windows build
+(section 10) or a detected Linux distribution — can decide a service's
+CONDITIONAL CVE whose only open condition is the other node of an AND
+configuration ("Tomcat running on Windows", "OpenSSH running on Red Hat").
+The host platform is matched against that node (`matcher.ApplyPlatform`); the
 sibling nodes are read through two indexes added in schema v10.
 
 | Platform node lists | Result |
 |---|---|
-| the host's release (`windows_server_2016:-`), or Windows generically (`microsoft:windows:-`) | `UNCONDITIONAL`, flagged "Windows platform confirmed" |
-| only other operating systems (Linux, macOS, …) | `PLATFORM_EXCLUDED`: kept in the output, not counted as a match |
-| other Windows releases only (`windows_7`, `windows_8.1`) | stays `CONDITIONAL`, with a note naming them |
+| the host's OS (`windows_server_2016:-`; `linux:linux_kernel`; the host's own distro, `debian:debian_linux`), or Windows generically (`microsoft:windows:-`) | `UNCONDITIONAL`, flagged "platform confirmed" |
+| only other operating systems — a different OS family (Windows vs Linux, macOS) **or a different Linux distribution** (RHEL-only on a Debian host) | `PLATFORM_EXCLUDED`: kept in the output, not counted as a match |
+| another release of the host's own OS (other Windows releases; the host's distro at a specific version) | stays `CONDITIONAL`, with a note naming them |
 | hardware, applications, a negated node, or a second vulnerable node | stays `CONDITIONAL` |
 
-Other Windows releases do not exclude a CVE because NVD's platform lists are
-usually written when the CVE is published and are not extended for later
-releases. A Windows host running software NVD lists "on Windows 7 and 8.1"
-may well be affected on Server 2022.
+Different Windows *releases* do not exclude a CVE (they are the same OS at
+different versions, and NVD's platform lists are written at publication and
+not extended for later releases — software listed "on Windows 7 and 8.1" may
+well be affected on Server 2022). Different Linux *distributions*, by
+contrast, are distinct operating systems, so a RHEL-only condition excludes on
+a Debian host (e.g. CVE-2008-3844, the Red Hat OpenSSH package backdoor).
 
 When the build is shared and the kind unknown (Server 2016 or Windows 10
 1607), both releases must agree; otherwise the CVE stays CONDITIONAL with a
-note. Results are copied before they are changed, since identical services on
-different hosts share one lookup.
+note. A Linux host platform comes from the distribution detected across the
+host's services (generic `linux:linux_kernel` plus the distro's own OS
+identity). Results are copied before they are changed, since identical
+services on different hosts share one lookup.
 
 Measured on the 2026-10-07 database: of AND configurations whose vulnerable
 side is a product Nmap can report a CPE for, about 980 CVEs list Windows

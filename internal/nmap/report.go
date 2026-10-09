@@ -153,6 +153,13 @@ func Analyse(ctx context.Context, scan *Scan, engine *matcher.Engine) (*Report, 
 				return nil, err
 			}
 		}
+		// A host with a detected Linux distribution has a known OS family,
+		// which decides "running on Linux" conditions of its services.
+		if len(platforms) == 0 && hostDistro.Detected() {
+			if lp, ok := matcher.LinuxPlatform(hostDistro.Key, hostDistro.Name); ok {
+				platforms = []matcher.Platform{lp}
+			}
+		}
 		for _, p := range open {
 			rep.Summary.OpenPorts++
 			sr, err := assessPort(ctx, p, engine, cache, hint, hostDistro)

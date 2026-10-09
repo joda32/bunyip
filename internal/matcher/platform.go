@@ -22,8 +22,52 @@ type Platform struct {
 }
 
 // inFamily reports whether an OS criteria belongs to the platform's family.
-func (p Platform) inFamily(c cpe.CPE) bool {
-	return p.Family == "windows" && c.Part == "o" && c.Vendor == "microsoft" && strings.HasPrefix(c.Product, "windows")
+// linuxOS is the set of NVD operating-system vendor:products that make up the
+// Linux family, so a "running on Linux" condition is recognised whether it
+// names the generic kernel or a specific distribution.
+var linuxOS = map[string]bool{
+	"linux:linux_kernel": true, "canonical:ubuntu_linux": true, "debian:debian_linux": true,
+	"redhat:enterprise_linux": true, "redhat:enterprise_linux_server": true, "redhat:linux": true,
+	"oracle:linux": true, "centos:centos": true, "fedoraproject:fedora": true,
+	"suse:linux_enterprise_server": true, "novell:suse_linux": true,
+	"opensuse:opensuse": true, "opensuse:leap": true, "alpinelinux:alpine_linux": true,
+}
+
+// osFamilyOf classifies an operating-system criteria: "windows", "linux", or
+// "other" (another OS such as macOS). Empty for a non-OS criteria.
+func osFamilyOf(c cpe.CPE) string {
+	if c.Part != "o" {
+		return ""
+	}
+	switch {
+	case c.Vendor == "microsoft" && strings.HasPrefix(c.Product, "windows"):
+		return "windows"
+	case linuxOS[c.Vendor+":"+c.Product]:
+		return "linux"
+	default:
+		return "other"
+	}
+}
+
+// sameProduct reports whether an OS criteria names the same vendor:product as
+// one of the host's identities (a different version of the host's own OS,
+// e.g. a specific RHEL minor or Windows release of the host's product).
+func (p Platform) sameProduct(c cpe.CPE) bool {
+	for _, id := range p.Identities {
+		if id.Vendor == c.Vendor && id.Product == c.Product {
+			return true
+		}
+	}
+	return false
+}
+
+// familyPeer reports whether an OS criteria is another release of the host's
+// Windows line. Windows releases are the same operating system at different
+// versions, so an unmatched one does not exclude the CVE (NVD platform lists
+// lag new releases). Linux distributions are distinct operating systems, so
+// this is Windows-only: a different distro excludes.
+func (p Platform) familyPeer(c cpe.CPE) bool {
+	return p.Family == "windows" && osFamilyOf(c) == "windows"
 }
 
 type platformOutcome int
@@ -203,20 +247,23 @@ func evalNode(n database.ConfigNode, p Platform) nodeVerdict {
 			return nodeVerdict{}
 		}
 		crit, err := cpe.ParsePattern(r.Criteria)
-		if err != nil {
+		if err != nil || crit.Part != "o" {
 			continue
 		}
 		switch {
-		case p.inFamily(crit):
-			if matchesAny(crit, r, p.Identities) {
-				matched++
-				if res.matched == "" {
-					res.matched = r.Criteria
-				}
-			} else {
-				res.family = appendNew(res.family, cpe.Unescape(crit.Product)+releaseSuffix(crit))
+		case matchesAny(crit, r, p.Identities):
+			matched++
+			if res.matched == "" {
+				res.matched = r.Criteria
 			}
-		case crit.Part == "o":
+		case p.sameProduct(crit) || p.familyPeer(crit):
+			// Same OS as the host but a version/release we cannot match, or
+			// another release of the host's Windows line: NVD platform lists
+			// lag newer releases, so this does not exclude the CVE.
+			res.family = appendNew(res.family, cpe.Unescape(crit.Product)+releaseSuffix(crit))
+		default:
+			// A different operating system, including a different Linux
+			// distribution: the host is not affected by this platform.
 			otherOS++
 			res.others = appendNew(res.others, cpe.Unescape(crit.Vendor)+":"+cpe.Unescape(crit.Product))
 		}
@@ -268,4 +315,32 @@ func appendNew(list []string, items ...string) []string {
 		}
 	}
 	return list
+}
+
+// linuxDistroOS maps a detected distribution key to its NVD operating-system
+// identity, so a condition naming that specific distribution is confirmed on
+// the host (the generic linux:linux_kernel identity covers "runs on Linux").
+var linuxDistroOS = map[string]string{
+	"ubuntu": "canonical:ubuntu_linux", "debian": "debian:debian_linux",
+	"redhat": "redhat:enterprise_linux", "centos": "centos:centos",
+	"fedora": "fedoraproject:fedora", "suse": "suse:linux_enterprise_server",
+}
+
+// LinuxPlatform builds a host platform for a detected Linux distribution. The
+// identities always include the generic kernel, plus the distribution's own
+// OS identity when known. It reports false when the distro key is empty.
+func LinuxPlatform(distroKey, name string) (Platform, bool) {
+	if distroKey == "" {
+		return Platform{}, false
+	}
+	anyOS := func(vendor, product string) cpe.CPE {
+		return cpe.CPE{Part: "o", Vendor: vendor, Product: product, Version: cpe.Any, Update: cpe.Any,
+			Edition: cpe.Any, Language: cpe.Any, SWEdition: cpe.Any, TargetSW: cpe.Any, TargetHW: cpe.Any, Other: cpe.Any}
+	}
+	p := Platform{Name: name, Family: "linux", Identities: []cpe.CPE{anyOS("linux", "linux_kernel")}}
+	if vp, ok := linuxDistroOS[distroKey]; ok {
+		v := strings.SplitN(vp, ":", 2)
+		p.Identities = append(p.Identities, anyOS(v[0], v[1]))
+	}
+	return p, true
 }

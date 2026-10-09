@@ -51,7 +51,7 @@ func WriteNmapText(w io.Writer, r *nmap.Report) error {
 		p.f("\n")
 	}
 	if s.PlatformConfirmed > 0 || s.PlatformExcluded > 0 {
-		p.f("Platform conditions decided by the host's Windows release: %d confirmed, %d excluded (apply only on other operating systems)\n",
+		p.f("Platform conditions decided by the host OS: %d confirmed, %d excluded (apply only on other operating systems)\n",
 			s.PlatformConfirmed, s.PlatformExcluded)
 	}
 	if s.DistroFixed > 0 || s.DistroOnly > 0 {
