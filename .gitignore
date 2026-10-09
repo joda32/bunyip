@@ -10,3 +10,6 @@ __pycache__/
 *.tar.gz.partial
 vulndb-signing.key
 *.previous
+
+# Generated at build time from the GPL-3.0 webappanalyzer corpus; not shipped.
+data/http_tech.json

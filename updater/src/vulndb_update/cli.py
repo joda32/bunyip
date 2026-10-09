@@ -91,7 +91,7 @@ def _build(args, log) -> int:
     windows_builds = windows.load(args.windows_builds)
     product_names = productnames.load(args.product_names)
     http_apps = httpapps.load(args.http_apps)
-    http_tech = httptech.load(args.http_tech)
+    http_tech = httptech.load(args.http_tech) if args.http_tech.is_file() else []
     wanted = [] if args.no_distro else (args.distro or sorted(osv.DISTROS))
     start = time.monotonic()
     distros = []
