@@ -565,3 +565,29 @@ func (s *Store) HTTPApps(ctx context.Context) ([]HTTPApp, error) {
 	}
 	return out, wrapQueryErr(rows.Err())
 }
+
+// HTTPTechEntry maps a web-fingerprinter technology name to a CPE identity.
+type HTTPTechEntry struct {
+	Name    string
+	Vendor  string
+	Product string
+	Source  string
+}
+
+// HTTPTech loads the technology-name -> CPE map (table http_tech).
+func (s *Store) HTTPTech(ctx context.Context) ([]HTTPTechEntry, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT name, vendor, product, source FROM http_tech ORDER BY name`)
+	if err != nil {
+		return nil, wrapQueryErr(err)
+	}
+	defer rows.Close()
+	var out []HTTPTechEntry
+	for rows.Next() {
+		var e HTTPTechEntry
+		if err := rows.Scan(&e.Name, &e.Vendor, &e.Product, &e.Source); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, wrapQueryErr(rows.Err())
+}

@@ -5,7 +5,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, aliases, build, fetch, httpapps, kev, jsonstream, osv, productnames, windows
+from . import __version__, aliases, build, fetch, httpapps, httptech, kev, jsonstream, osv, productnames, windows
 
 # src/vulndb_update/cli.py -> repository root is three levels up.
 _REPO = Path(__file__).resolve().parents[3]
@@ -16,6 +16,7 @@ _REPO_RELEASES = _REPO / "data" / "distro_releases.json"
 _REPO_WINDOWS = _REPO / "data" / "windows_builds.json"
 _REPO_PRODUCT_NAMES = _REPO / "data" / "product_names.json"
 _REPO_HTTP_APPS = _REPO / "data" / "http_apps.json"
+_REPO_HTTP_TECH = _REPO / "data" / "http_tech.json"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -47,6 +48,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="curated Nmap product names (default: data/product_names.json)")
     b.add_argument("--http-apps", type=Path, default=_REPO_HTTP_APPS,
                    help="curated HTTP application fingerprints (default: data/http_apps.json)")
+    b.add_argument("--http-tech", type=Path, default=_REPO_HTTP_TECH,
+                   help="web technology name -> CPE map for ingest (default: data/http_tech.json)")
     b.add_argument("--allow-small", action="store_true",
                    help="skip the completeness floors (for tests and partial builds)")
     b.add_argument("--quiet", action="store_true")
@@ -88,6 +91,7 @@ def _build(args, log) -> int:
     windows_builds = windows.load(args.windows_builds)
     product_names = productnames.load(args.product_names)
     http_apps = httpapps.load(args.http_apps)
+    http_tech = httptech.load(args.http_tech)
     wanted = [] if args.no_distro else (args.distro or sorted(osv.DISTROS))
     start = time.monotonic()
     distros = []
@@ -113,7 +117,8 @@ def _build(args, log) -> int:
     stats = build.build(args.out, args.schema.read_text(encoding="utf-8"), feeds, kev_path,
                         allow_small=args.allow_small, log=log, alias_rows=alias_rows,
                         distros=distros, package_map=package_map, releases=releases,
-                        windows_builds=windows_builds, product_names=product_names, http_apps=http_apps)
+                        windows_builds=windows_builds, product_names=product_names, http_apps=http_apps,
+                        http_tech=http_tech)
     log(f"Done in {time.monotonic() - start:.0f}s: {stats.loaded} CVEs loaded, "
         f"{stats.replaced} updated by overlay, {stats.unchanged} unchanged, "
         f"{stats.rejected} rejected, {len(stats.skipped_rules)} unparseable rules skipped")
@@ -124,6 +129,7 @@ def _build(args, log) -> int:
     for t in stats.product_names_without_rules:
         log(f"  product-name target without NVD rules: {t}")
     log(f"  http apps: {len(http_apps)} fingerprints loaded")
+    log(f"  http tech: {len(http_tech)} name->cpe mappings loaded ({len(stats.http_tech_without_rules)} without NVD rules)")
     for p in stats.unmapped_packages:
         log(f"  mapped package with no advisories: {p}")
     return 0

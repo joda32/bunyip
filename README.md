@@ -47,6 +47,11 @@ Implemented:
   each candidate CVE is checked against the distribution's own fix data (FIXED /
   VULNERABLE / FIX_AVAILABLE / NO_FIX). This removes backport false positives
   and adds CVEs NVD lacks data for. See [docs/matching.md](docs/matching.md#9-distribution-advisories-internaldistro).
+- **Web-fingerprinter ingest (`vulndb ingest`):** consumes httpx (`-td -json`)
+  or webanalyze output and assesses the web applications they detect, mapping
+  ~450 technology names to CPEs (`data/http_tech.json`, derived from the
+  webappanalyzer corpus). Specialised web fingerprinting feeds the same engine
+  instead of forcing everything through Nmap. Identities are leads (verify).
 - **HTTP application fingerprints:** a curated map (`data/http_apps.json`)
   identifies web apps behind a generic web server (WordPress, Drupal, Joomla,
   Jenkins, …) from HTTP evidence — Server header, `<meta generator>`, response
@@ -463,6 +468,8 @@ data/distro_releases.json  curated distribution release lifecycle (end of life)
 data/windows_builds.json   curated Windows build -> release, NVD CPEs, lifecycle
 data/product_names.json    curated Nmap product names (no CPE) -> NVD identity or OS component
 data/http_apps.json        curated HTTP fingerprints (Server/generator/header/title) -> web-app CPE
+data/http_tech.json        web-fingerprinter tech name -> CPE for `vulndb ingest` (webappanalyzer-derived)
+scripts/gen_http_tech.py   regenerates data/http_tech.json from a webappanalyzer checkout
 schema/schema.sql    database schema (embedded in the binary)
 updater/             Python updater: NVD + KEV -> vulndb.sqlite
 testdata/fixtures/   synthetic test data

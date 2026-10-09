@@ -30,6 +30,14 @@ type Fixture struct {
 	WindowsBuilds   []FixtureWindowsBuild   `json:"windows_builds"`
 	ProductNames    []FixtureProductName    `json:"product_names"`
 	HTTPApps        []FixtureHTTPApp        `json:"http_apps"`
+	HTTPTech        []FixtureHTTPTech       `json:"http_tech"`
+}
+
+// FixtureHTTPTech is one http_tech row.
+type FixtureHTTPTech struct {
+	Name    string `json:"name"`
+	Vendor  string `json:"vendor"`
+	Product string `json:"product"`
 }
 
 // FixtureHTTPApp is one http_apps row.
@@ -266,6 +274,13 @@ INSERT INTO http_apps (evidence, header, pattern, vendor, product, version_group
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'fixture')`,
 			a.Evidence, a.Header, a.Pattern, a.Vendor, a.Product, a.VersionGroup, conf, a.Note); err != nil {
 			return fmt.Errorf("http app %q: %w", a.Pattern, err)
+		}
+	}
+	for _, t := range f.HTTPTech {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO http_tech (name, vendor, product, source) VALUES (?, ?, ?, 'fixture')`,
+			t.Name, t.Vendor, t.Product); err != nil {
+			return fmt.Errorf("http tech %q: %w", t.Name, err)
 		}
 	}
 	return tx.Commit()

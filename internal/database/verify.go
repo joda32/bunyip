@@ -31,7 +31,7 @@ type Check struct {
 var requiredTables = []string{
 	"database_metadata", "cves", "cve_configurations", "cve_config_nodes",
 	"cve_matches", "exploit_evidence", "kev", "aliases",
-	"distro_advisories", "distro_package_versions", "distro_packages", "distro_releases", "windows_builds", "product_names", "http_apps",
+	"distro_advisories", "distro_package_versions", "distro_packages", "distro_releases", "windows_builds", "product_names", "http_apps", "http_tech",
 }
 
 // Verify runs integrity and consistency checks. It returns an error only if

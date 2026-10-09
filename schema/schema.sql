@@ -235,9 +235,22 @@ CREATE TABLE http_apps (
     PRIMARY KEY (evidence, header, pattern, vendor, product)
 ) WITHOUT ROWID;
 
+-- Web technology name -> NVD CPE vendor:product, for the `vulndb ingest`
+-- adapter that consumes a web fingerprinter's output (httpx -td, webanalyze,
+-- WhatWeb). Generated from the webappanalyzer corpus (data/http_tech.json);
+-- a lead, not an authoritative identity, so ingested matches are reported at
+-- reduced confidence.
+CREATE TABLE http_tech (
+    name    TEXT NOT NULL,   -- technology name as fingerprinters report it (lookup is case-insensitive)
+    vendor  TEXT NOT NULL,   -- canonical CPE vendor
+    product TEXT NOT NULL,   -- canonical CPE product
+    source  TEXT NOT NULL,
+    PRIMARY KEY (name, vendor, product)
+) WITHOUT ROWID;
+
 CREATE INDEX idx_distro_adv_lookup   ON distro_advisories (distro, package, release, cve_id);
 CREATE INDEX idx_distro_adv_cve      ON distro_advisories (cve_id);
 CREATE INDEX idx_distro_pkgver_up    ON distro_package_versions (distro, package, upstream);
 CREATE INDEX idx_distro_packages_cpe ON distro_packages (cpe_part, cpe_vendor, cpe_product);
 
-INSERT INTO database_metadata (key, value) VALUES ('schema_version', '11');
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '12');

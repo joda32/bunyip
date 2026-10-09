@@ -484,6 +484,29 @@
      ]
     }
    ]
+  },
+  {
+   "cve_id": "CVE-0000-0940",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] PHP before 8.2.9.",
+   "cvss_v3_score": 8.1,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:a:php:php:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "8.2.9"
+        }
+       ]
+      }
+     ]
+    }
+   ]
   }
  ],
  "kev": [
@@ -636,6 +659,23 @@
    "product": "jenkins",
    "version_group": 1,
    "confidence": "HIGH"
+  }
+ ],
+ "http_tech": [
+  {
+   "name": "WordPress",
+   "vendor": "wordpress",
+   "product": "wordpress"
+  },
+  {
+   "name": "PHP",
+   "vendor": "php",
+   "product": "php"
+  },
+  {
+   "name": "Jenkins",
+   "vendor": "jenkins",
+   "product": "jenkins"
   }
  ]
 }

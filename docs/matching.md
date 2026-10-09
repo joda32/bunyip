@@ -57,6 +57,20 @@ For Nmap services, `vulndb nmap` also:
 - attaches product caveats (IIS vulnerabilities are recorded against Windows
   CPEs).
 
+### Web-fingerprinter ingest
+
+Nmap's version detection is banner-based, and web applications rarely put a
+version in a banner, so the web tier is better served by specialised
+fingerprinters. `vulndb ingest --from httpx|webanalyze` reads their output and
+maps each detected technology name to a CPE through the `http_tech` table
+(`data/http_tech.json`, ~450 mappings derived from the webappanalyzer
+corpus), then assesses it through the same pipeline as a scan. Because the
+corpus has occasional mis-mappings and most web fingerprints carry no version,
+ingested identities are leads: a versionless detection is LOW (the product's
+CVE exposure, version-dependent results UNDETERMINED), and the report carries
+a "verify the product" note. This keeps Nmap for what it is good at (network
+services, OS, non-HTTP daemons) and lets a web tool own the web tier.
+
 ### HTTP application fingerprints
 
 Web applications sit behind a generic web server (nginx, Apache, Jetty), so

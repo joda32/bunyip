@@ -80,7 +80,7 @@ def test_exploit_evidence(db):
 def test_metadata(db):
     conn, _ = db
     meta = dict(conn.execute("SELECT key, value FROM database_metadata"))
-    assert meta["schema_version"] == "11"
+    assert meta["schema_version"] == "12"
     assert meta["dataset"] == "nvd+kev"
     assert meta["nvd_last_modified"] == "2026-10-06T05:00:06Z"  # newest .meta, in UTC
     assert meta["kev_catalog_version"] == "2026.10.04"

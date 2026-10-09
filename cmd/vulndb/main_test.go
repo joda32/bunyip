@@ -103,7 +103,7 @@ func TestQueryJSONFromCPE22(t *testing.T) {
 	if err := json.Unmarshal([]byte(r.stdout), &doc); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, r.stdout)
 	}
-	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "11" || doc.Database.Dataset != "synthetic-fixture" {
+	if doc.OutputVersion != "1" || doc.Database.SchemaVersion != "12" || doc.Database.Dataset != "synthetic-fixture" {
 		t.Errorf("unexpected envelope: %+v", doc)
 	}
 	res := doc.Result
@@ -209,7 +209,7 @@ func TestInfoVerifyStats(t *testing.T) {
 	db := initDB(t)
 
 	r := cli("--db", db, "info")
-	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    11") ||
+	if r.code != exitOK || !strings.Contains(r.stdout, "Schema version:    12") ||
 		!strings.Contains(r.stdout, "synthetic-fixture") || !strings.Contains(r.stdout, "Data age:") ||
 		!strings.Contains(r.stdout, "CVEs without CPE applicability data: 1 of 13") {
 		t.Errorf("info: exit %d\n%s%s", r.code, r.stdout, r.stderr)
@@ -738,5 +738,31 @@ func TestNmapWindowsBuilds(t *testing.T) {
 		!strings.Contains(r.stdout, `"release": "Windows Server 2016"`) ||
 		!strings.Contains(r.stdout, `"applicability": "PLATFORM_EXCLUDED"`) || !strings.Contains(r.stdout, `"platform_excluded": 2`) || !strings.Contains(r.stdout, `"cve": "CVE-0000-0901"`) {
 		t.Errorf("json: exit %d\n%s", r.code, r.stdout)
+	}
+}
+
+func TestIngestHTTPX(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "vulndb.sqlite")
+	if r := cli("--db", db, "db", "init", "--fixture", "../../testdata/fixtures/windows.json"); r.code != exitOK {
+		t.Fatalf("db init: %s", r.stderr)
+	}
+	in := filepath.Join(t.TempDir(), "httpx.jsonl")
+	os.WriteFile(in, []byte(`{"input":"blog.test","host":"192.0.2.80","port":"443","scheme":"https","tech":["WordPress","PHP:8.2.7","UnknownThingy"]}`+"\n"), 0o644)
+	r := cli("--db", db, "ingest", "--from", "httpx", in)
+	if r.code != exitOK {
+		t.Fatalf("ingest exit %d: %s", r.code, r.stderr)
+	}
+	for _, want := range []string{
+		"443/tcp http PHP 8.2.7",
+		"cpe:2.3:a:php:php:8.2.7:*:*:*:*:*:*:* [EXACT]",
+		"CVE-0000-0940",          // versioned PHP match
+		"443/tcp http WordPress", // versionless -> listed
+		"cpe:2.3:a:wordpress:wordpress:*:*:*:*:*:*:*:* [LOW]",
+		"Identities were supplied by an HTTP fingerprint ingest",
+		"no CPE mapping and were skipped", // UnknownThingy
+	} {
+		if !strings.Contains(r.stdout, want) {
+			t.Errorf("missing %q in:\n%s", want, r.stdout)
+		}
 	}
 }

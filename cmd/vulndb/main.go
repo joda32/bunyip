@@ -18,6 +18,7 @@ import (
 	"offline-vulndb/internal/bundle"
 	"offline-vulndb/internal/database"
 	"offline-vulndb/internal/identity"
+	"offline-vulndb/internal/ingest"
 	"offline-vulndb/internal/matcher"
 	"offline-vulndb/internal/nmap"
 	"offline-vulndb/internal/output"
@@ -112,6 +113,8 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		err = cmdQuery(ctx, g, rest[1:], stdout, stderr)
 	case "nmap":
 		err = cmdNmap(ctx, g, rest[1:], stdin, stdout, stderr)
+	case "ingest":
+		err = cmdIngest(ctx, g, rest[1:], stdin, stdout, stderr)
 	case "nse":
 		err = cmdNSE(ctx, g, rest[1:], stdout, stderr)
 	case "info":
@@ -289,6 +292,87 @@ func cmdNmap(ctx context.Context, g *globals, args []string, stdin io.Reader, st
 		return output.WriteNmapJSON(stdout, report, info)
 	}
 	return output.WriteNmapText(stdout, report)
+}
+
+func cmdIngest(ctx context.Context, g *globals, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	fs := newFlagSet("ingest", stderr)
+	g.register(fs)
+	fromArg := fs.String("from", "httpx", "fingerprinter whose output to read: httpx or webanalyze")
+	formatArg := fs.String("format", "text", "output format: text or json")
+	var files []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return err
+			}
+			return usageError{err.Error()}
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		files = append(files, fs.Arg(0))
+		args = fs.Args()[1:]
+	}
+	if len(files) != 1 {
+		return usageError{"ingest: exactly one input file is required (use - for stdin)"}
+	}
+	format, err := output.ParseFormat(*formatArg)
+	if err != nil {
+		return usageError{err.Error()}
+	}
+	in := stdin
+	if files[0] != "-" {
+		f, err := os.Open(files[0])
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		in = f
+	}
+	targets, err := ingest.Parse(in, ingest.Format(*fromArg))
+	if err != nil {
+		return err
+	}
+
+	store, err := database.Open(ctx, g.db)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+	techRows, err := store.HTTPTech(ctx)
+	if err != nil {
+		return err
+	}
+	scan, unmapped := ingest.Scan(targets, ingest.BuildTechMap(techRows))
+	scan.Args = *fromArg + " ingest"
+	engine, err := matcher.New(ctx, store)
+	if err != nil {
+		return err
+	}
+	report, err := nmap.Analyse(ctx, scan, engine)
+	if err != nil {
+		return err
+	}
+	report.Warnings = append([]string{ingest.IngestNote}, report.Warnings...)
+	if len(unmapped) > 0 {
+		report.Warnings = append(report.Warnings, fmt.Sprintf("%d detected technologies have no CPE mapping and were skipped (e.g. %s).",
+			len(unmapped), strings.Join(firstN(unmapped, 5), ", ")))
+	}
+	if format == output.JSON {
+		info, err := databaseInfo(ctx, store)
+		if err != nil {
+			return err
+		}
+		return output.WriteNmapJSON(stdout, report, info)
+	}
+	return output.WriteNmapText(stdout, report)
+}
+
+func firstN(s []string, n int) []string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 // distroInput builds the distribution context for `query`. The package

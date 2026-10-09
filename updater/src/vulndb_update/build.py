@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, aliases, cpe, debversion, httpapps, kev, nvd, osv, productnames
+from . import __version__, aliases, cpe, debversion, httpapps, httptech, kev, nvd, osv, productnames
 from .fetch import Feed, OSVExport
 from .jsonstream import ArrayStream
 
@@ -55,6 +55,7 @@ class Stats:
     aliases: int = 0
     aliases_without_rules: list[str] = field(default_factory=list)
     product_names_without_rules: list[str] = field(default_factory=list)
+    http_tech_without_rules: list[str] = field(default_factory=list)
     loaded: int = 0
     replaced: int = 0
     unchanged: int = 0
@@ -73,7 +74,8 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
           allow_small: bool = False, log=print, alias_rows: list | None = None,
           distros: list[DistroInput] | None = None, package_map: list | None = None,
           releases: list | None = None, windows_builds: list | None = None,
-          product_names: list | None = None, http_apps: list | None = None) -> Stats:
+          product_names: list | None = None, http_apps: list | None = None,
+          http_tech: list | None = None) -> Stats:
     out = Path(out)
     tmp = out.with_name(f".{out.name}.building")
     tmp.unlink(missing_ok=True)
@@ -81,7 +83,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
     try:
         stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows or [],
                        distros or [], package_map or [], releases or [], windows_builds or [],
-                       product_names or [], http_apps or [])
+                       product_names or [], http_apps or [], http_tech or [])
         conn.close()
         os.replace(tmp, out)
         return stats
@@ -92,7 +94,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
 
 
 def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, distros, package_map, releases,
-           windows_builds, product_names, http_apps) -> Stats:
+           windows_builds, product_names, http_apps, http_tech) -> Stats:
     # The file is private until renamed, so durability during the load is
     # unnecessary; integrity is checked explicitly before the rename.
     conn.execute("PRAGMA journal_mode = OFF")
@@ -140,6 +142,11 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, dist
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [(a.evidence, a.header, a.pattern, a.vendor, a.product, a.version_group, a.confidence, a.note, a.source)
          for a in http_apps])
+    conn.executemany(
+        "INSERT INTO http_tech (name, vendor, product, source) VALUES (?, ?, ?, ?)",
+        [(t.name, t.vendor, t.product, t.source) for t in http_tech])
+    if http_tech:
+        stats.http_tech_without_rules = httptech.targets_without_rules(conn, http_tech)
     conn.execute("COMMIT")
     if product_names:
         stats.product_names_without_rules = productnames.targets_without_rules(conn, product_names)
