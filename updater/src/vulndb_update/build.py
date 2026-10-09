@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, aliases, cpe, debversion, kev, nvd, osv, productnames
+from . import __version__, aliases, cpe, debversion, httpapps, kev, nvd, osv, productnames
 from .fetch import Feed, OSVExport
 from .jsonstream import ArrayStream
 
@@ -73,7 +73,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
           allow_small: bool = False, log=print, alias_rows: list | None = None,
           distros: list[DistroInput] | None = None, package_map: list | None = None,
           releases: list | None = None, windows_builds: list | None = None,
-          product_names: list | None = None) -> Stats:
+          product_names: list | None = None, http_apps: list | None = None) -> Stats:
     out = Path(out)
     tmp = out.with_name(f".{out.name}.building")
     tmp.unlink(missing_ok=True)
@@ -81,7 +81,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
     try:
         stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows or [],
                        distros or [], package_map or [], releases or [], windows_builds or [],
-                       product_names or [])
+                       product_names or [], http_apps or [])
         conn.close()
         os.replace(tmp, out)
         return stats
@@ -92,7 +92,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
 
 
 def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, distros, package_map, releases,
-           windows_builds, product_names) -> Stats:
+           windows_builds, product_names, http_apps) -> Stats:
     # The file is private until renamed, so durability during the load is
     # unnecessary; integrity is checked explicitly before the rename.
     conn.execute("PRAGMA journal_mode = OFF")
@@ -135,6 +135,11 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, dist
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [(n.pattern, n.match, n.kind, n.part, n.vendor, n.product, n.os, n.version, n.confidence, n.note, n.source)
          for n in product_names])
+    conn.executemany(
+        "INSERT INTO http_apps (evidence, header, pattern, vendor, product, version_group, confidence, note, source)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [(a.evidence, a.header, a.pattern, a.vendor, a.product, a.version_group, a.confidence, a.note, a.source)
+         for a in http_apps])
     conn.execute("COMMIT")
     if product_names:
         stats.product_names_without_rules = productnames.targets_without_rules(conn, product_names)

@@ -532,3 +532,36 @@ func (s *Store) siblingRows(ctx context.Context, q string, args []any, out map[i
 	}
 	return wrapQueryErr(rows.Err())
 }
+
+// HTTPApp is a curated HTTP application fingerprint (table http_apps).
+type HTTPApp struct {
+	Evidence     string // server, generator, header, title, x_powered_by
+	Header       string // header name (lower-case) when Evidence == "header"
+	Pattern      string // RE2 regex over the evidence value
+	Vendor       string
+	Product      string
+	VersionGroup int // regex submatch holding the version; 0 = none
+	Confidence   string
+	Note         string
+	Source       string
+}
+
+// HTTPApps loads the curated HTTP application fingerprints (small table).
+func (s *Store) HTTPApps(ctx context.Context) ([]HTTPApp, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT evidence, header, pattern, vendor, product, version_group, confidence, note, source
+		FROM http_apps ORDER BY evidence, header, pattern, vendor, product`)
+	if err != nil {
+		return nil, wrapQueryErr(err)
+	}
+	defer rows.Close()
+	var out []HTTPApp
+	for rows.Next() {
+		var a HTTPApp
+		if err := rows.Scan(&a.Evidence, &a.Header, &a.Pattern, &a.Vendor, &a.Product, &a.VersionGroup,
+			&a.Confidence, &a.Note, &a.Source); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, wrapQueryErr(rows.Err())
+}

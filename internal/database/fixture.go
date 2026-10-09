@@ -29,6 +29,19 @@ type Fixture struct {
 	DistroReleases  []FixtureDistroRelease  `json:"distro_releases"`
 	WindowsBuilds   []FixtureWindowsBuild   `json:"windows_builds"`
 	ProductNames    []FixtureProductName    `json:"product_names"`
+	HTTPApps        []FixtureHTTPApp        `json:"http_apps"`
+}
+
+// FixtureHTTPApp is one http_apps row.
+type FixtureHTTPApp struct {
+	Evidence     string `json:"evidence"`
+	Header       string `json:"header"`
+	Pattern      string `json:"pattern"`
+	Vendor       string `json:"vendor"`
+	Product      string `json:"product"`
+	VersionGroup int    `json:"version_group"`
+	Confidence   string `json:"confidence"`
+	Note         string `json:"note"`
 }
 
 // FixtureProductName is one product_names row; Match defaults to "exact".
@@ -241,6 +254,18 @@ INSERT INTO product_names (pattern, match, kind, part, vendor, product, os, vers
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'fixture')`,
 			n.Pattern, match, n.Kind, part, n.Vendor, n.Product, n.OS, n.Version, n.Confidence, n.Note); err != nil {
 			return fmt.Errorf("product name %q: %w", n.Pattern, err)
+		}
+	}
+	for _, a := range f.HTTPApps {
+		conf := a.Confidence
+		if conf == "" {
+			conf = "HIGH"
+		}
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO http_apps (evidence, header, pattern, vendor, product, version_group, confidence, note, source)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'fixture')`,
+			a.Evidence, a.Header, a.Pattern, a.Vendor, a.Product, a.VersionGroup, conf, a.Note); err != nil {
+			return fmt.Errorf("http app %q: %w", a.Pattern, err)
 		}
 	}
 	return tx.Commit()

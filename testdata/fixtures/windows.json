@@ -438,6 +438,52 @@
      ]
     }
    ]
+  },
+  {
+   "cve_id": "CVE-0000-0930",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] WordPress core before 6.4.3.",
+   "cvss_v3_score": 7.5,
+   "severity": "HIGH",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:a:wordpress:wordpress:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "6.4.3"
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "cve_id": "CVE-0000-0931",
+   "published_at": "2023-01-10T00:00:00Z",
+   "modified_at": "2023-01-10T00:00:00Z",
+   "description": "[SYNTHETIC] Jenkins before 2.427.",
+   "cvss_v3_score": 9.8,
+   "severity": "CRITICAL",
+   "configurations": [
+    {
+     "nodes": [
+      {
+       "cpe_match": [
+        {
+         "criteria": "cpe:2.3:a:jenkins:jenkins:*:*:*:*:*:*:*:*",
+         "vulnerable": true,
+         "version_end_excluding": "2.427"
+        }
+       ]
+      }
+     ]
+    }
+   ]
   }
  ],
  "kev": [
@@ -570,6 +616,25 @@
    "vendor": "clamav",
    "product": "clamav",
    "version": "nmap",
+   "confidence": "HIGH"
+  }
+ ],
+ "http_apps": [
+  {
+   "evidence": "generator",
+   "pattern": "^WordPress(?: ([0-9][0-9.]*))?",
+   "vendor": "wordpress",
+   "product": "wordpress",
+   "version_group": 1,
+   "confidence": "HIGH"
+  },
+  {
+   "evidence": "header",
+   "header": "x-jenkins",
+   "pattern": "^([0-9][0-9.]*)",
+   "vendor": "jenkins",
+   "product": "jenkins",
+   "version_group": 1,
    "confidence": "HIGH"
   }
  ]

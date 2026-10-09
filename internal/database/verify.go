@@ -31,7 +31,7 @@ type Check struct {
 var requiredTables = []string{
 	"database_metadata", "cves", "cve_configurations", "cve_config_nodes",
 	"cve_matches", "exploit_evidence", "kev", "aliases",
-	"distro_advisories", "distro_package_versions", "distro_packages", "distro_releases", "windows_builds", "product_names",
+	"distro_advisories", "distro_package_versions", "distro_packages", "distro_releases", "windows_builds", "product_names", "http_apps",
 }
 
 // Verify runs integrity and consistency checks. It returns an error only if
@@ -135,6 +135,25 @@ func (s *Store) Verify(ctx context.Context) ([]Check, error) {
 		add("product name map", CheckOK, fmt.Sprintf("%d entries", len(names)))
 	} else {
 		add("product name map", CheckFail, fmt.Sprintf("%d bad pattern(s), e.g. %s", len(badNames), badNames[0]))
+	}
+
+	apps, err := s.HTTPApps(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var badApps []string
+	for _, a := range apps {
+		re, err := regexp.Compile(a.Pattern)
+		if err != nil {
+			badApps = append(badApps, fmt.Sprintf("%q: %v", a.Pattern, err))
+		} else if a.VersionGroup > re.NumSubexp() {
+			badApps = append(badApps, fmt.Sprintf("%q: version_group %d > %d groups", a.Pattern, a.VersionGroup, re.NumSubexp()))
+		}
+	}
+	if len(badApps) == 0 {
+		add("http app fingerprints", CheckOK, fmt.Sprintf("%d entries", len(apps)))
+	} else {
+		add("http app fingerprints", CheckFail, fmt.Sprintf("%d bad pattern(s), e.g. %s", len(badApps), badApps[0]))
 	}
 	return checks, nil
 }

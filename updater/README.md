@@ -149,6 +149,15 @@ Check each one: that the NVD product really is this software (many are not),
 and what Nmap's `v/` template captures. Add accepted names to `products`,
 false matches to `rejected`. A build logs targets that have no NVD rules.
 
+## HTTP application fingerprints
+
+`data/http_apps.json` identifies web applications from HTTP evidence (Server
+header, `<meta generator>`, a named response header, X-Powered-By, or the page
+title) that `vulndb nmap` collects from `http-*` NSE scripts. Each entry is an
+anchored, Go-portable regex over one evidence source mapping to an NVD
+vendor:product, with an optional capture group for the version. Loaded into
+the `http_apps` table.
+
 ## Aliases
 
 `data/aliases.json` lists hand-reviewed aliases from identities that Nmap

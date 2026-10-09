@@ -1,0 +1,82 @@
+{
+  "comment": "Curated HTTP application fingerprints: web apps that sit behind a generic web server, whose identity is in HTTP evidence rather than Nmap's service product. 'evidence' selects the source: 'server' (Server header or Nmap's http service product), 'generator' (the <meta name=generator> content, e.g. Nmap's http-generator), 'header' (a named response header, lower-case in 'header'), 'x_powered_by' (the X-Powered-By header), 'title' (the page title). 'pattern' is an RE2 regex, anchored by the author; 'version_group' is the submatch holding the version (0 = none, giving a LOW, versionless identity). Vendors/products checked against NVD. version groups capture the product version only, never a framework/connector version.",
+  "source": "curated:http-apps-2026-10-09",
+  "apps": [
+    {
+      "evidence": "generator",
+      "pattern": "^WordPress(?: ([0-9][0-9.]*))?",
+      "vendor": "wordpress",
+      "product": "wordpress",
+      "version_group": 1,
+      "confidence": "HIGH"
+    },
+    {
+      "evidence": "generator",
+      "pattern": "^Joomla!(?:.*?\\b([0-9][0-9.]*))?",
+      "vendor": "joomla",
+      "product": "joomla",
+      "version_group": 1,
+      "confidence": "HIGH"
+    },
+    {
+      "evidence": "generator",
+      "pattern": "^Drupal(?: ([0-9][0-9.]*))?",
+      "vendor": "drupal",
+      "product": "drupal",
+      "version_group": 1,
+      "confidence": "HIGH"
+    },
+    {
+      "evidence": "generator",
+      "pattern": "^TYPO3(?: CMS)?(?: ([0-9][0-9.]*))?",
+      "vendor": "typo3",
+      "product": "typo3",
+      "version_group": 1,
+      "confidence": "HIGH"
+    },
+    {
+      "evidence": "server",
+      "pattern": "^Jetty\\(([0-9]+(?:\\.[0-9]+)*)",
+      "vendor": "eclipse",
+      "product": "jetty",
+      "version_group": 1,
+      "confidence": "HIGH"
+    },
+    {
+      "evidence": "server",
+      "pattern": "^Apache-Coyote/",
+      "vendor": "apache",
+      "product": "tomcat",
+      "version_group": 0,
+      "confidence": "MEDIUM",
+      "note": "AJP/HTTP connector banner; identifies Tomcat but not its version."
+    },
+    {
+      "evidence": "header",
+      "header": "x-jenkins",
+      "pattern": "^([0-9][0-9.]*)",
+      "vendor": "jenkins",
+      "product": "jenkins",
+      "version_group": 1,
+      "confidence": "HIGH"
+    },
+    {
+      "evidence": "header",
+      "header": "x-drupal-cache",
+      "pattern": ".",
+      "vendor": "drupal",
+      "product": "drupal",
+      "version_group": 0,
+      "confidence": "MEDIUM",
+      "note": "Drupal dynamic-cache header; present without a version."
+    },
+    {
+      "evidence": "x_powered_by",
+      "pattern": "^PHP/([0-9][0-9.]*)",
+      "vendor": "php",
+      "product": "php",
+      "version_group": 1,
+      "confidence": "HIGH"
+    }
+  ]
+}

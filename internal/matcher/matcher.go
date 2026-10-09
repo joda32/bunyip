@@ -97,8 +97,15 @@ func New(ctx context.Context, store *database.Store) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	apps, err := store.HTTPApps(ctx)
+	if err != nil {
+		return nil, err
+	}
 	resolver := identity.NewResolver(aliases)
 	if err := resolver.AddProductNames(names); err != nil {
+		return nil, err
+	}
+	if err := resolver.AddHTTPApps(apps); err != nil {
 		return nil, err
 	}
 	e := &Engine{Store: store, Resolver: resolver, distroPkgs: map[string][]database.DistroPackage{}}

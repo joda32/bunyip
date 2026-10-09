@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<nmaprun scanner="nmap" args="-sV -sC" start="0" version="7.95">
+<host><status state="up"/><address addr="192.0.2.70" addrtype="ipv4"/><hostnames><hostname name="blog.example.test" type="PTR"/></hostnames>
+<ports>
+<port protocol="tcp" portid="443"><state state="open"/><service name="http" product="nginx" version="1.24.0" tunnel="ssl" method="probed" conf="10"><cpe>cpe:/a:igor_sysoev:nginx:1.24.0</cpe></service>
+<script id="http-generator" output="WordPress 6.4.1"/>
+<script id="http-title" output="Example Blog"/></port>
+</ports></host>
+<host><status state="up"/><address addr="192.0.2.71" addrtype="ipv4"/>
+<ports>
+<port protocol="tcp" portid="8080"><state state="open"/><service name="http" product="Jetty" version="9.4.51.v20230217" method="probed" conf="10"/>
+<script id="http-headers" output="HTTP/1.1 403 Forbidden&#10;Server: Jetty(9.4.51.v20230217)&#10;X-Jenkins: 2.426.1&#10;X-Content-Type-Options: nosniff&#10;"/></port>
+</ports></host>
+</nmaprun>

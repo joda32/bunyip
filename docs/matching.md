@@ -57,6 +57,31 @@ For Nmap services, `vulndb nmap` also:
 - attaches product caveats (IIS vulnerabilities are recorded against Windows
   CPEs).
 
+### HTTP application fingerprints
+
+Web applications sit behind a generic web server (nginx, Apache, Jetty), so
+Nmap's service product names the server, not the application. The curated map
+`data/http_apps.json` (table `http_apps`) identifies the application from HTTP
+evidence the scan carries, and adds it as an extra candidate identity
+*alongside* the web-server CPE (both are assessed). Evidence sources, from NSE
+script output (`http-server-header`, `http-generator`, `http-title`,
+`http-headers`):
+
+- `server` — the Server header or the HTTP service banner (`Jetty(9.4.51...)`);
+- `generator` — a `<meta name=generator>` tag (`WordPress 6.4.2`, `Drupal 10`);
+- `header` — a named response header (`X-Jenkins: 2.426`);
+- `x_powered_by` — the X-Powered-By header (`PHP/8.2.7`);
+- `title` — the page title.
+
+Each row is an anchored RE2 regex over one source, mapping to an NVD
+vendor:product with an optional capture group for the version. With a captured
+version the identity takes the row's confidence (HIGH/MEDIUM); without one it
+is LOW (the application is named but version-dependent results are UNKNOWN).
+Seeded with WordPress, Joomla, Drupal, TYPO3, Jenkins, Jetty, Tomcat (via the
+Apache-Coyote banner) and PHP. The evidence is only available in `vulndb nmap`
+on a scan that ran the relevant `http-*` scripts (`-sC`); the NSE adapter does
+not see other scripts' output.
+
 ### Product names without a CPE
 
 Nmap fingerprints many services without an application CPE. Automatic

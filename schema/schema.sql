@@ -216,9 +216,28 @@ CREATE TABLE product_names (
     PRIMARY KEY (pattern, kind, vendor, product)
 ) WITHOUT ROWID;
 
+-- Curated HTTP application fingerprints (data/http_apps.json). Web apps sit
+-- behind a generic web server (nginx/Apache), so Nmap's service product does
+-- not name them; their identity is in HTTP evidence -- the Server header, a
+-- <meta generator> tag, a telltale response header, or the page title. Each
+-- row maps a regex over one evidence source to an NVD vendor:product, with an
+-- optional capture group for the version.
+CREATE TABLE http_apps (
+    evidence      TEXT NOT NULL CHECK (evidence IN ('server', 'generator', 'header', 'title', 'x_powered_by')),
+    header        TEXT NOT NULL DEFAULT '',  -- for evidence='header': the header name, lower-case
+    pattern       TEXT NOT NULL,             -- RE2 regex, anchored by the author
+    vendor        TEXT NOT NULL,
+    product       TEXT NOT NULL,
+    version_group INTEGER NOT NULL DEFAULT 0,-- regex submatch holding the version; 0 = no version
+    confidence    TEXT NOT NULL CHECK (confidence IN ('HIGH', 'MEDIUM')),
+    note          TEXT NOT NULL DEFAULT '',
+    source        TEXT NOT NULL,
+    PRIMARY KEY (evidence, header, pattern, vendor, product)
+) WITHOUT ROWID;
+
 CREATE INDEX idx_distro_adv_lookup   ON distro_advisories (distro, package, release, cve_id);
 CREATE INDEX idx_distro_adv_cve      ON distro_advisories (cve_id);
 CREATE INDEX idx_distro_pkgver_up    ON distro_package_versions (distro, package, upstream);
 CREATE INDEX idx_distro_packages_cpe ON distro_packages (cpe_part, cpe_vendor, cpe_product);
 
-INSERT INTO database_metadata (key, value) VALUES ('schema_version', '10');
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '11');

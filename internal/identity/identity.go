@@ -63,6 +63,81 @@ type Resolver struct {
 	aliases    map[string][]database.Alias // keyed by part:vendor:product (canonical values)
 	exactNames map[string][]database.ProductName
 	regexNames []nameRule // in pattern order; the first matching pattern wins
+	httpApps   []httpAppRule
+}
+
+type httpAppRule struct {
+	app database.HTTPApp
+	re  *regexp.Regexp
+}
+
+// AddHTTPApps compiles the curated HTTP application fingerprints.
+func (r *Resolver) AddHTTPApps(apps []database.HTTPApp) error {
+	for _, a := range apps {
+		re, err := regexp.Compile(a.Pattern)
+		if err != nil {
+			return fmt.Errorf("http app pattern %q: %w", a.Pattern, err)
+		}
+		r.httpApps = append(r.httpApps, httpAppRule{app: a, re: re})
+	}
+	return nil
+}
+
+// httpAppCandidates matches the observation's HTTP evidence against the
+// curated fingerprints, returning web-application identities. They are added
+// alongside any web-server CPE, since the application sits behind it.
+func (r *Resolver) httpAppCandidates(o Observation) ([]Candidate, []string) {
+	if len(o.HTTP) == 0 || len(r.httpApps) == 0 {
+		return nil, nil
+	}
+	var out []Candidate
+	var notes []string
+	seen := map[string]bool{}
+	for _, hr := range r.httpApps {
+		key := hr.app.Evidence
+		if hr.app.Evidence == "header" {
+			key = "header:" + hr.app.Header
+		}
+		value, ok := o.HTTP[key]
+		if !ok || value == "" {
+			continue
+		}
+		m := hr.re.FindStringSubmatch(value)
+		if m == nil {
+			continue
+		}
+		ver := ""
+		if hr.app.VersionGroup > 0 && hr.app.VersionGroup < len(m) {
+			ver = m[hr.app.VersionGroup]
+		}
+		c := cpe.CPE{Part: "a", Vendor: hr.app.Vendor, Product: hr.app.Product, Version: cpe.EscapeValue(ver),
+			Update: cpe.Any, Edition: cpe.Any, Language: cpe.Any, SWEdition: cpe.Any, TargetSW: cpe.Any,
+			TargetHW: cpe.Any, Other: cpe.Any}
+		if seen[c.String()] {
+			continue
+		}
+		seen[c.String()] = true
+		conf := Confidence(hr.app.Confidence)
+		reason := fmt.Sprintf("HTTP %s evidence %q -> %s:%s", hr.app.Evidence, value, hr.app.Vendor, hr.app.Product)
+		if ver == "" {
+			conf = Low
+			reason += " (no version in evidence)"
+		}
+		out = append(out, Candidate{CPE: c, Confidence: conf, Source: "http-app:" + hr.app.Source, Reason: reason})
+		if hr.app.Note != "" {
+			notes = appendUnique(notes, hr.app.Note)
+		}
+	}
+	return out, notes
+}
+
+func appendUnique(list []string, s string) []string {
+	for _, x := range list {
+		if x == s {
+			return list
+		}
+	}
+	return append(list, s)
 }
 
 type nameRule struct {
@@ -225,6 +300,11 @@ type Observation struct {
 	ExtraInfo string
 	OSType    string
 	CPEs      []string
+	// HTTP evidence keyed by source: "server", "generator", "title",
+	// "x_powered_by", or "header:<lower-case name>". Populated for HTTP
+	// services from NSE script output, used to identify the web application
+	// behind a generic web server (see AddHTTPApps).
+	HTTP map[string]string
 }
 
 // Resolution is the outcome of resolving an Observation.
@@ -280,6 +360,13 @@ func (r *Resolver) ResolveObservation(o Observation, source string) Resolution {
 			continue
 		}
 		res.Candidates = append(res.Candidates, r.ResolveCPE(c, source)...)
+	}
+	// HTTP evidence identifies the web application behind the server; these
+	// are additive (the web-server CPE, if any, is kept) and, when present,
+	// mean the service is identified rather than falling to a name guess.
+	if appCands, appNotes := r.httpAppCandidates(o); len(appCands) > 0 {
+		res.Candidates = append(res.Candidates, appCands...)
+		res.Notes = append(res.Notes, appNotes...)
 	}
 	var named []database.ProductName
 	if p := strings.TrimSpace(o.Product); p != "" {

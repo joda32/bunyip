@@ -47,6 +47,11 @@ Implemented:
   each candidate CVE is checked against the distribution's own fix data (FIXED /
   VULNERABLE / FIX_AVAILABLE / NO_FIX). This removes backport false positives
   and adds CVEs NVD lacks data for. See [docs/matching.md](docs/matching.md#9-distribution-advisories-internaldistro).
+- **HTTP application fingerprints:** a curated map (`data/http_apps.json`)
+  identifies web apps behind a generic web server (WordPress, Drupal, Joomla,
+  Jenkins, …) from HTTP evidence — Server header, `<meta generator>`, response
+  headers, title — adding the app as an identity beside the web-server CPE.
+  Needs `nmap -sC` (http-* scripts) and `vulndb nmap`.
 - **Product names without a CPE:** a curated map (`data/product_names.json`)
   identifies services Nmap names but gives no application CPE (ClamAV,
   CouchDB, cPanel, Apache JAMES, …), and marks Windows built-ins (RPC, LDAP,
@@ -457,6 +462,7 @@ data/distro_packages.json  curated CPE -> distribution source package map
 data/distro_releases.json  curated distribution release lifecycle (end of life)
 data/windows_builds.json   curated Windows build -> release, NVD CPEs, lifecycle
 data/product_names.json    curated Nmap product names (no CPE) -> NVD identity or OS component
+data/http_apps.json        curated HTTP fingerprints (Server/generator/header/title) -> web-app CPE
 schema/schema.sql    database schema (embedded in the binary)
 updater/             Python updater: NVD + KEV -> vulndb.sqlite
 testdata/fixtures/   synthetic test data

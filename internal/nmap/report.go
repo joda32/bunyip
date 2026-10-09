@@ -241,7 +241,52 @@ func observe(p Port, engine *matcher.Engine) identity.Resolution {
 	s := p.Service
 	return engine.Resolver.ResolveObservation(identity.Observation{
 		Product: s.Product, Version: s.Version, ExtraInfo: s.ExtraInfo, OSType: s.OSType, CPEs: s.CPEs,
+		HTTP: httpEvidence(p),
 	}, "Nmap")
+}
+
+// httpEvidence collects HTTP application fingerprint evidence from a port's
+// NSE script output: the Server header, a <meta generator> tag, the page
+// title and selected response headers, keyed as identity.Observation.HTTP
+// expects. Nmap scripts: http-server-header, http-generator, http-title,
+// http-headers.
+func httpEvidence(p Port) map[string]string {
+	ev := map[string]string{}
+	set := func(k, v string) {
+		if v = strings.TrimSpace(v); v != "" && ev[k] == "" {
+			ev[k] = v
+		}
+	}
+	for _, sc := range p.Scripts {
+		switch sc.ID {
+		case "http-server-header":
+			set("server", sc.Output)
+		case "http-generator":
+			set("generator", sc.Output)
+		case "http-title":
+			set("title", sc.Output)
+		case "http-headers":
+			for _, line := range strings.Split(sc.Output, "\n") {
+				name, val, ok := strings.Cut(line, ":")
+				if !ok {
+					continue
+				}
+				name, val = strings.ToLower(strings.TrimSpace(name)), strings.TrimSpace(val)
+				if name == "server" {
+					set("server", val)
+				} else if name == "x-powered-by" {
+					set("x_powered_by", val)
+				} else {
+					set("header:"+name, val)
+				}
+			}
+		}
+	}
+	// A Server header is often reported as the service's own banner too.
+	if s := p.Service; s != nil && strings.EqualFold(s.Name, "http") && ev["server"] == "" && s.Product != "" {
+		set("server", strings.TrimSpace(s.Product+"/"+s.Version))
+	}
+	return ev
 }
 
 // hostDistribution returns the distribution that every service showing one
