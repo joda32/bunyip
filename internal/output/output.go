@@ -138,6 +138,9 @@ func distroContextLabel(r *matcher.Result) string {
 
 func writeVuln(p *printer, v matcher.Vulnerability, firstIdentity string) {
 	p.f("\n%-16s %-9s %s\n", v.CVE, orDash(v.Severity), cvssLabel(v))
+	if v.Priority != "" {
+		p.f("  Priority:       %s - %s\n", strings.ToUpper(string(v.Priority)), wrap(v.PriorityReason, 18, 100))
+	}
 	p.f("  Public exploit: %s\n", exploitLabel(v))
 	p.f("  CISA KEV:       %s\n", kevLabel(v))
 	if s := epssLabel(v); s != "" {

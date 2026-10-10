@@ -62,7 +62,7 @@ impact.* CVSS alone over-flags (~40% of CVEs are High/Critical).
   KEV/exploit, ahead of CVSS. Metadata keys `epss_model_version` /
   `epss_score_date` / `epss_scores` record the snapshot.
 
-### 🟢 2. Explicit triage flags + an explainable priority
+### 🟢 2. Explicit triage flags + an explainable priority — **IMPLEMENTED**
 
 vFeed's `--information` returns `has_exploits / has_kev / has_patches /
 has_advisory` plus a `risk_score` (e.g. 0.94). The booleans are cheap and useful;
@@ -70,9 +70,16 @@ the **opaque 0–1 score is the anti-pattern** — nobody can explain it, the sa
 critique levelled at CVSS.
 
 - **Viability: high for the flags.** We already compute most signals.
-- **Do the score the modern way:** an **SSVC-style, explainable** priority tier
-  (e.g. Act / Attend / Track) driven by KEV + EPSS + exposure, consistent with our
-  existing "always give a `match_reason`" ethos — not a magic number.
+- **Status: shipped.** The query engine assigns each result a `priority` —
+  **act** (CISA KEV), **attend** (public exploit, or EPSS ≥ 0.5), or **track**
+  (no signal, undetermined, or already fixed in the installed distro package) —
+  plus a `priority_reason`. It is derived only from exploitation evidence and
+  likelihood (KEV + exploit + EPSS), **not** asset exposure/mission impact (the
+  operator adds those), and is always explainable — the opaque score is
+  deliberately avoided. Shown in text output and JSON (`priority` /
+  `priority_reason`); the existing `known_exploited` / `public_exploit` booleans
+  remain. It is a query-time computation, so there is nothing to build into the
+  database or port to the Python updater.
 
 ### 🟡 3. Enriched exploit / PoC evidence
 
@@ -125,8 +132,8 @@ linking for the Windows path later).
 ## Recommended roadmap (priority order)
 
 1. ~~**EPSS**~~ — **done** (schema v13; see above).
-2. **Explicit triage booleans + SSVC-style explainable priority** (not an opaque
-   score).
+2. ~~**Explicit triage booleans + SSVC-style explainable priority**~~ — **done**
+   (query-time `priority`/`priority_reason`; see above).
 3. **Enriched exploit intel** (Nuclei/Metasploit/PoC; fetch-at-build, GPL-safe) to
    fix our weakest signal.
 4. *(Optional)* **Defense indicators** (NSE/Suricata/OpenVAS verification mapping).

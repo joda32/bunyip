@@ -51,8 +51,9 @@ and answers queries (`vulndb query` / `nmap` / `ingest`, on the offline side).
 - **Query engine (Go).** CPE 2.2/2.3 parsing and normalisation; per-product
   version comparators (generic, OpenSSH, dpkg, RPM, PEP 440); range evaluation
   (`MATCH` / `NO_MATCH` / `UNKNOWN`); awareness of NVD AND/OR configuration
-  structure; KEV, exploit and **EPSS** (exploitation-probability) enrichment,
-  with results ordered KEV → exploit → EPSS → CVSS; text, JSON and debug output.
+  structure; KEV, exploit and **EPSS** (exploitation-probability) enrichment;
+  an SSVC-inspired, explainable **triage priority** (Act / Attend / Track);
+  results ordered KEV → exploit → EPSS → CVSS; text, JSON and debug output.
 - **Nmap input.** `vulndb nmap scan.xml` assesses every open, fingerprinted
   service in Nmap `-oX` output. `nse/vulndb.nse` shows the same results inline
   during a scan (`nmap -sV --script vulndb`).
@@ -310,6 +311,12 @@ valid JSON.
 - `epss_score` / `epss_percentile` — FIRST EPSS probability of exploitation in
   the next 30 days and its percentile rank (both 0–1); `null` when the CVE has no
   EPSS score. Used first after KEV/exploit to rank results.
+- `priority` / `priority_reason` — an SSVC-inspired triage bucket with its
+  rationale: **act** (in CISA KEV), **attend** (a public exploit exists, or EPSS
+  ≥ 50%), or **track** (no exploitation signal, undetermined, or already fixed in
+  the installed package). It is derived only from exploitation evidence and
+  likelihood — never asset exposure or mission impact, which the operator must
+  add — and every value is explainable rather than an opaque score.
 - `match_reason` — a human-readable explanation, always present.
 
 For a distribution-packaged service, pass the distro and the installed package

@@ -50,6 +50,7 @@ func TestQueryText(t *testing.T) {
 		"Product:             apache http_server",
 		"Identity confidence: EXACT",
 		"CVE-0000-0001",
+		"Priority:       ACT - Listed in CISA KEV (confirmed exploited in the wild).",
 		"Public exploit: YES",
 		"CISA KEV:       YES",
 		"EPSS:           94.3% probability of exploitation (99th percentile)",

@@ -219,6 +219,8 @@ type Vulnerability struct {
 	KEVDateAdded    string          `json:"kev_date_added,omitempty"`
 	EPSSScore       *float64        `json:"epss_score"`
 	EPSSPercentile  *float64        `json:"epss_percentile"`
+	Priority        Priority        `json:"priority"`
+	PriorityReason  string          `json:"priority_reason"`
 	MatchConfidence Confidence      `json:"match_confidence"`
 	MatchedCPE      string          `json:"matched_cpe"`
 	VersionStatus   version.Status  `json:"version_status"`
@@ -620,6 +622,9 @@ func enrich(v *Vulnerability, c database.CVE, kev map[string]database.KEVEntry, 
 //  8. identity confidence (higher first)
 //  9. CVE ID (for determinism)
 func sortVulnerabilities(vs []Vulnerability) {
+	for i := range vs { // the final pass: assign the triage priority once all signals are set
+		assignPriority(&vs[i])
+	}
 	sort.SliceStable(vs, func(i, j int) bool {
 		a, b := vs[i], vs[j]
 		if x, y := a.distroFixed(), b.distroFixed(); x != y {
@@ -665,4 +670,57 @@ func cvssOrNeg(s *float64) float64 {
 		return -1
 	}
 	return *s
+}
+
+// Priority is an SSVC-inspired triage bucket. It is derived only from
+// exploitation evidence and likelihood (KEV, public exploit, EPSS) — the
+// signals the database holds — and deliberately NOT from asset exposure or
+// mission impact, which the operator must weigh in. Every value carries a
+// PriorityReason, so the bucket is always explainable rather than an opaque
+// score.
+type Priority string
+
+const (
+	PriorityAct    Priority = "act"    // confirmed exploited: do it now
+	PriorityAttend Priority = "attend" // exploit exists or likely: schedule it
+	PriorityTrack  Priority = "track"  // no exploitation signal: monitor
+
+	// epssAttendThreshold promotes a result to "attend" on EPSS alone: a >=50%
+	// modelled probability of exploitation in the next 30 days is a strong
+	// threat signal even without a known exploit.
+	epssAttendThreshold = 0.5
+)
+
+// assignPriority sets v.Priority and v.PriorityReason from the exploitation
+// signals. It is intentionally conservative: an undetermined (UNKNOWN) match or
+// a fix already shipped in the installed distribution package never earns an
+// actionable bucket, keeping with "never turn uncertainty into urgency".
+func assignPriority(v *Vulnerability) {
+	switch {
+	case v.VersionStatus != version.Match:
+		v.Priority = PriorityTrack
+		v.PriorityReason = "Version applicability is undetermined; confirm before acting."
+	case v.distroFixed():
+		v.Priority = PriorityTrack
+		v.PriorityReason = "Fixed in the installed distribution package; no action unless the host is unpatched."
+	case v.KnownExploited:
+		v.Priority = PriorityAct
+		v.PriorityReason = "Listed in CISA KEV (confirmed exploited in the wild)"
+		if v.KnownRansomware {
+			v.PriorityReason += "; known ransomware use"
+		}
+		v.PriorityReason += "."
+	case v.PublicExploit:
+		v.Priority = PriorityAttend
+		v.PriorityReason = "Public exploit evidence exists (unverified); exploitation is feasible."
+	case v.EPSSScore != nil && *v.EPSSScore >= epssAttendThreshold:
+		v.Priority = PriorityAttend
+		v.PriorityReason = fmt.Sprintf("EPSS %.0f%% probability of exploitation in the next 30 days.", *v.EPSSScore*100)
+	default:
+		v.Priority = PriorityTrack
+		v.PriorityReason = "No known exploitation or high exploitation probability; monitor."
+	}
+	if v.Priority != PriorityTrack && v.Applicability == Conditional {
+		v.PriorityReason += " Applies only with an unevaluated condition (e.g. a specific OS)."
+	}
 }
