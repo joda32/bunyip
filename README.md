@@ -247,7 +247,8 @@ See [`docs/deployment.md`](docs/deployment.md) for the full procedure.
 ### Check freshness
 
 ```bash
-vulndb info      # schema/data versions, NVD data age (warns after 7 days), KEV version, coverage
+vulndb info      # schema/data versions, NVD data age (warns after 7 days), KEV & EPSS versions,
+                 # exploit-source counts, and CPE-applicability coverage
 ```
 
 ### A note on NVD coverage
@@ -288,8 +289,10 @@ Identity confidence: EXACT
 Candidate vulnerabilities: 88 version match, 0 undetermined
 
 CVE-2021-41773   CRITICAL  CVSS 9.8 (v3)
-  Public exploit: YES (nvd-reference; unverified)
+  Priority:       ACT - Listed in CISA KEV (confirmed exploited in the wild); known ransomware use.
+  Public exploit: YES (exploit-db, metasploit, nvd-reference; unverified)
   CISA KEV:       YES (added 2021-11-03; known ransomware use)
+  EPSS:           94.3% probability of exploitation (99th percentile)
   Version status: MATCH
   Confidence:     EXACT
   Match reason:   Exact supplied CPE matched vulnerability criteria
@@ -508,8 +511,10 @@ failed verify); `2` usage error (unknown command/flag, unsupported `--format`).
 - **OS-attributed components.** Vulnerabilities NVD files against an OS CPE are
   invisible to a product CPE (e.g. recent IIS CVEs are listed against Windows,
   so `cpe:/a:microsoft:internet_information_services:10.0` finds none).
-- **Exploit evidence** is limited to references NVD tagged `Exploit`, and none of
-  it is verified.
+- **Exploit evidence** comes from NVD `Exploit`-tagged references, Metasploit
+  modules and Exploit-DB entries — all unverified *references* (that an exploit
+  exists), never a check that a target is exploitable. EPSS is a modelled
+  probability, not an observation.
 - **Large rule sets** are slower: a `linux_kernel` query reads tens of thousands
   of rules (~0.7 s) versus a few ms for typical services.
 - **Upstream data quirks.** A handful of NVD criteria are malformed (e.g.
