@@ -3,7 +3,7 @@
 An investigation (2026-10-10) of [vFeed](https://github.com/vfeedio/pyvfeed), a
 "correlated vulnerability and threat-intelligence database" by Nabil (NJ) Ouchn
 / ToolsWatch, to decide which of its ideas are worth bringing into Offline
-VulnDB and whether they still hold up today.
+Bunyip and whether they still hold up today.
 
 ## What vFeed was, and what happened to it
 
@@ -20,7 +20,7 @@ VulnDB and whether they still hold up today.
   thin CLI over the licensed database.
 
 **Meta-lesson for this project.** What got captured and then killed was the
-*curated correlation*, delivered as a downloadable database. Offline VulnDB's
+*curated correlation*, delivered as a downloadable database. Bunyip's
 model — a self-contained binary that **rebuilds** from first-party public
 sources, dual-licensed, with third-party data *fetched/derived at build time and
 never shipped* — is deliberately resistant to that failure mode. The vFeed arc
@@ -55,7 +55,7 @@ impact.* CVSS alone over-flags (~40% of CVEs are High/Critical).
 - **Viability: high.** EPSS is published by FIRST as a **free daily CSV**,
   permissive usage (attribution requested), covering ~all CVEs, and tiny. It fits
   our offline snapshot-at-build model exactly.
-- **Status: shipped (schema v13).** `vulndb update`/`build` fetches the FIRST
+- **Status: shipped (schema v13).** `bunyip update`/`build` fetches the FIRST
   EPSS snapshot (`epss.cyentia.com`, `--no-epss` to skip, `--epss FILE` to
   override) into an `epss` table; the score and percentile appear in query output
   (text + JSON `epss_score`/`epss_percentile`) and rank results immediately after
@@ -89,7 +89,7 @@ sources are Nuclei templates and GitHub PoC indexes (nomi-sec/PoC-in-GitHub,
 trickest/cve).
 
 - **Viability: medium-high.** Materially strengthens a weak signal.
-- **Status: shipped (no schema change).** `vulndb update`/`build` fetches
+- **Status: shipped (no schema change).** `bunyip update`/`build` fetches
   Metasploit's `modules_metadata_base.json` (`raw.githubusercontent.com`) and the
   Exploit-DB `files_exploits.csv` (`gitlab.com`), derives one `exploit_evidence`
   row per (CVE, module/exploit) — source `metasploit` / `exploit-db`, references

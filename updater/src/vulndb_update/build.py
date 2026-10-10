@@ -1,4 +1,4 @@
-"""Build a fresh Offline VulnDB SQLite database from verified source files.
+"""Build a fresh Bunyip SQLite database from verified source files.
 
 The database is written to a temporary ".<name>.building" file next to the
 target, self-checked, and only then renamed over the target, so a failed or

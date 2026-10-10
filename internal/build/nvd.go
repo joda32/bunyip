@@ -1,5 +1,5 @@
 // Package build reconstructs the vulnerability database from upstream sources
-// inside the Go binary (the `vulndb build`/`update` path), replacing the
+// inside the Go binary (the `bunyip build`/`update` path), replacing the
 // separate Python updater. This file ports the NVD CVE JSON 2.0 record
 // transform: applicability is kept with its structure (configurations over
 // nodes over CPE match rules); criteria strings are stored verbatim and only

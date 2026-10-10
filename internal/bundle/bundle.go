@@ -6,7 +6,7 @@
 //
 //	manifest.json   what the bundle contains (database size, SHA-256, metadata)
 //	manifest.sig    Ed25519 signature over the exact manifest.json bytes (optional)
-//	vulndb.sqlite   the database
+//	bunyip.sqlite   the database
 //
 // Import checks, before anything replaces the installed database: archive
 // layout and member types, the signature (before the database is even
@@ -44,7 +44,7 @@ const (
 
 	manifestName = "manifest.json"
 	sigName      = "manifest.sig"
-	dbName       = "vulndb.sqlite"
+	dbName       = "bunyip.sqlite"
 
 	maxManifestBytes = 1 << 20
 	maxDatabaseBytes = 16 << 30

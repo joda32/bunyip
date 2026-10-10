@@ -1,5 +1,5 @@
 // Package database provides explicit, parameterised access to the Offline
-// VulnDB SQLite database. No ORM: every query is visible in this package.
+// Bunyip SQLite database. No ORM: every query is visible in this package.
 package database
 
 import (
@@ -27,7 +27,7 @@ var (
 	ErrExists       = errors.New("database already exists")
 )
 
-// Store is an open Offline VulnDB database.
+// Store is an open Bunyip database.
 type Store struct {
 	db   *sql.DB
 	Path string
@@ -97,7 +97,7 @@ func (s *Store) Close() error { return s.db.Close() }
 func checkFile(path string) error {
 	fi, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("%w: %s (use --db or VULNDB_DB, or create one with 'vulndb db init')", ErrMissing, path)
+		return fmt.Errorf("%w: %s (use --db or BUNYIP_DB, or create one with 'bunyip db init')", ErrMissing, path)
 	}
 	if err != nil {
 		return fmt.Errorf("%w: %s: %v", ErrMissing, path, err)
@@ -115,7 +115,7 @@ func dsn(path, mode string) string {
 	return "file:" + r.Replace(path) + "?mode=" + mode + "&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 }
 
-// checkSchema verifies the file is an Offline VulnDB database whose schema
+// checkSchema verifies the file is a Bunyip database whose schema
 // version this build supports.
 func (s *Store) checkSchema(ctx context.Context) error {
 	var v string
@@ -128,7 +128,7 @@ func (s *Store) checkSchema(ctx context.Context) error {
 	case isNotADatabase(err):
 		return fmt.Errorf("%w: %s: %v", ErrCorrupt, s.Path, err)
 	case strings.Contains(err.Error(), "no such table"):
-		return fmt.Errorf("%w: %s is not an Offline VulnDB database (no database_metadata table)", ErrIncompatible, s.Path)
+		return fmt.Errorf("%w: %s is not a Bunyip database (no database_metadata table)", ErrIncompatible, s.Path)
 	default:
 		return fmt.Errorf("%w: %s: %v", ErrCorrupt, s.Path, err)
 	}

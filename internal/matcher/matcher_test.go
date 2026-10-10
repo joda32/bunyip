@@ -129,7 +129,7 @@ func TestEvaluateRule(t *testing.T) {
 func fixtureEngine(t *testing.T) *Engine {
 	t.Helper()
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "vulndb.sqlite")
+	path := filepath.Join(t.TempDir(), "bunyip.sqlite")
 	s, err := database.Create(ctx, path)
 	if err != nil {
 		t.Fatal(err)

@@ -1,10 +1,10 @@
-// Package data embeds the curated first-party JSON that the vulndb builder
+// Package data embeds the curated first-party JSON that the bunyip builder
 // loads, so a single self-contained binary can build a database without the
 // repository checkout on disk.
 //
 // Only first-party source data is embedded. data/http_tech.json is NOT
 // embedded: it is derived at build time from the GPL-3.0 webappanalyzer corpus
-// (vulndb build --webappanalyzer DIR) and is gitignored.
+// (bunyip build --webappanalyzer DIR) and is gitignored.
 package data
 
 import _ "embed"

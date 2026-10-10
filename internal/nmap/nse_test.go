@@ -43,7 +43,7 @@ func fixtureEngineFrom(t *testing.T, fixture string) *matcher.Engine {
 	return e
 }
 
-// A request as nse/vulndb.nse builds it for an Ubuntu 22.04 host.
+// A request as nse/bunyip.nse builds it for an Ubuntu 22.04 host.
 const ubuntuRequest = `{"version": 1,
  "host": {"address": "192.0.2.20", "hostnames": ["web01"], "os_cpes": []},
  "ports": [

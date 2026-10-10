@@ -31,7 +31,7 @@ func TestLoadCuratedRealFiles(t *testing.T) {
 
 // TestLoadCuratedEmbedded verifies the "embedded:<name>" default source loads
 // the first-party data compiled into the binary, with the same results as the
-// on-disk copy — this is what makes vulndb a single self-contained binary.
+// on-disk copy — this is what makes bunyip a single self-contained binary.
 func TestLoadCuratedEmbedded(t *testing.T) {
 	embN, err := LoadAliases("embedded:aliases.json")
 	if err != nil || len(embN) == 0 {

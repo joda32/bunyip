@@ -1,7 +1,7 @@
 GO      ?= go
 PYTHON  ?= .venv/bin/python
-BIN     := bin/vulndb
-DB      ?= vulndb.sqlite
+BIN     := bin/bunyip
+DB      ?= bunyip.sqlite
 FIXTURE := testdata/fixtures/synthetic.json
 
 .PHONY: all build test test-short test-all cover bench vet fmt fixture-db venv updater-test real-db real-db-python keygen bundle release clean
@@ -11,7 +11,7 @@ all: vet test build
 # CGO is not needed (pure-Go SQLite driver), so the binary is static and
 # cross-compiles with GOOS/GOARCH.
 build:
-	CGO_ENABLED=0 $(GO) build -trimpath -o $(BIN) ./cmd/vulndb
+	CGO_ENABLED=0 $(GO) build -trimpath -o $(BIN) ./cmd/bunyip
 
 test:
 	$(GO) test ./...
@@ -62,13 +62,13 @@ real-db-python:
 	$(PYTHON) -m vulndb_update build --out $(DB) --cache .cache/feeds
 
 # Signing key for transport bundles (once; keep the private key on the build machine).
-KEY ?= vulndb-signing.key
-PUB ?= vulndb-signing.pub
+KEY ?= bunyip-signing.key
+PUB ?= bunyip-signing.pub
 keygen: build
 	$(BIN) bundle keygen --key $(KEY) --pub $(PUB)
 
 # Signed transport bundle of $(DB) for the offline side (see docs/deployment.md).
-BUNDLE ?= vulndb-$(shell date -u +%F).tar.gz
+BUNDLE ?= bunyip-$(shell date -u +%F).tar.gz
 bundle: build
 	$(BIN) --db $(DB) bundle create --key $(KEY) --out $(BUNDLE)
 

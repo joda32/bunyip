@@ -32,7 +32,7 @@ func cli(args ...string) cliResult {
 // initDB creates a fixture database through the CLI and returns its path.
 func initDB(t *testing.T) string {
 	t.Helper()
-	db := filepath.Join(t.TempDir(), "vulndb.sqlite")
+	db := filepath.Join(t.TempDir(), "bunyip.sqlite")
 	r := cli("--db", db, "db", "init", "--fixture", fixture)
 	if r.code != exitOK {
 		t.Fatalf("db init failed (%d): %s", r.code, r.stderr)
@@ -77,7 +77,7 @@ func TestVersion(t *testing.T) {
 		if r.code != exitOK {
 			t.Fatalf("%v: exit %d: %s", args, r.code, r.stderr)
 		}
-		if !strings.HasPrefix(r.stdout, "vulndb ") || !strings.Contains(r.stdout, runtime.GOOS) {
+		if !strings.HasPrefix(r.stdout, "bunyip ") || !strings.Contains(r.stdout, runtime.GOOS) {
 			t.Errorf("%v: unexpected version line %q", args, r.stdout)
 		}
 	}
@@ -205,7 +205,7 @@ func TestFlagsAfterCommand(t *testing.T) {
 
 func TestDBFromEnvironment(t *testing.T) {
 	db := initDB(t)
-	t.Setenv("VULNDB_DB", db)
+	t.Setenv("BUNYIP_DB", db)
 	r := cli("info")
 	if r.code != exitOK || !strings.Contains(r.stdout, db) {
 		t.Fatalf("exit %d: %s %s", r.code, r.stdout, r.stderr)
@@ -258,7 +258,7 @@ func TestInitRefusesOverwriteUnlessForced(t *testing.T) {
 
 func TestInitBadFixtureLeavesNoDatabase(t *testing.T) {
 	dir := t.TempDir()
-	db := filepath.Join(dir, "vulndb.sqlite")
+	db := filepath.Join(dir, "bunyip.sqlite")
 	bad := filepath.Join(dir, "bad.json")
 	os.WriteFile(bad, []byte(`{"cves":[{"cve_id":"CVE-0000-1","configurations":[{"nodes":[{"cpe_match":[{"criteria":"nope","vulnerable":true}]}]}]}]}`), 0o600)
 	r := cli("--db", db, "db", "init", "--fixture", bad)
@@ -323,11 +323,11 @@ func TestBinary(t *testing.T) {
 		t.Skip("builds the binary")
 	}
 	dir := t.TempDir()
-	bin := filepath.Join(dir, "vulndb")
+	bin := filepath.Join(dir, "bunyip")
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
-	db := filepath.Join(dir, "vulndb.sqlite")
+	db := filepath.Join(dir, "bunyip.sqlite")
 	if out, err := exec.Command(bin, "--db", db, "db", "init", "--fixture", fixture).CombinedOutput(); err != nil {
 		t.Fatalf("init: %v\n%s", err, out)
 	}
@@ -603,7 +603,7 @@ func TestBundleCLI(t *testing.T) {
 	dir := t.TempDir()
 	db := initDB(t)
 	key, pub := filepath.Join(dir, "k.key"), filepath.Join(dir, "k.pub")
-	out := filepath.Join(dir, "vulndb.tar.gz")
+	out := filepath.Join(dir, "bunyip.tar.gz")
 	target := filepath.Join(dir, "offline.sqlite")
 
 	steps := []struct {
@@ -649,7 +649,7 @@ func TestNSECommand(t *testing.T) {
 	}
 }
 
-// TestNSEScriptWithNmap runs the real nse/vulndb.nse in Nmap against a local
+// TestNSEScriptWithNmap runs the real nse/bunyip.nse in Nmap against a local
 // listener that presents a genuine-format Ubuntu OpenSSH banner. No external
 // network access; skipped when Nmap is not installed.
 func TestNSEScriptWithNmap(t *testing.T) {
@@ -658,7 +658,7 @@ func TestNSEScriptWithNmap(t *testing.T) {
 		t.Skip("nmap not installed")
 	}
 	dir := t.TempDir()
-	bin := filepath.Join(dir, "vulndb")
+	bin := filepath.Join(dir, "bunyip")
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
@@ -684,9 +684,9 @@ func TestNSEScriptWithNmap(t *testing.T) {
 		}
 	}()
 	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
-	script, _ := filepath.Abs("../../nse/vulndb.nse")
+	script, _ := filepath.Abs("../../nse/bunyip.nse")
 	out, err := exec.Command(nmapPath, "-sV", "-Pn", "-n", "-p", port, "--script", script,
-		"--script-args", "vulndb.bin="+bin+",vulndb.db="+db, "-oX", "-", "127.0.0.1").CombinedOutput()
+		"--script-args", "bunyip.bin="+bin+",bunyip.db="+db, "-oX", "-", "127.0.0.1").CombinedOutput()
 	if err != nil {
 		t.Fatalf("nmap: %v\n%s", err, out)
 	}
@@ -705,7 +705,7 @@ func TestNSEScriptWithNmap(t *testing.T) {
 }
 
 func TestNmapWindowsBuilds(t *testing.T) {
-	db := filepath.Join(t.TempDir(), "vulndb.sqlite")
+	db := filepath.Join(t.TempDir(), "bunyip.sqlite")
 	if r := cli("--db", db, "db", "init", "--fixture", "../../testdata/fixtures/windows.json"); r.code != exitOK {
 		t.Fatalf("db init: %s", r.stderr)
 	}
@@ -757,7 +757,7 @@ func TestNmapWindowsBuilds(t *testing.T) {
 }
 
 func TestIngestHTTPX(t *testing.T) {
-	db := filepath.Join(t.TempDir(), "vulndb.sqlite")
+	db := filepath.Join(t.TempDir(), "bunyip.sqlite")
 	if r := cli("--db", db, "db", "init", "--fixture", "../../testdata/fixtures/windows.json"); r.code != exitOK {
 		t.Fatalf("db init: %s", r.stderr)
 	}

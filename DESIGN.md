@@ -1,8 +1,8 @@
-# Offline VulnDB — Design Specification
+# Bunyip — Design Specification
 
 ## 1. Purpose
 
-Offline VulnDB is a lightweight, offline vulnerability correlation engine intended for internal and restricted networks where Internet access is unavailable.
+Bunyip is a lightweight, offline vulnerability correlation engine intended for internal and restricted networks where Internet access is unavailable.
 
 The system consumes software/service observations—initially from Nmap—and correlates detected CPEs, products, versions, and banners against a locally stored vulnerability database built from free/open vulnerability intelligence.
 
@@ -497,39 +497,39 @@ A vulnerability result should contain:
 Suggested executable:
 
 ```text
-vulndb
+bunyip
 ```
 
 ### Query Exact CPE
 
 ```bash
-vulndb query --cpe 'cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*'
+bunyip query --cpe 'cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*'
 ```
 
 ### Query Product
 
 ```bash
-vulndb query --product 'Apache httpd' --version '2.4.49'
+bunyip query --product 'Apache httpd' --version '2.4.49'
 ```
 
 ### Query Nmap XML
 
 ```bash
-vulndb nmap scan.xml
+bunyip nmap scan.xml
 ```
 
 ### JSON Output
 
 ```bash
-vulndb nmap scan.xml --format json
+bunyip nmap scan.xml --format json
 ```
 
 ### Useful Utility Commands
 
 ```bash
-vulndb info
-vulndb db verify
-vulndb db stats
+bunyip info
+bunyip db verify
+bunyip db stats
 ```
 
 `info` should show database age/source metadata so an operator immediately knows whether an offline database is stale.
@@ -545,15 +545,15 @@ The NSE should be a thin adapter that uses Nmap service information and queries 
 Potential deployment:
 
 ```text
-vulndb
-vulndb.sqlite
-vulndb.nse
+bunyip
+bunyip.sqlite
+bunyip.nse
 ```
 
 Possible usage:
 
 ```bash
-nmap -sV --script vulndb <target>
+nmap -sV --script bunyip <target>
 ```
 
 The NSE output should remain concise and prioritised.
@@ -562,7 +562,7 @@ Example:
 
 ```text
 443/tcp open https Apache httpd 2.4.49
-| vulndb:
+| bunyip:
 |   CVE-2021-XXXXX  CRITICAL  CVSS 9.8
 |     Public exploit: YES
 |     CISA KEV: YES
@@ -609,13 +609,13 @@ Later, an optional documented priority score can be added.
 Updater commands could be provided by a separate utility:
 
 ```text
-vulndb-update
+bunyip-update
 ```
 
 ### Online Update
 
 ```bash
-vulndb-update sync
+bunyip-update sync
 ```
 
 Responsibilities:
@@ -633,9 +633,9 @@ Responsibilities:
 Example:
 
 ```text
-vulndb-2026-10-06.tar.zst
+bunyip-2026-10-06.tar.zst
   manifest.json
-  vulndb.sqlite
+  bunyip.sqlite
   checksums.sha256
   signature.sig       # optional initially, recommended later
 ```
@@ -643,7 +643,7 @@ vulndb-2026-10-06.tar.zst
 ### Offline Import
 
 ```bash
-vulndb-update import vulndb-2026-10-06.tar.zst
+bunyip-update import bunyip-2026-10-06.tar.zst
 ```
 
 The import process should:
@@ -771,7 +771,7 @@ Provide sample Nmap XML and expected JSON results.
 Support a verbose/debug mode:
 
 ```bash
-vulndb --debug query ...
+bunyip --debug query ...
 ```
 
 Useful diagnostic information:
@@ -802,7 +802,7 @@ offline-vulndb/
 │   ├── data-sources.md
 │   └── matching.md
 ├── cmd/
-│   └── vulndb/
+│   └── bunyip/
 ├── internal/
 │   ├── cpe/
 │   ├── database/
@@ -818,7 +818,7 @@ offline-vulndb/
 │   ├── transform/
 │   └── build_db.py
 ├── nse/
-│   └── vulndb.nse
+│   └── bunyip.nse
 ├── schema/
 │   ├── schema.sql
 │   └── migrations/
@@ -860,7 +860,7 @@ offline-vulndb/
 - output host/port/service vulnerability results;
 - support JSON and human-readable formats.
 
-**Exit criterion:** `vulndb nmap scan.xml` provides useful offline results.
+**Exit criterion:** `bunyip nmap scan.xml` provides useful offline results.
 
 ### Phase 4 — Identity Resolver
 
@@ -935,7 +935,7 @@ The MVP is successful when an operator can:
 
 ```bash
 nmap -sV -oX scan.xml 10.0.0.0/24
-vulndb nmap scan.xml
+bunyip nmap scan.xml
 ```
 
 on an isolated network and receive useful output similar to:

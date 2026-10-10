@@ -61,7 +61,7 @@ def test_build_loads_epss_and_metadata(sources, tmp_path):
     efile = tmp_path / "epss_scores-current.csv.gz"
     with gzip.open(efile, "wt", encoding="utf-8") as f:
         f.write(SAMPLE)
-    out = tmp_path / "vulndb.sqlite"
+    out = tmp_path / "bunyip.sqlite"
     build.build(out, SCHEMA.read_text(), fetch.local_feeds(sources), fetch.local_kev(sources),
                 allow_small=True, log=lambda *a, **k: None, epss=epss.load(efile))
     conn = sqlite3.connect(out)
@@ -77,7 +77,7 @@ def test_build_loads_epss_and_metadata(sources, tmp_path):
 
 
 def test_build_without_epss_writes_empty_metadata(sources, tmp_path):
-    out = tmp_path / "vulndb.sqlite"
+    out = tmp_path / "bunyip.sqlite"
     build.build(out, SCHEMA.read_text(), fetch.local_feeds(sources), fetch.local_kev(sources),
                 allow_small=True, log=lambda *a, **k: None, epss=None)
     conn = sqlite3.connect(out)

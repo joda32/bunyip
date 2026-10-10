@@ -13,9 +13,9 @@ import (
 	"offline-vulndb/internal/version"
 )
 
-// NSE support: nse/vulndb.nse writes one request per port (with the host's
+// NSE support: nse/bunyip.nse writes one request per port (with the host's
 // other open ports, for host-level distribution evidence) to a file and runs
-// `vulndb nse --request FILE`. Requests carry banner-derived data, so they
+// `bunyip nse --request FILE`. Requests carry banner-derived data, so they
 // travel in a file and never on a command line.
 
 // NSERequestVersion is the request/response format version.
@@ -236,7 +236,7 @@ func notAssessedLine(sr *ServiceReport) string {
 	case NotProbed:
 		return "not assessed: service guessed from the port number (run with -sV)"
 	case OSComponent:
-		return "Windows component: assessed per host from its build (vulndb nmap on -oX output of a -sC scan)"
+		return "Windows component: assessed per host from its build (bunyip nmap on -oX output of a -sC scan)"
 	}
 	return "not assessed: no application CPE for this service"
 }
@@ -292,7 +292,7 @@ func renderNSE(resp *NSEResponse, res *matcher.Result) []string {
 		lines = append(lines, line)
 	}
 	if hidden := c.Matches - countMatches(resp.Vulns); hidden > 0 {
-		lines = append(lines, fmt.Sprintf("... %d more (vulndb.max / vulndb.mincvss limit the list; full detail: vulndb nmap on -oX output)", hidden))
+		lines = append(lines, fmt.Sprintf("... %d more (bunyip.max / bunyip.mincvss limit the list; full detail: bunyip nmap on -oX output)", hidden))
 	}
 	for _, n := range resp.Notes {
 		lines = append(lines, "Note: "+n)

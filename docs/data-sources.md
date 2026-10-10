@@ -182,7 +182,7 @@ under ~100 matchable network-service CVEs, and most of the latent value needs
 CPE is matchable at all. Deferred again; revisit after HTTP app
 fingerprinting, or for the Linux-kernel CNA data specifically.
 
-## Nmap identities vs NVD names (`vulndb-update review-aliases`)
+## Nmap identities vs NVD names (`bunyip-update review-aliases`)
 
 Nmap 7.94 `nmap-service-probes`: 11,917 match lines and 2,052 distinct CPE
 vendor:product templates.
@@ -222,7 +222,7 @@ Genuine matches exist (3CX, Apache ActiveMQ, Arkeia), but each needs a human
 decision. The products are a long tail of niche and embedded software; common
 internal-network services already carry CPEs.
 
-**Curation (2026-10-07).** `vulndb-update review-products` lists no-CPE names
+**Curation (2026-10-07).** `bunyip-update review-products` lists no-CPE names
 whose normalised form (optionally without a trailing role word such as
 `smtpd`) is an NVD product. The first pass reviewed the 154 exact
 candidates plus the enterprise-relevant role-word ones; it gave:
@@ -246,7 +246,7 @@ servers from the 2000s.
 ## Field trial: Windows-heavy lab (2026-10-07)
 
 An unauthenticated `nmap -sV --top-ports 1000` of a Ludus lab (5 Windows hosts,
-3 Linux hosts) took 119 s with the `vulndb` NSE script enabled.
+3 Linux hosts) took 119 s with the `bunyip` NSE script enabled.
 
 - **Windows (Server 2016/2022, Windows 11): per-service, nothing assessable.**
   - SMB, RDP, RPC, LDAP and Kerberos carry only `cpe:/o:microsoft:windows` or
@@ -257,7 +257,7 @@ An unauthenticated `nmap -sV --top-ports 1000` of a Ludus lab (5 Windows hosts,
     Windows rules key on build + revision (e.g. `10.0.20348.2340`), so an
     unauthenticated scan can say "this build has N CVEs, patch level unknown",
     not "vulnerable".
-  - That is what the build-level assessment now reports (`vulndb nmap`, same
+  - That is what the build-level assessment now reports (`bunyip nmap`, same
     scan, 1.3 s for 8 hosts; docs/matching.md section 10):
 
     | Host | Evidence | Release | Applies unless patched | KEV | Undetermined |

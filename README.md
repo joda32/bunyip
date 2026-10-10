@@ -1,6 +1,6 @@
-# Offline VulnDB
+# Bunyip
 
-Offline VulnDB is a lightweight vulnerability **correlation** engine for
+Bunyip is a lightweight vulnerability **correlation** engine for
 isolated and restricted networks. Given a software identity — a CPE, an Nmap
 service fingerprint, or a web technology detected by httpx — it looks up
 **candidate CVEs** in a local SQLite database, evaluates the affected version
@@ -22,11 +22,11 @@ target.
 ```
 
 It ships as a **single static binary** with its curated data embedded. The same
-binary builds the database (`vulndb update`, on an Internet-connected machine)
-and answers queries (`vulndb query` / `nmap` / `ingest`, on the offline side).
+binary builds the database (`bunyip update`, on an Internet-connected machine)
+and answers queries (`bunyip query` / `nmap` / `ingest`, on the offline side).
 
 - Matching semantics: [`docs/matching.md`](docs/matching.md)
-- Design rationale: [`offline_vulndb_design.md`](offline_vulndb_design.md)
+- Design rationale: [`DESIGN.md`](DESIGN.md)
 - Data-source coverage and decisions: [`docs/data-sources.md`](docs/data-sources.md)
 - Build → signed bundle → offline import: [`docs/deployment.md`](docs/deployment.md)
 
@@ -56,10 +56,10 @@ and answers queries (`vulndb query` / `nmap` / `ingest`, on the offline side).
   entries); an SSVC-inspired, explainable **triage priority** (Act / Attend /
   Track); results ordered KEV → exploit → EPSS → CVSS; text, JSON and debug
   output.
-- **Nmap input.** `vulndb nmap scan.xml` assesses every open, fingerprinted
-  service in Nmap `-oX` output. `nse/vulndb.nse` shows the same results inline
-  during a scan (`nmap -sV --script vulndb`).
-- **Web-fingerprinter ingest.** `vulndb ingest` consumes httpx (`-td -json`) or
+- **Nmap input.** `bunyip nmap scan.xml` assesses every open, fingerprinted
+  service in Nmap `-oX` output. `nse/bunyip.nse` shows the same results inline
+  during a scan (`nmap -sV --script bunyip`).
+- **Web-fingerprinter ingest.** `bunyip ingest` consumes httpx (`-td -json`) or
   webanalyze output and assesses the web applications they detect, mapping
   technology names to CPEs — so specialised web fingerprinting feeds the same
   engine instead of being forced through Nmap.
@@ -73,11 +73,11 @@ and answers queries (`vulndb query` / `nmap` / `ingest`, on the offline side).
   is checked against the distribution's own fix data
   (`FIXED` / `VULNERABLE` / `FIX_AVAILABLE` / `NO_FIX`), removing backport false
   positives and adding CVEs NVD lacks data for.
-- **Windows build-level assessment.** `vulndb nmap` reads the build that
+- **Windows build-level assessment.** `bunyip nmap` reads the build that
   `rdp-ntlm-info` / `smb-os-discovery` report (e.g. `10.0.20348`), maps it to
   the release's NVD identities, and lists the CVEs that apply *unless patched*,
   KEV first, with end-of-support status.
-- **Self-contained builder.** `vulndb update` fetches all real sources and
+- **Self-contained builder.** `bunyip update` fetches all real sources and
   builds the database locally; curated first-party data is embedded in the
   binary, so no repository checkout is needed on the build machine.
 - **Signed transport bundles.** Package a built database, verify its signature,
@@ -93,7 +93,7 @@ The engine is a set of small, single-purpose Go packages. A query flows through
 them in order; [`docs/matching.md`](docs/matching.md) documents each step.
 
 ```text
-cmd/vulndb/          CLI, command dispatch, end-to-end tests
+cmd/bunyip/          CLI, command dispatch, end-to-end tests
 internal/cpe/        CPE 2.2/2.3 parsing, normalisation, attribute matching
 internal/identity/   candidate identities: aliases, product names, platform CPEs, distro detection
 internal/database/   SQLite access, schema checks, candidate lookup, verify/stats, fixture import
@@ -138,13 +138,13 @@ criterion against its index columns.
 ### Release binary
 
 Download the archive for your platform, verify it, and run it. Each release
-archive contains the `vulndb` binary plus the licenses and this README, and a
+archive contains the `bunyip` binary plus the licenses and this README, and a
 `SHA256SUMS` covers the archives.
 
 ```bash
 sha256sum -c SHA256SUMS                         # verify the download
-tar xzf vulndb_v0.1.0_linux_amd64.tar.gz
-./vulndb_v0.1.0_linux_amd64/vulndb version      # vulndb v0.1.0 (linux/amd64, go1.27.1)
+tar xzf bunyip_v0.1.0_linux_amd64.tar.gz
+./bunyip_v0.1.0_linux_amd64/bunyip version      # bunyip v0.1.0 (linux/amd64, go1.27.1)
 ```
 
 The binary is statically linked (no CGO, pure-Go SQLite) and self-contained.
@@ -154,7 +154,7 @@ The binary is statically linked (no CGO, pure-Go SQLite) and self-contained.
 Requires Go 1.27+.
 
 ```bash
-make build          # -> bin/vulndb
+make build          # -> bin/bunyip
 make test           # go test ./...   (no network access needed)
 make test-all       # Go tests + Python updater tests (incl. a real-data end-to-end test)
 
@@ -162,22 +162,22 @@ make test-all       # Go tests + Python updater tests (incl. a real-data end-to-
 make release VERSION=v0.1.0 PLATFORMS="linux/amd64 linux/arm64 darwin/arm64 windows/amd64"
 ```
 
-`vulndb version` / `vulndb --version` prints the stamped version plus the
+`bunyip version` / `bunyip --version` prints the stamped version plus the
 OS/arch and Go version.
 
 ## Updating the database
 
-The database path is chosen as `--db PATH`, else `$VULNDB_DB`, else
-`./vulndb.sqlite`.
+The database path is chosen as `--db PATH`, else `$BUNYIP_DB`, else
+`./bunyip.sqlite`.
 
 ### Build it on an Internet-connected machine
 
 ```bash
-vulndb --db ./vulndb.sqlite update              # fetch everything, build ./vulndb.sqlite
+bunyip --db ./bunyip.sqlite update              # fetch everything, build ./bunyip.sqlite
 make real-db                                    # same thing, caching sources in .cache/feeds
 ```
 
-`vulndb update` fetches, over HTTPS from an allow-list of hosts only:
+`bunyip update` fetches, over HTTPS from an allow-list of hosts only:
 
 - **NVD CVE JSON 2.0 feeds** — every yearly feed plus the `modified` overlay,
   each verified against the sha256 in its `.meta` sidecar;
@@ -200,12 +200,12 @@ the binary, so nothing else is needed on the build machine.
 Useful flags:
 
 ```bash
-vulndb update --cache DIR         # cache downloads in DIR (default: ~/.cache/vulndb);
+bunyip update --cache DIR         # cache downloads in DIR (default: ~/.cache/bunyip);
                                   #   unchanged feeds are not re-downloaded
-vulndb update --out FILE          # write to FILE instead of --db
-vulndb build --offline-from DIR   # build from files already downloaded into DIR (no network)
-vulndb build --no-distro          # skip distribution advisories
-vulndb build --webappanalyzer DIR # use a local webappanalyzer checkout instead of fetching
+bunyip update --out FILE          # write to FILE instead of --db
+bunyip build --offline-from DIR   # build from files already downloaded into DIR (no network)
+bunyip build --no-distro          # skip distribution advisories
+bunyip build --webappanalyzer DIR # use a local webappanalyzer checkout instead of fetching
 ```
 
 The build is atomic: it writes to a temporary file, runs integrity and
@@ -235,11 +235,11 @@ import verifies the Ed25519 signature, checksum, schema version and SQLite
 integrity, refuses downgrades, and replaces the database atomically.
 
 ```bash
-make keygen         # once: vulndb-signing.key (keep secret) + vulndb-signing.pub (copy across)
-make bundle         # vulndb-YYYY-MM-DD.tar.gz (a ~0.8 GB database compresses to ~140 MB)
+make keygen         # once: bunyip-signing.key (keep secret) + bunyip-signing.pub (copy across)
+make bundle         # bunyip-YYYY-MM-DD.tar.gz (a ~0.8 GB database compresses to ~140 MB)
 
 # on the offline side:
-vulndb --db /opt/vulndb/vulndb.sqlite bundle import vulndb-2026-10-10.tar.gz --pubkey vulndb-signing.pub
+bunyip --db /opt/bunyip/bunyip.sqlite bundle import bunyip-2026-10-10.tar.gz --pubkey bunyip-signing.pub
 ```
 
 See [`docs/deployment.md`](docs/deployment.md) for the full procedure.
@@ -247,7 +247,7 @@ See [`docs/deployment.md`](docs/deployment.md) for the full procedure.
 ### Check freshness
 
 ```bash
-vulndb info      # schema/data versions, NVD data age (warns after 7 days), KEV & EPSS versions,
+bunyip info      # schema/data versions, NVD data age (warns after 7 days), KEV & EPSS versions,
                  # exploit-source counts, and CPE-applicability coverage
 ```
 
@@ -255,7 +255,7 @@ vulndb info      # schema/data versions, NVD data age (warns after 7 days), KEV 
 
 Since April 2026 NIST fully enriches only a minority of new CVEs (KEV, US
 federal-use and EO 14028 "critical software"). Many recent CVEs therefore have
-**no CPE applicability data and can never match a query**. `vulndb info` reports
+**no CPE applicability data and can never match a query**. `bunyip info` reports
 the exact share, and query output carries a warning. This is a property of the
 upstream data, surfaced honestly rather than hidden. See
 [`docs/data-sources.md`](docs/data-sources.md) for measurements.
@@ -263,7 +263,7 @@ upstream data, surfaced honestly rather than hidden. See
 ### Synthetic fixture (development only)
 
 ```bash
-make fixture-db     # builds ./vulndb.sqlite from a small SYNTHETIC fixture
+make fixture-db     # builds ./bunyip.sqlite from a small SYNTHETIC fixture
 ```
 
 Its CVE IDs (`CVE-0000-*`), scores and KEV/exploit entries are invented so tests
@@ -275,9 +275,9 @@ this data is loaded.
 ### Query a single CPE
 
 ```bash
-vulndb query --cpe 'cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*'
-vulndb query --cpe 'cpe:/a:apache:http_server:2.4.49' --format json   # Nmap-style CPE 2.2
-vulndb --debug query --cpe 'cpe:/a:openbsd:openssh:8.9p1'             # explain every rule, on stderr
+bunyip query --cpe 'cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*'
+bunyip query --cpe 'cpe:/a:apache:http_server:2.4.49' --format json   # Nmap-style CPE 2.2
+bunyip --debug query --cpe 'cpe:/a:openbsd:openssh:8.9p1'             # explain every rule, on stderr
 ```
 
 ```text
@@ -332,9 +332,9 @@ For a distribution-packaged service, pass the distro and the installed package
 version to get a backport-aware verdict:
 
 ```bash
-vulndb query --cpe cpe:/a:openbsd:openssh:9.6p1 --distro ubuntu --package-version 1:9.6p1-3ubuntu13.18
-vulndb query --cpe cpe:/a:openbsd:openssh:9.2p1 --distro debian --package-version 1:9.2p1-2+deb12u3
-vulndb query --cpe cpe:/a:openbsd:openssh:8.7p1 --distro redhat --package-version 0:8.7p1-34.el9_3
+bunyip query --cpe cpe:/a:openbsd:openssh:9.6p1 --distro ubuntu --package-version 1:9.6p1-3ubuntu13.18
+bunyip query --cpe cpe:/a:openbsd:openssh:9.2p1 --distro debian --package-version 1:9.2p1-2+deb12u3
+bunyip query --cpe cpe:/a:openbsd:openssh:8.7p1 --distro redhat --package-version 0:8.7p1-34.el9_3
 ```
 
 ### Assess an Nmap scan
@@ -345,9 +345,9 @@ and HTTP app fingerprinting.
 
 ```bash
 nmap -sV -oX scan.xml 10.0.0.0/24
-vulndb nmap scan.xml                   # compact per-host/per-port report
-vulndb nmap scan.xml --format json     # full structured report
-nmap -sV -oX - 10.0.0.5 | vulndb nmap - # read from stdin
+bunyip nmap scan.xml                   # compact per-host/per-port report
+bunyip nmap scan.xml --format json     # full structured report
+nmap -sV -oX - 10.0.0.5 | bunyip nmap - # read from stdin
 ```
 
 ```text
@@ -411,13 +411,13 @@ AppStream module streams judged per stream.
 #### Inline in Nmap (NSE)
 
 ```bash
-nmap -sV --script /opt/vulndb/vulndb.nse \
-     --script-args vulndb.bin=/opt/vulndb/vulndb,vulndb.db=/opt/vulndb/vulndb.sqlite 10.0.0.0/24
+nmap -sV --script /opt/bunyip/bunyip.nse \
+     --script-args bunyip.bin=/opt/bunyip/bunyip,bunyip.db=/opt/bunyip/bunyip.sqlite 10.0.0.0/24
 ```
 
 ```text
 22/tcp open  ssh     OpenSSH 9.6p1 Ubuntu 3ubuntu13.18 (Ubuntu Linux; protocol 2.0)
-| vulndb:
+| bunyip:
 |   6 candidate CVEs (0 in CISA KEV, 0 with public exploit evidence)
 |   Distribution: Ubuntu 24.04 installed 1:9.6p1-3ubuntu13.18; 16 more fixed in the package
 |   CVE-2023-51767   HIGH      CVSS 7.0
@@ -425,15 +425,15 @@ nmap -sV --script /opt/vulndb/vulndb.nse \
 ```
 
 The script is a thin adapter: per port it writes the fingerprint and the host's
-other open ports to a temp file, runs `vulndb nse --request FILE`, and prints the
+other open ports to a temp file, runs `bunyip nse --request FILE`, and prints the
 answer. Target-controlled banner text never reaches a command line. Script args:
-`vulndb.bin`, `vulndb.db`, `vulndb.max` (CVEs per port, default 10),
-`vulndb.mincvss`, `vulndb.showall`. Unix-like systems only.
+`bunyip.bin`, `bunyip.db`, `bunyip.max` (CVEs per port, default 10),
+`bunyip.mincvss`, `bunyip.showall`. Unix-like systems only.
 
 ### Ingest web fingerprints (httpx / webanalyze)
 
 Web applications sit behind a web server, so a port-and-banner scan usually sees
-only the server. A web fingerprinter identifies the apps; `vulndb ingest` maps
+only the server. A web fingerprinter identifies the apps; `bunyip ingest` maps
 each detected technology to a CPE (via the curated `http_tech` map) and assesses
 it like any other identity.
 
@@ -441,9 +441,9 @@ it like any other identity.
 
 ```bash
 httpx -l hosts.txt -td -json -o httpx.jsonl     # -td = tech detect, -json = one object per line
-vulndb ingest --from httpx httpx.jsonl
+bunyip ingest --from httpx httpx.jsonl
 # or stream it straight through:
-httpx -l hosts.txt -td -json | vulndb ingest --from httpx -
+httpx -l hosts.txt -td -json | bunyip ingest --from httpx -
 ```
 
 Each httpx line looks like
@@ -470,17 +470,17 @@ gives the structured report.
 
 ```bash
 webanalyze -hosts hosts.txt -output json > webanalyze.json
-vulndb ingest --from webanalyze webanalyze.json
+bunyip ingest --from webanalyze webanalyze.json
 ```
 
 ### Utility commands
 
 ```bash
-vulndb info      # versions, NVD data age, KEV version, coverage; warns if stale or synthetic
-vulndb db verify # SQLite integrity, foreign keys, every criterion re-parsed vs its index columns
-vulndb db stats  # row counts and file size
-vulndb bundle keygen|create|verify|import   # signed transport bundles (docs/deployment.md)
-vulndb version   # version, OS/arch, Go version
+bunyip info      # versions, NVD data age, KEV version, coverage; warns if stale or synthetic
+bunyip db verify # SQLite integrity, foreign keys, every criterion re-parsed vs its index columns
+bunyip db stats  # row counts and file size
+bunyip bundle keygen|create|verify|import   # signed transport bundles (docs/deployment.md)
+bunyip version   # version, OS/arch, Go version
 ```
 
 **Exit codes:** `0` success (including "no results"); `1` runtime error (missing
@@ -506,7 +506,7 @@ failed verify); `2` usage error (unknown command/flag, unsupported `--format`).
   advisory data and are flagged.
 - **Windows.** Assessed per build, not per patch level — the result is the
   release's exposure ("applies unless patched"), not a finding. Needs `-sC` and
-  works in `vulndb nmap` only, not the NSE adapter. Windows services themselves
+  works in `bunyip nmap` only, not the NSE adapter. Windows services themselves
   (SMB, RDP, LDAP) are reported as OS components, not assessed individually.
 - **OS-attributed components.** Vulnerabilities NVD files against an OS CPE are
   invisible to a product CPE (e.g. recent IIS CVEs are listed against Windows,
@@ -523,7 +523,7 @@ failed verify); `2` usage error (unknown command/flag, unsupported `--format`).
 
 ## Acknowledgements — third-party data sources
 
-Offline VulnDB is a correlation layer over public vulnerability data. All of the
+Bunyip is a correlation layer over public vulnerability data. All of the
 following is **fetched at build/update time** and is **not** redistributed in
 this source tree. With gratitude to the maintainers of these datasets:
 
@@ -535,14 +535,14 @@ this source tree. With gratitude to the maintainers of these datasets:
 | [**Metasploit Framework**](https://github.com/rapid7/metasploit-framework) | Exploit-module references per CVE | BSD-3-Clause; module metadata only, no code |
 | [**Exploit-DB**](https://gitlab.com/exploit-database/exploitdb) | Public exploit/PoC references per CVE | GPL-2.0; the index is read at build time and **not** shipped |
 | [**OSV.dev**](https://osv.dev) distribution exports (Ubuntu, Debian, Red Hat, Rocky, AlmaLinux) | Distribution backport / fix verdicts | Each advisory under its upstream distribution's license |
-| [**webappanalyzer**](https://github.com/enthec/webappanalyzer) | Web technology → CPE map (`http_tech`), for `vulndb ingest` | **GPL-3.0** — the derived map is generated at build time and is **not** shipped in this repo (gitignored) |
+| [**webappanalyzer**](https://github.com/enthec/webappanalyzer) | Web technology → CPE map (`http_tech`), for `bunyip ingest` | **GPL-3.0** — the derived map is generated at build time and is **not** shipped in this repo (gitignored) |
 | [**Nmap**](https://nmap.org) service-probe database | `review-products` candidate proposals (curation only) | Read from the local Nmap install; not redistributed |
 
-These tools pair naturally with Offline VulnDB and are acknowledged with thanks:
+These tools pair naturally with Bunyip and are acknowledged with thanks:
 [Nmap](https://nmap.org) (service/version detection and the NSE adapter),
 [httpx](https://github.com/projectdiscovery/httpx) and
 [webanalyze](https://github.com/rverton/webanalyze) (web fingerprinting feeding
-`vulndb ingest`).
+`bunyip ingest`).
 
 The curated first-party data in `data/` (aliases, the distro package map and
 release lifecycle, Windows builds, product names, HTTP app fingerprints) is part

@@ -1,5 +1,5 @@
 {
-  "comment": "Curated vendor/product aliases from identities reported by Nmap (and other tools) to the vendor/product names NVD uses. An alias ADDS a candidate identity; the observed CPE is always queried as well. Every entry was reviewed by hand against NVD usage; candidates come from `vulndb-update review-aliases`. Product-name collisions that look similar but are different software go in `rejected` so reviews do not resurface them. confidence: HIGH = same product, renamed/acquired vendor; MEDIUM = same product embedded or rebranded by another vendor.",
+  "comment": "Curated vendor/product aliases from identities reported by Nmap (and other tools) to the vendor/product names NVD uses. An alias ADDS a candidate identity; the observed CPE is always queried as well. Every entry was reviewed by hand against NVD usage; candidates come from `bunyip-update review-aliases`. Product-name collisions that look similar but are different software go in `rejected` so reviews do not resurface them. confidence: HIGH = same product, renamed/acquired vendor; MEDIUM = same product embedded or rebranded by another vendor.",
   "source": "curated:nmap-7.94-review-2026-10-06",
   "aliases": [
     {"observed": "a:igor_sysoev:nginx", "canonical": ["a:f5:nginx", "a:nginx:nginx"], "confidence": "HIGH"},

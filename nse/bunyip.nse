@@ -4,13 +4,13 @@ local stdnse = require "stdnse"
 
 description = [[
 Reports candidate CVEs for detected service versions from a local Offline
-VulnDB database, with CISA KEV and public-exploit evidence and, for Ubuntu,
+Bunyip database, with CISA KEV and public-exploit evidence and, for Ubuntu,
 Debian and Red Hat-family packages, distribution backport verdicts. No
-network access: everything is answered by the local `vulndb` binary.
+network access: everything is answered by the local `bunyip` binary.
 
 The script is a thin adapter. It sends the port's service fingerprint (and
 the host's other open ports, which provide distribution evidence) to
-`vulndb nse` and prints the answer. Results are candidate vulnerabilities
+`bunyip nse` and prints the answer. Results are candidate vulnerabilities
 based on product/version data, not proof that the target is vulnerable.
 
 Requires version detection (-sV). Unix-like systems only (the binary is run
@@ -19,19 +19,19 @@ via the shell; Windows is untested).
 
 ---
 -- @usage
--- nmap -sV --script vulndb --script-args vulndb.bin=/opt/vulndb/vulndb,vulndb.db=/opt/vulndb/vulndb.sqlite <target>
+-- nmap -sV --script bunyip --script-args bunyip.bin=/opt/bunyip/bunyip,bunyip.db=/opt/bunyip/bunyip.sqlite <target>
 --
--- @args vulndb.bin     Path to the vulndb binary (default: "vulndb" on PATH).
--- @args vulndb.db      Path to the database (default: vulndb's own default,
---                      $VULNDB_DB or ./vulndb.sqlite).
--- @args vulndb.max     Maximum CVEs listed per port (default 10).
--- @args vulndb.mincvss Hide CVEs with a CVSS score below this (default 0).
--- @args vulndb.showall Also list undetermined CVEs and CVEs fixed in the
+-- @args bunyip.bin     Path to the bunyip binary (default: "bunyip" on PATH).
+-- @args bunyip.db      Path to the database (default: bunyip's own default,
+--                      $BUNYIP_DB or ./bunyip.sqlite).
+-- @args bunyip.max     Maximum CVEs listed per port (default 10).
+-- @args bunyip.mincvss Hide CVEs with a CVSS score below this (default 0).
+-- @args bunyip.showall Also list undetermined CVEs and CVEs fixed in the
 --                      distribution package (default false).
 --
 -- @output
 -- 22/tcp open  ssh     OpenSSH 9.6p1 Ubuntu 3ubuntu13.18 (Ubuntu Linux; protocol 2.0)
--- | vulndb:
+-- | bunyip:
 -- |   6 candidate CVEs (0 in CISA KEV, 0 with public exploit evidence)
 -- |   Distribution: Ubuntu 24.04 installed 1:9.6p1-3ubuntu13.18; 16 more fixed in the package
 -- |   CVE-2026-73282   MEDIUM    CVSS 4.8  Ubuntu: VULNERABLE
@@ -51,7 +51,7 @@ via the shell; Windows is untested).
 --   </table>
 -- </table>
 
-author = "Offline VulnDB"
+author = "Bunyip"
 license = "Same as Nmap--See https://nmap.org/book/man-legal.html"
 categories = {"vuln", "safe"}
 
@@ -117,9 +117,9 @@ local function os_cpes(host)
   return out
 end
 
-local function run_vulndb(request)
-  local bin = stdnse.get_script_args("vulndb.bin") or "vulndb"
-  local db = stdnse.get_script_args("vulndb.db")
+local function run_bunyip(request)
+  local bin = stdnse.get_script_args("bunyip.bin") or "bunyip"
+  local db = stdnse.get_script_args("bunyip.db")
   local path = os.tmpname()
   local f, err = io.open(path, "w")
   if not f then
@@ -144,7 +144,7 @@ local function run_vulndb(request)
   stdnse.debug2("response: %s", out)
   local ok, resp = json.parse(out)
   if not ok or type(resp) ~= "table" then
-    return nil, "no valid answer from " .. bin .. " (check vulndb.bin and vulndb.db)"
+    return nil, "no valid answer from " .. bin .. " (check bunyip.bin and bunyip.db)"
   end
   if resp.error then
     return nil, resp.error
@@ -153,7 +153,7 @@ local function run_vulndb(request)
 end
 
 action = function(host, port)
-  local showall = stdnse.get_script_args("vulndb.showall")
+  local showall = stdnse.get_script_args("bunyip.showall")
   local request = {
     version = REQUEST_VERSION,
     host = {
@@ -164,30 +164,30 @@ action = function(host, port)
     ports = json.make_array(host_ports(host)),
     target = {protocol = port.protocol, port = port.number},
     options = {
-      max = tonumber(stdnse.get_script_args("vulndb.max")) or 10,
-      mincvss = tonumber(stdnse.get_script_args("vulndb.mincvss")) or 0,
+      max = tonumber(stdnse.get_script_args("bunyip.max")) or 10,
+      mincvss = tonumber(stdnse.get_script_args("bunyip.mincvss")) or 0,
       show_undetermined = showall ~= nil and showall ~= "false",
       show_distro_fixed = showall ~= nil and showall ~= "false",
     },
   }
 
-  local resp, err = run_vulndb(request)
+  local resp, err = run_bunyip(request)
   if not resp then
-    -- Shown at every verbosity: a misconfigured vulndb.bin / vulndb.db must
+    -- Shown at every verbosity: a misconfigured bunyip.bin / bunyip.db must
     -- not look like "no vulnerabilities".
     return "ERROR: " .. err
   end
   local c = resp.counts or {}
   if not request.options.show_undetermined then
     if resp.assessment == "OS_COMPONENT" then
-      return nil -- Windows built-in: assessed per host by `vulndb nmap`, not per port
+      return nil -- Windows built-in: assessed per host by `bunyip nmap`, not per port
     end
     if (c.matches or 0) == 0 and (c.undetermined or 0) == 0 and #(resp.notes or {}) == 0 then
-      return nil -- nothing to report for this port (vulndb.showall lists everything)
+      return nil -- nothing to report for this port (bunyip.showall lists everything)
     end
   end
 
-  -- Structured output for -oX; the text lines are rendered by vulndb.
+  -- Structured output for -oX; the text lines are rendered by bunyip.
   local out = stdnse.output_table()
   out.assessment = resp.assessment
   if resp.distro and resp.distro ~= "" then

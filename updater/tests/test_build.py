@@ -19,7 +19,7 @@ def do_build(sources, out, allow_small=True):
 
 @pytest.fixture
 def db(sources, tmp_path):
-    out = tmp_path / "vulndb.sqlite"
+    out = tmp_path / "bunyip.sqlite"
     stats = do_build(sources, out)
     conn = sqlite3.connect(out)
     yield conn, stats
@@ -96,7 +96,7 @@ def test_completeness_floors(sources, tmp_path):
 
 
 def test_failed_build_keeps_existing_database(sources, tmp_path):
-    out = tmp_path / "vulndb.sqlite"
+    out = tmp_path / "bunyip.sqlite"
     out.write_bytes(b"previous good database")
     with pytest.raises(build.BuildError):
         do_build(sources, out, allow_small=False)
@@ -105,7 +105,7 @@ def test_failed_build_keeps_existing_database(sources, tmp_path):
 
 
 def test_rebuild_replaces_existing(sources, tmp_path):
-    out = tmp_path / "vulndb.sqlite"
+    out = tmp_path / "bunyip.sqlite"
     out.write_bytes(b"old")
     do_build(sources, out)
     assert scalar(sqlite3.connect(out), "SELECT COUNT(*) FROM cves") == 11

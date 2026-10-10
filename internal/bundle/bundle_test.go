@@ -86,7 +86,7 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatalf("verify: %+v %v", v, err)
 	}
 
-	target := filepath.Join(dir, "installed", "vulndb.sqlite")
+	target := filepath.Join(dir, "installed", "bunyip.sqlite")
 	os.Mkdir(filepath.Dir(target), 0o755)
 	res, err := Import(ctx, out, target, Options{PublicKey: pk})
 	if err != nil || res.Previous != "" {
@@ -216,7 +216,7 @@ func TestMaliciousAndBrokenBundles(t *testing.T) {
 		"attacker signature":      {{name: manifestName, data: manifest}, {name: sigName, data: evilSig}, {name: dbName, data: dbBytes}},
 		"manifest edited":         {{name: manifestName, data: edited}, {name: sigName, data: sig}, {name: dbName, data: dbBytes}},
 		"database first":          {{name: dbName, data: dbBytes}, {name: manifestName, data: manifest}, {name: sigName, data: sig}},
-		"path traversal":          {{name: manifestName, data: manifest}, {name: sigName, data: sig}, {name: "../vulndb.sqlite", data: dbBytes}},
+		"path traversal":          {{name: manifestName, data: manifest}, {name: sigName, data: sig}, {name: "../bunyip.sqlite", data: dbBytes}},
 		"symlink member":          {{name: manifestName, data: manifest}, {name: sigName, data: sig}, {name: dbName, typeflag: tar.TypeSymlink}},
 		"extra member after db":   {{name: manifestName, data: manifest}, {name: sigName, data: sig}, {name: dbName, data: dbBytes}, {name: "x.sh", data: []byte("x")}},
 		"missing database":        {{name: manifestName, data: manifest}, {name: sigName, data: sig}},
@@ -224,7 +224,7 @@ func TestMaliciousAndBrokenBundles(t *testing.T) {
 		"not json manifest":       {{name: manifestName, data: []byte("<xml/>")}, {name: sigName, data: sig}, {name: dbName, data: dbBytes}},
 		"unknown manifest fields": {{name: manifestName, data: []byte(`{"format":"offline-vulndb-bundle","format_version":1,"x":1}`)}},
 	}
-	target := filepath.Join(dir, "installed", "vulndb.sqlite")
+	target := filepath.Join(dir, "installed", "bunyip.sqlite")
 	os.Mkdir(filepath.Dir(target), 0o755)
 	if _, err := Import(ctx, good, target, Options{PublicKey: pk}); err != nil {
 		t.Fatal(err)
@@ -248,7 +248,7 @@ func TestMaliciousAndBrokenBundles(t *testing.T) {
 		t.Errorf("garbage: %v", err)
 	}
 	assertNoTemp(t, filepath.Dir(target))
-	if _, err := os.Stat(filepath.Join(dir, "vulndb.sqlite")); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, "bunyip.sqlite")); err == nil {
 		t.Error("path traversal wrote outside the target directory")
 	}
 }

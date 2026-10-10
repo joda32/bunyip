@@ -16,7 +16,7 @@ const fixturePath = "../../testdata/fixtures/synthetic.json"
 func newFixtureDB(t *testing.T) string {
 	t.Helper()
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "vulndb.sqlite")
+	path := filepath.Join(t.TempDir(), "bunyip.sqlite")
 	s, err := Create(ctx, path)
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +70,7 @@ func TestOpenCorrupt(t *testing.T) {
 }
 
 func TestOpenForeignSQLite(t *testing.T) {
-	// A valid SQLite file that is not an Offline VulnDB database.
+	// A valid SQLite file that is not a Bunyip database.
 	path := filepath.Join(t.TempDir(), "other.sqlite")
 	s, err := Create(context.Background(), path)
 	if err != nil {

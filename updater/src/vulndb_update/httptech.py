@@ -1,7 +1,7 @@
 """Web technology name -> NVD CPE map (data/http_tech.json).
 
 Generated from the GPL-3.0 webappanalyzer fingerprint corpus; feeds the
-`vulndb ingest` adapter, which maps a web fingerprinter's detected technology
+`bunyip ingest` adapter, which maps a web fingerprinter's detected technology
 names to CPE identities. Mappings are leads (the corpus has occasional
 errors), so ingested matches are reported at reduced confidence.
 """

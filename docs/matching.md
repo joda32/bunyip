@@ -1,6 +1,6 @@
 # Matching semantics
 
-This document describes exactly how Offline VulnDB decides whether a CVE is a
+This document describes exactly how Bunyip decides whether a CVE is a
 candidate for a supplied CPE. When a result looks wrong, run the query with
 `--debug` and compare the per-rule trace against these rules.
 
@@ -43,7 +43,7 @@ Aliases only ever **add** candidates. The observed identity is never replaced:
 both old and new vendors can hold CVEs (e.g. `mysql:mysql` up to 2017,
 `oracle:mysql` after).
 
-For Nmap services, `vulndb nmap` also:
+For Nmap services, `bunyip nmap` also:
 - does not query OS/hardware CPEs reported alongside a service
   (`cpe:/o:linux:linux_kernel`) as the service;
 - does not assess services Nmap only guessed from the port number
@@ -61,7 +61,7 @@ For Nmap services, `vulndb nmap` also:
 
 Nmap's version detection is banner-based, and web applications rarely put a
 version in a banner, so the web tier is better served by specialised
-fingerprinters. `vulndb ingest --from httpx|webanalyze` reads their output and
+fingerprinters. `bunyip ingest --from httpx|webanalyze` reads their output and
 maps each detected technology name to a CPE through the `http_tech` table
 (`data/http_tech.json`, ~450 mappings derived from the webappanalyzer
 corpus), then assesses it through the same pipeline as a scan. Because the
@@ -92,7 +92,7 @@ vendor:product with an optional capture group for the version. With a captured
 version the identity takes the row's confidence (HIGH/MEDIUM); without one it
 is LOW (the application is named but version-dependent results are UNKNOWN).
 Seeded with WordPress, Joomla, Drupal, TYPO3, Jenkins, Jetty, Tomcat (via the
-Apache-Coyote banner) and PHP. The evidence is only available in `vulndb nmap`
+Apache-Coyote banner) and PHP. The evidence is only available in `bunyip nmap`
 on a scan that ran the relevant `http-*` scripts (`-sC`); the NSE adapter does
 not see other scripts' output.
 
@@ -102,7 +102,7 @@ Nmap fingerprints many services without an application CPE. Automatic
 matching of their names against NVD mostly finds the wrong software
 (`Amazon S3 httpd` → a WordPress plugin, `Catwalk` → a theme vendor), so the
 map (`data/product_names.json`, table `product_names`) is curated entry by
-entry. `vulndb-update review-products` proposes candidates from Nmap's probe
+entry. `bunyip-update review-products` proposes candidates from Nmap's probe
 database. A name is matched exactly, or by an anchored regular expression for
 Nmap's per-protocol variants (`hMailServer smtpd|pop3d|imapd`). The map is
 consulted only when Nmap reported no application CPE.
@@ -241,7 +241,7 @@ With a single supplied CPE we can only evaluate one rule at a time, so:
 
 ### Platform conditions ("running on" an OS)
 
-In `vulndb nmap`, a host with a known operating system — a Windows build
+In `bunyip nmap`, a host with a known operating system — a Windows build
 (section 10) or a detected Linux distribution — can decide a service's
 CONDITIONAL CVE whose only open condition is the other node of an AND
 configuration ("Tomcat running on Windows", "OpenSSH running on Red Hat").
@@ -340,7 +340,7 @@ the curated `distro_packages` table (`data/distro_packages.json`), e.g.
 - with the package revision visible, a release that published exactly
   `<upstream>-<revision>` is preferred;
 - otherwise, any release that shipped the observed upstream version;
-- in `vulndb nmap`, a release established from an exact package version on a
+- in `bunyip nmap`, a release established from an exact package version on a
   host (usually from OpenSSH) is used as a hint for that host's other
   services, including when the service's own version is not in the data;
 - several candidate releases → `AMBIGUOUS`. A verdict is given only when all
@@ -359,7 +359,7 @@ the curated `distro_packages` table (`data/distro_packages.json`), e.g.
 `FIXED` results stay in the output, but they are excluded from match counts
 and listed separately ("fixed in the Ubuntu package").
 
-**Host-level distribution.** In `vulndb nmap`, when the distribution-marked
+**Host-level distribution.** In `bunyip nmap`, when the distribution-marked
 services on a host agree (e.g. Apache `(Red Hat Enterprise Linux)`), services
 showing no distribution (RHEL's `OpenSSH_8.7`) are evaluated against it. This
 happens only when the advisory data knows the observed upstream version,
@@ -424,7 +424,7 @@ kept, because later advisories re-list CVEs. For example, AlmaLinux
 Windows services carry only `cpe:/o:microsoft:windows` (or no CPE), so they
 cannot be assessed per port. An unauthenticated scan can, however, see the
 host's **build**. It cannot see the **patch level** (the update revision, or
-UBR, as in `20348.2849`). `vulndb nmap` uses the build to list the CVEs of the
+UBR, as in `20348.2849`). `bunyip nmap` uses the build to list the CVEs of the
 host's release, which apply *unless the host is patched*. This is an inventory
 of exposure, not a finding of vulnerability.
 
@@ -490,6 +490,6 @@ would all be undetermined. Rules that name a specific edition (`datacenter`,
 JSON lists every applicable CVE compactly under `hosts[].windows[]`.
 
 The NSE adapter does not do this: a port script cannot read other scripts'
-results. Run `vulndb nmap` on the `-oX` output of a scan that included
+results. Run `bunyip nmap` on the `-oX` output of a scan that included
 `rdp-ntlm-info` or `smb-os-discovery` (both are in Nmap's `default` category,
 so `-sC` is enough).

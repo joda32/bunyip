@@ -1,4 +1,4 @@
-// Command vulndb is the Offline VulnDB query CLI.
+// Command bunyip is the Bunyip query CLI.
 package main
 
 import (
@@ -42,17 +42,17 @@ const (
 	staleAfterCreated = 30 * 24 * time.Hour
 )
 
-const usage = `Offline VulnDB - offline CPE to candidate CVE correlation
+const usage = `Bunyip - offline CPE to candidate CVE correlation
 
 Usage:
-  vulndb [--db PATH] [--debug] <command> [options]
+  bunyip [--db PATH] [--debug] <command> [options]
 
 Commands:
   query --cpe CPE [--format text|json]   find candidate CVEs for a CPE (2.2 or 2.3)
         [--distro NAME [--package-version VER]]  also evaluate distribution advisories
                                          (ubuntu, debian, redhat, rocky, almalinux, centos)
   nmap FILE [--format text|json]         assess services in Nmap XML output (-oX); FILE "-" = stdin
-  nse --request FILE                     answer a request from nse/vulndb.nse (JSON in, JSON out)
+  nse --request FILE                     answer a request from nse/bunyip.nse (JSON in, JSON out)
   info                                   show database provenance and age
   update                                 fetch all sources and (re)build --db (auto-runs on first
                                          query when --db is the default and no database exists yet)
@@ -66,12 +66,12 @@ Commands:
   bundle verify FILE --pubkey FILE       check a bundle's signature and contents
   bundle import FILE --pubkey FILE       verify and atomically install a bundle as --db
         [--allow-unsigned] [--allow-downgrade]
-  version                                print the vulndb version and build details
+  version                                print the bunyip version and build details
 
 Global options (may also follow the command):
-  --db PATH   database file (default $VULNDB_DB, else ./vulndb.sqlite)
+  --db PATH   database file (default $BUNYIP_DB, else ./bunyip.sqlite)
   --debug     explain matching decisions on stderr
-  --version   print the vulndb version and exit
+  --version   print the bunyip version and exit
 
 Results are CANDIDATE vulnerabilities based on product/version data; they do
 not prove a target is vulnerable. Distribution backported fixes are evaluated
@@ -89,7 +89,7 @@ func main() {
 	os.Exit(runWithStdin(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-// versionLine reports the vulndb version, preferring the link-time value and
+// versionLine reports the bunyip version, preferring the link-time value and
 // otherwise the embedded VCS revision (short, with a "-dirty" suffix if the
 // build tree was modified).
 func versionLine() string {
@@ -117,7 +117,7 @@ func versionLine() string {
 			}
 		}
 	}
-	return fmt.Sprintf("vulndb %s (%s/%s, %s)", v, runtime.GOOS, runtime.GOARCH, runtime.Version())
+	return fmt.Sprintf("bunyip %s (%s/%s, %s)", v, runtime.GOOS, runtime.GOARCH, runtime.Version())
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -127,7 +127,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 // globals holds options accepted both before and after the command name.
 type globals struct {
 	db string
-	// dbExplicit is true when --db (or $VULNDB_DB) chose the path, so a
+	// dbExplicit is true when --db (or $BUNYIP_DB) chose the path, so a
 	// missing file is an error rather than a trigger to auto-build.
 	dbExplicit bool
 	debug      bool
@@ -137,7 +137,7 @@ type globals struct {
 func (g *globals) register(fs *flag.FlagSet) {
 	fs.StringVar(&g.db, "db", g.db, "database file")
 	fs.BoolVar(&g.debug, "debug", g.debug, "explain matching decisions")
-	fs.BoolVar(&g.version, "version", g.version, "print the vulndb version and exit")
+	fs.BoolVar(&g.version, "version", g.version, "print the bunyip version and exit")
 }
 
 // usageError marks errors that should print usage and exit 2.
@@ -146,8 +146,8 @@ type usageError struct{ msg string }
 func (e usageError) Error() string { return e.msg }
 
 func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	g := &globals{db: defaultDBPath(), dbExplicit: os.Getenv("VULNDB_DB") != ""}
-	fs := newFlagSet("vulndb", stderr)
+	g := &globals{db: defaultDBPath(), dbExplicit: os.Getenv("BUNYIP_DB") != ""}
+	fs := newFlagSet("bunyip", stderr)
 	g.register(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
@@ -203,21 +203,21 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 	case err == nil:
 		return exitOK
 	case errors.As(err, &ue):
-		fmt.Fprintf(stderr, "vulndb: %v\n\n%s", err, usage)
+		fmt.Fprintf(stderr, "bunyip: %v\n\n%s", err, usage)
 		return exitUsage
 	case errors.Is(err, flag.ErrHelp):
 		return exitUsage
 	default:
-		fmt.Fprintf(stderr, "vulndb: %v\n", err)
+		fmt.Fprintf(stderr, "bunyip: %v\n", err)
 		return exitError
 	}
 }
 
 func defaultDBPath() string {
-	if p := os.Getenv("VULNDB_DB"); p != "" {
+	if p := os.Getenv("BUNYIP_DB"); p != "" {
 		return p
 	}
-	return "vulndb.sqlite"
+	return "bunyip.sqlite"
 }
 
 func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {
@@ -445,7 +445,7 @@ func firstN(s []string, n int) []string {
 
 func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("build", stderr)
-	out := fs.String("out", "vulndb.sqlite", "database file to create")
+	out := fs.String("out", "bunyip.sqlite", "database file to create")
 	offlineFrom := fs.String("offline-from", "", "build from already-downloaded feeds + KEV in this directory")
 	cache := fs.String("cache", "", "download cache; fetch NVD feeds + KEV into it over the network")
 	allowSmall := fs.Bool("allow-small", false, "skip completeness floors (tests/partial builds)")
@@ -630,9 +630,9 @@ func cmdUpdate(ctx context.Context, g *globals, args []string, stdout, stderr io
 // defaultCacheDir is the per-user cache location for downloaded sources.
 func defaultCacheDir() string {
 	if d, err := os.UserCacheDir(); err == nil {
-		return filepath.Join(d, "vulndb")
+		return filepath.Join(d, "bunyip")
 	}
-	return ".vulndb-cache"
+	return ".bunyip-cache"
 }
 
 // distroInput builds the distribution context for `query`. The package
@@ -939,7 +939,7 @@ func cmdBundle(ctx context.Context, g *globals, args []string, stdout, stderr io
 		return nil
 
 	case "create":
-		out := fs.String("out", "", "bundle file to write, e.g. vulndb-2026-10-07.tar.gz")
+		out := fs.String("out", "", "bundle file to write, e.g. bunyip-2026-10-07.tar.gz")
 		key := fs.String("key", "", "private key to sign with (omit for an unsigned bundle)")
 		if err := parseSub(fs, args[1:]); err != nil {
 			return err
@@ -1033,7 +1033,7 @@ func writeManifest(w io.Writer, m *bundle.Manifest) {
 	fmt.Fprintf(w, "  SHA-256:           %s\n", m.Database.SHA256)
 }
 
-// cmdNSE answers one request from nse/vulndb.nse. Requests arrive in a file
+// cmdNSE answers one request from nse/bunyip.nse. Requests arrive in a file
 // (never on the command line: they contain banner text from the target).
 // Failures are reported as JSON {"error": ...} on stdout as well, so the
 // script can show them; the exit code is still non-zero.
@@ -1078,11 +1078,11 @@ func answerNSE(ctx context.Context, g *globals, reqPath string) (*nmap.NSERespon
 }
 
 // openStore opens the configured database, first fetching sources and
-// building it (vulndb update) when no database exists yet — the auto-bootstrap
+// building it (bunyip update) when no database exists yet — the auto-bootstrap
 // so a fresh install works on first query.
 func (g *globals) openStore(ctx context.Context, stderr io.Writer) (*database.Store, error) {
 	if _, err := os.Stat(g.db); errors.Is(err, os.ErrNotExist) && !g.dbExplicit {
-		fmt.Fprintf(stderr, "No database at %s; fetching sources and building it (vulndb update)...\n", g.db)
+		fmt.Fprintf(stderr, "No database at %s; fetching sources and building it (bunyip update)...\n", g.db)
 		if err := cmdUpdate(ctx, g, nil, io.Discard, stderr); err != nil {
 			return nil, fmt.Errorf("auto-update failed: %w", err)
 		}

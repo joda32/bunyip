@@ -1,4 +1,4 @@
-"""vulndb-update command line."""
+"""bunyip-update command line."""
 
 import argparse
 import sys
@@ -21,11 +21,11 @@ _REPO_HTTP_TECH = _REPO / "data" / "http_tech.json"
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="vulndb-update", description=__doc__)
+    p = argparse.ArgumentParser(prog="bunyip-update", description=__doc__)
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="command", required=True)
 
-    b = sub.add_parser("build", help="build a fresh vulndb.sqlite from NVD + CISA KEV")
+    b = sub.add_parser("build", help="build a fresh bunyip.sqlite from NVD + CISA KEV")
     b.add_argument("--out", required=True, type=Path, help="database file to create or replace")
     src = b.add_mutually_exclusive_group()
     src.add_argument("--cache", type=Path, default=Path(".cache/feeds"),
@@ -65,13 +65,13 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--quiet", action="store_true")
 
     r = sub.add_parser("review-aliases", help="propose aliases for human review from Nmap's service probes")
-    r.add_argument("--db", required=True, type=Path, help="a built vulndb.sqlite")
+    r.add_argument("--db", required=True, type=Path, help="a built bunyip.sqlite")
     r.add_argument("--nmap-probes", type=Path, default=Path("/usr/share/nmap/nmap-service-probes"))
     r.add_argument("--aliases", type=Path, default=_REPO_ALIASES)
 
     rp = sub.add_parser("review-products",
                         help="propose product-name mappings for human review from Nmap's service probes")
-    rp.add_argument("--db", required=True, type=Path, help="a built vulndb.sqlite")
+    rp.add_argument("--db", required=True, type=Path, help="a built bunyip.sqlite")
     rp.add_argument("--nmap-probes", type=Path, default=Path("/usr/share/nmap/nmap-service-probes"))
     rp.add_argument("--from-scan", type=Path, nargs="+", metavar="SCAN.xml",
                     help="propose from captured `nmap -sV -oX` output instead of the probe DB "
@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         return _build(args, log)
     except (fetch.FetchError, build.BuildError, kev.KEVError, jsonstream.StreamError,
             aliases.AliasError, epss.EPSSError, exploits.ExploitError, OSError, ValueError) as e:
-        print(f"vulndb-update: {e}", file=sys.stderr)
+        print(f"bunyip-update: {e}", file=sys.stderr)
         return 1
 
 

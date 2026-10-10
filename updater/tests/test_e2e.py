@@ -20,19 +20,19 @@ def find_go():
 
 
 @pytest.fixture(scope="module")
-def vulndb_bin(tmp_path_factory):
+def bunyip_bin(tmp_path_factory):
     go = find_go()
     if not go:
         pytest.skip("Go toolchain not found (set GO=/path/to/go)")
-    out = tmp_path_factory.mktemp("bin") / "vulndb"
-    subprocess.run([go, "build", "-o", str(out), "./cmd/vulndb"], cwd=REPO, check=True,
+    out = tmp_path_factory.mktemp("bin") / "bunyip"
+    subprocess.run([go, "build", "-o", str(out), "./cmd/bunyip"], cwd=REPO, check=True,
                    env={**os.environ, "CGO_ENABLED": "0", "GOFLAGS": "-mod=readonly"})
     return out
 
 
 @pytest.fixture
 def real_db(sources, tmp_path):
-    out = tmp_path / "vulndb.sqlite"
+    out = tmp_path / "bunyip.sqlite"
     rc = cli.main(["build", "--offline-from", str(sources), "--out", str(out), "--allow-small", "--quiet"])
     assert rc == 0
     return out
@@ -44,8 +44,8 @@ def query(bin_, db, cpe):
     return {v["cve"]: v for v in json.loads(p.stdout)["result"]["vulnerabilities"]}
 
 
-def test_apache_2_4_49(vulndb_bin, real_db):
-    v = query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.49")
+def test_apache_2_4_49(bunyip_bin, real_db):
+    v = query(bunyip_bin, real_db, "cpe:/a:apache:http_server:2.4.49")
     assert set(v) == {"CVE-2021-41773", "CVE-2021-42013", "CVE-2021-44790", "CVE-2022-26377"}
     a = v["CVE-2021-41773"]
     assert a["version_status"] == "MATCH" and a["match_confidence"] == "EXACT"
@@ -57,47 +57,47 @@ def test_apache_2_4_49(vulndb_bin, real_db):
     assert v["CVE-2021-44790"]["known_exploited"] is False
 
 
-def test_apache_2_4_50_and_2_4_51(vulndb_bin, real_db):
-    assert set(query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.50")) == {"CVE-2021-42013", "CVE-2021-44790", "CVE-2022-26377"}
-    assert set(query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.51")) == {"CVE-2021-44790", "CVE-2022-26377"}
-    assert set(query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.52")) == {"CVE-2022-26377"}
-    assert query(vulndb_bin, real_db, "cpe:/a:apache:http_server:2.4.54") == {}
+def test_apache_2_4_50_and_2_4_51(bunyip_bin, real_db):
+    assert set(query(bunyip_bin, real_db, "cpe:/a:apache:http_server:2.4.50")) == {"CVE-2021-42013", "CVE-2021-44790", "CVE-2022-26377"}
+    assert set(query(bunyip_bin, real_db, "cpe:/a:apache:http_server:2.4.51")) == {"CVE-2021-44790", "CVE-2022-26377"}
+    assert set(query(bunyip_bin, real_db, "cpe:/a:apache:http_server:2.4.52")) == {"CVE-2022-26377"}
+    assert query(bunyip_bin, real_db, "cpe:/a:apache:http_server:2.4.54") == {}
 
 
-def test_openssh_version_update_split(vulndb_bin, real_db):
+def test_openssh_version_update_split(bunyip_bin, real_db):
     # NVD: < 9.3, 9.3:-, 9.3:p1 (fixed in 9.3p2). The OpenSSH comparator joins
     # NVD's version+update so Nmap-style versions evaluate correctly.
     for detected, affected in [("8.9p1", True), ("9.3p1", True), ("9.3p2", False), ("9.4p1", False)]:
-        v = query(vulndb_bin, real_db, f"cpe:/a:openbsd:openssh:{detected}")
+        v = query(bunyip_bin, real_db, f"cpe:/a:openbsd:openssh:{detected}")
         if affected:
             assert v["CVE-2023-38408"]["version_status"] == "MATCH", detected
         else:
             assert "CVE-2023-38408" not in v, detected
 
 
-def test_and_configuration_is_conditional(vulndb_bin, real_db):
-    v = query(vulndb_bin, real_db, "cpe:2.3:a:adobe:flash_player_desktop_runtime:21.0.0.197:*:*:*:*:*:*:*")
+def test_and_configuration_is_conditional(bunyip_bin, real_db):
+    v = query(bunyip_bin, real_db, "cpe:2.3:a:adobe:flash_player_desktop_runtime:21.0.0.197:*:*:*:*:*:*:*")
     f = v["CVE-2016-1019"]
     assert f["version_status"] == "MATCH" and f["applicability"] == "CONDITIONAL"
     assert f["known_exploited"] is True
 
 
-def test_stats_reflect_rejections(vulndb_bin, real_db):
-    p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "db", "stats"], capture_output=True, text=True, check=True)
+def test_stats_reflect_rejections(bunyip_bin, real_db):
+    p = subprocess.run([str(bunyip_bin), "--db", str(real_db), "db", "stats"], capture_output=True, text=True, check=True)
     assert "cves                         11" in p.stdout
 
 
-def test_go_verify_and_info(vulndb_bin, real_db):
-    p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "db", "verify"], capture_output=True, text=True)
+def test_go_verify_and_info(bunyip_bin, real_db):
+    p = subprocess.run([str(bunyip_bin), "--db", str(real_db), "db", "verify"], capture_output=True, text=True)
     assert p.returncode == 0, p.stdout + p.stderr
     assert "Database OK" in p.stdout and "FAIL" not in p.stdout
-    info = subprocess.run([str(vulndb_bin), "--db", str(real_db), "info"], capture_output=True, text=True, check=True)
+    info = subprocess.run([str(bunyip_bin), "--db", str(real_db), "info"], capture_output=True, text=True, check=True)
     assert "NVD data as of:    2026-10-06T05:00:06Z" in info.stdout
     assert "SYNTHETIC" not in info.stdout
 
 
-def test_nmap_sample_against_real_records(vulndb_bin, real_db):
-    p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/sample.xml"),
+def test_nmap_sample_against_real_records(bunyip_bin, real_db):
+    p = subprocess.run([str(bunyip_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/sample.xml"),
                         "--format", "json"], capture_output=True, text=True, check=True)
     report = json.loads(p.stdout)["report"]
     svcs = {s["port"]: s for s in report["hosts"][0]["services"]}
@@ -116,9 +116,9 @@ def test_nmap_sample_against_real_records(vulndb_bin, real_db):
     assert report["summary"]["not_probed"] == 1 and report["summary"]["unidentified"] == 1
 
 
-def test_ubuntu_advisories_against_real_records(vulndb_bin, real_db):
+def test_ubuntu_advisories_against_real_records(bunyip_bin, real_db):
     """Real NVD + real Ubuntu OSV records: backport-aware verdicts per host."""
-    p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/ubuntu-hosts.xml"),
+    p = subprocess.run([str(bunyip_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/ubuntu-hosts.xml"),
                         "--format", "json"], capture_output=True, text=True, check=True)
     report = json.loads(p.stdout)["report"]
     patched, stale = report["hosts"]
@@ -145,9 +145,9 @@ def test_ubuntu_advisories_against_real_records(vulndb_bin, real_db):
     assert report["summary"]["distro_fixed"] == 2 and report["summary"]["distro_only"] == 2
 
 
-def test_debian_advisories_against_real_records(vulndb_bin, real_db):
+def test_debian_advisories_against_real_records(bunyip_bin, real_db):
     """Real NVD + real Debian OSV records (DEBIAN-CVE-* and DLA-4057-1)."""
-    p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/debian-hosts.xml"),
+    p = subprocess.run([str(bunyip_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/debian-hosts.xml"),
                         "--format", "json"], capture_output=True, text=True, check=True)
     report = json.loads(p.stdout)["report"]
     bookworm, bullseye = report["hosts"]
@@ -176,9 +176,9 @@ def test_debian_advisories_against_real_records(vulndb_bin, real_db):
     assert old["CVE-2025-26465"] == ("VULNERABLE", True)  # DLA-4057-1 fixed it in +deb11u4
 
 
-def test_redhat_family_against_real_records(vulndb_bin, real_db):
+def test_redhat_family_against_real_records(bunyip_bin, real_db):
     """Real NVD + real RHSA/RLSA/ALSA records; distributions inferred per host."""
-    p = subprocess.run([str(vulndb_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/rhel-hosts.xml"),
+    p = subprocess.run([str(bunyip_bin), "--db", str(real_db), "nmap", str(REPO / "testdata/nmap/rhel-hosts.xml"),
                         "--format", "json"], capture_output=True, text=True, check=True)
     hosts = {h["address"]: h for h in json.loads(p.stdout)["report"]["hosts"]}
 

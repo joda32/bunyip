@@ -1,4 +1,4 @@
-// Package schema embeds the SQLite schema so the vulndb binary can create a
+// Package schema embeds the SQLite schema so the bunyip binary can create a
 // database without shipping schema.sql separately.
 package schema
 

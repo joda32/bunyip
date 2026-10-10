@@ -1,4 +1,4 @@
-Offline VulnDB
+Bunyip
 Copyright (c) 2026 Willem Mouton
 
 This project is dual-licensed under either of
@@ -21,5 +21,5 @@ in this repository):
   scripts/gen_http_tech.py and is fetched/generated at build time; it is not
   distributed as part of this source tree.
 
-Nmap's service-probe database, when used by `vulndb-update review-products`,
+Nmap's service-probe database, when used by `bunyip-update review-products`,
 is read from the local Nmap installation and is not redistributed here.

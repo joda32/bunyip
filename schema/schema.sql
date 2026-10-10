@@ -1,4 +1,4 @@
--- Offline VulnDB SQLite schema.
+-- Bunyip SQLite schema.
 --
 -- The schema version is set at the end of this file, so every database
 -- builder (the Go CLI and the Python updater) gets it from one place. It must
@@ -244,7 +244,7 @@ CREATE TABLE http_apps (
     PRIMARY KEY (evidence, header, pattern, vendor, product)
 ) WITHOUT ROWID;
 
--- Web technology name -> NVD CPE vendor:product, for the `vulndb ingest`
+-- Web technology name -> NVD CPE vendor:product, for the `bunyip ingest`
 -- adapter that consumes a web fingerprinter's output (httpx -td, webanalyze,
 -- WhatWeb). Generated from the webappanalyzer corpus (data/http_tech.json);
 -- a lead, not an authoritative identity, so ingested matches are reported at
