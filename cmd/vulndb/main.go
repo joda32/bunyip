@@ -52,6 +52,10 @@ Commands:
   nmap FILE [--format text|json]         assess services in Nmap XML output (-oX); FILE "-" = stdin
   nse --request FILE                     answer a request from nse/vulndb.nse (JSON in, JSON out)
   info                                   show database provenance and age
+  update                                 fetch all sources and (re)build --db (auto-runs on first
+                                         query when --db is the default and no database exists yet)
+  build (--cache DIR | --offline-from DIR) --out FILE
+                                         build a database from fetched/cached sources (see --help)
   db init [--fixture FILE] [--force]     create a new database (optionally loading a fixture)
   db verify                              check database integrity and consistency
   db stats                               show table row counts
@@ -80,8 +84,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // globals holds options accepted both before and after the command name.
 type globals struct {
-	db    string
-	debug bool
+	db string
+	// dbExplicit is true when --db (or $VULNDB_DB) chose the path, so a
+	// missing file is an error rather than a trigger to auto-build.
+	dbExplicit bool
+	debug      bool
 }
 
 func (g *globals) register(fs *flag.FlagSet) {
@@ -95,12 +102,17 @@ type usageError struct{ msg string }
 func (e usageError) Error() string { return e.msg }
 
 func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	g := &globals{db: defaultDBPath()}
+	g := &globals{db: defaultDBPath(), dbExplicit: os.Getenv("VULNDB_DB") != ""}
 	fs := newFlagSet("vulndb", stderr)
 	g.register(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "db" {
+			g.dbExplicit = true
+		}
+	})
 	rest := fs.Args()
 	if len(rest) == 0 {
 		fmt.Fprint(stderr, usage)
@@ -118,6 +130,8 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		err = cmdIngest(ctx, g, rest[1:], stdin, stdout, stderr)
 	case "build":
 		err = cmdBuild(ctx, g, rest[1:], stdout, stderr)
+	case "update":
+		err = cmdUpdate(ctx, g, rest[1:], stdout, stderr)
 	case "nse":
 		err = cmdNSE(ctx, g, rest[1:], stdout, stderr)
 	case "info":
@@ -197,7 +211,7 @@ func cmdQuery(ctx context.Context, g *globals, args []string, stdout, stderr io.
 		return usageError{err.Error()}
 	}
 
-	store, err := database.Open(ctx, g.db)
+	store, err := g.openStore(ctx, stderr)
 	if err != nil {
 		return err
 	}
@@ -270,7 +284,7 @@ func cmdNmap(ctx context.Context, g *globals, args []string, stdin io.Reader, st
 		return err
 	}
 
-	store, err := database.Open(ctx, g.db)
+	store, err := g.openStore(ctx, stderr)
 	if err != nil {
 		return err
 	}
@@ -337,7 +351,7 @@ func cmdIngest(ctx context.Context, g *globals, args []string, stdin io.Reader, 
 		return err
 	}
 
-	store, err := database.Open(ctx, g.db)
+	store, err := g.openStore(ctx, stderr)
 	if err != nil {
 		return err
 	}
@@ -413,6 +427,11 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 		if kev, err = fetcher.SyncKEV(*cache); err != nil {
 			return err
 		}
+		if *webappanalyzer == "" {
+			if *webappanalyzer, err = fetcher.SyncWebappanalyzer(*cache); err != nil {
+				return err
+			}
+		}
 	} else {
 		if feeds, err = build.LocalFeeds(*offlineFrom); err != nil {
 			return err
@@ -458,8 +477,10 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 				}
 				zipPath = exp
 			} else {
-				zipPath = filepath.Join(*offlineFrom, "osv-"+d.Ecosystem+"-all.zip")
-				if _, statErr := os.Stat(zipPath); statErr != nil {
+				if zipPath, err = build.VerifyLocalOSV(*offlineFrom, d.Ecosystem); err != nil {
+					return err
+				}
+				if zipPath == "" {
 					continue // this distro's export not present offline
 				}
 			}
@@ -473,6 +494,40 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	fmt.Fprintf(stdout, "Built %s: %d loaded, %d replaced, %d unchanged, %d rejected, %d rules skipped\n",
 		*out, stats.Loaded, stats.Replaced, stats.Unchanged, stats.Rejected, len(stats.SkippedRules))
 	return nil
+}
+
+// cmdUpdate fetches all sources over the network and (re)builds the database
+// at the configured path. It reuses cmdBuild, defaulting --cache and --out.
+func cmdUpdate(ctx context.Context, g *globals, args []string, stdout, stderr io.Writer) error {
+	hasCache, hasOffline, hasOut := false, false, false
+	for _, a := range args {
+		switch {
+		case a == "--cache" || strings.HasPrefix(a, "--cache="):
+			hasCache = true
+		case a == "--offline-from" || strings.HasPrefix(a, "--offline-from="):
+			hasOffline = true
+		case a == "--out" || strings.HasPrefix(a, "--out="):
+			hasOut = true
+		}
+	}
+	forward := append([]string{}, args...)
+	if !hasCache && !hasOffline {
+		cacheDir := defaultCacheDir()
+		fmt.Fprintf(stderr, "Fetching sources into %s and building %s ...\n", cacheDir, g.db)
+		forward = append(forward, "--cache", cacheDir)
+	}
+	if !hasOut {
+		forward = append(forward, "--out", g.db)
+	}
+	return cmdBuild(ctx, g, forward, stdout, stderr)
+}
+
+// defaultCacheDir is the per-user cache location for downloaded sources.
+func defaultCacheDir() string {
+	if d, err := os.UserCacheDir(); err == nil {
+		return filepath.Join(d, "vulndb")
+	}
+	return ".vulndb-cache"
 }
 
 // distroInput builds the distribution context for `query`. The package
@@ -525,7 +580,7 @@ func cmdInfo(ctx context.Context, g *globals, args []string, stdout, stderr io.W
 	if err := parseSub(fs, args); err != nil {
 		return err
 	}
-	store, err := database.Open(ctx, g.db)
+	store, err := g.openStore(ctx, stderr)
 	if err != nil {
 		return err
 	}
@@ -915,4 +970,17 @@ func answerNSE(ctx context.Context, g *globals, reqPath string) (*nmap.NSERespon
 		return nil, err
 	}
 	return nmap.AnswerNSE(ctx, req, engine)
+}
+
+// openStore opens the configured database, first fetching sources and
+// building it (vulndb update) when no database exists yet — the auto-bootstrap
+// so a fresh install works on first query.
+func (g *globals) openStore(ctx context.Context, stderr io.Writer) (*database.Store, error) {
+	if _, err := os.Stat(g.db); errors.Is(err, os.ErrNotExist) && !g.dbExplicit {
+		fmt.Fprintf(stderr, "No database at %s; fetching sources and building it (vulndb update)...\n", g.db)
+		if err := cmdUpdate(ctx, g, nil, io.Discard, stderr); err != nil {
+			return nil, fmt.Errorf("auto-update failed: %w", err)
+		}
+	}
+	return database.Open(ctx, g.db)
 }

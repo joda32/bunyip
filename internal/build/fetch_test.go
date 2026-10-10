@@ -128,6 +128,61 @@ func TestCheckURLAllowList(t *testing.T) {
 	}
 }
 
+func TestSyncWebappanalyzer(t *testing.T) {
+	hits := map[string]int{}
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits[r.URL.Path]++
+		fmt.Fprintf(w, `{"%s-tech":{"cpe":"cpe:2.3:a:x:y:*:*:*:*:*:*:*:*"}}`, filepath.Base(r.URL.Path))
+	}))
+	defer srv.Close()
+	f := testFetcher(t, srv)
+	f.WappBase = srv.URL + "/wapp/"
+	cache := t.TempDir()
+
+	dir, err := f.SyncWebappanalyzer(cache)
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	// _.json plus a.json..z.json = 27 files.
+	if hits["/wapp/_.json"] != 1 || hits["/wapp/a.json"] != 1 || hits["/wapp/z.json"] != 1 {
+		t.Errorf("missing expected downloads: %v", hits)
+	}
+	if got := len(hits); got != 27 {
+		t.Errorf("expected 27 fingerprint files, downloaded %d", got)
+	}
+	for _, n := range []string{"_.json", "a.json", "z.json"} {
+		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
+			t.Errorf("file not written: %s", n)
+		}
+	}
+}
+
+func TestVerifyLocalOSV(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "osv-Debian-all.zip")
+	os.WriteFile(zipPath, []byte("fake-zip-bytes"), 0o644)
+	sum, _ := md5Base64(zipPath)
+
+	// Missing export: skipped, no error.
+	if p, err := VerifyLocalOSV(dir, "Ubuntu"); err != nil || p != "" {
+		t.Errorf("absent export: p=%q err=%v", p, err)
+	}
+	// Export present but no .meta.json: error.
+	if _, err := VerifyLocalOSV(dir, "Debian"); err == nil {
+		t.Error("missing meta accepted")
+	}
+	// Matching MD5: returns the zip path.
+	os.WriteFile(filepath.Join(dir, "osv-Debian-all.meta.json"), []byte(`{"md5":"`+sum+`"}`), 0o644)
+	if p, err := VerifyLocalOSV(dir, "Debian"); err != nil || p != zipPath {
+		t.Errorf("good md5: p=%q err=%v", p, err)
+	}
+	// Wrong MD5: error.
+	os.WriteFile(filepath.Join(dir, "osv-Debian-all.meta.json"), []byte(`{"md5":"AAAA"}`), 0o644)
+	if _, err := VerifyLocalOSV(dir, "Debian"); err == nil {
+		t.Error("md5 mismatch not detected")
+	}
+}
+
 func TestFeedNames(t *testing.T) {
 	n := FeedNames(2024)
 	if n[0] != "2002" || n[len(n)-1] != "modified" || n[len(n)-2] != "2024" {

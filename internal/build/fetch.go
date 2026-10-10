@@ -47,6 +47,7 @@ type Fetcher struct {
 	FeedBase     string
 	KEVURL       string
 	OSVBase      string
+	WappBase     string
 	Allowed      map[string]bool
 	Client       *http.Client
 	UserAgent    string
@@ -62,7 +63,7 @@ func NewFetcher(ua string, log func(string, ...any)) *Fetcher {
 	return &Fetcher{
 		FeedBase:     nvdFeedBase,
 		KEVURL:       kevURL,
-		Allowed:      map[string]bool{"nvd.nist.gov": true, "www.cisa.gov": true, "osv-vulnerabilities.storage.googleapis.com": true},
+		Allowed:      map[string]bool{"nvd.nist.gov": true, "www.cisa.gov": true, "osv-vulnerabilities.storage.googleapis.com": true, "raw.githubusercontent.com": true},
 		Client:       &http.Client{Timeout: fetchTimeout},
 		UserAgent:    ua,
 		RetryBackoff: func(attempt int) time.Duration { return time.Duration(1<<attempt) * time.Second },
@@ -399,3 +400,59 @@ func jsonString(s string) string {
 
 func jsonMarshal(v any) ([]byte, error)   { return json.Marshal(v) }
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
+
+const wappBase = "https://raw.githubusercontent.com/enthec/webappanalyzer/main/src/technologies/"
+
+// SyncWebappanalyzer downloads the webappanalyzer technology fingerprint
+// files (GPL-3.0) into cache/webappanalyzer and returns that directory. The
+// corpus is split into "_.json" and "a.json".."z.json"; GitHub raw publishes
+// no checksum, so the size cap is the only integrity bound.
+func (f *Fetcher) SyncWebappanalyzer(cache string) (string, error) {
+	dir := filepath.Join(cache, "webappanalyzer")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	base := f.WappBase
+	if base == "" {
+		base = wappBase
+	}
+	f.Log("  webappanalyzer: downloading fingerprints")
+	names := []string{"_"}
+	for c := 'a'; c <= 'z'; c++ {
+		names = append(names, string(c))
+	}
+	for _, n := range names {
+		if err := f.download(base+n+".json", filepath.Join(dir, n+".json")); err != nil {
+			return "", err
+		}
+	}
+	return dir, nil
+}
+
+// VerifyLocalOSV checks an offline OSV export against its .meta.json MD5,
+// matching the Python local_osv (integrity on the offline path too).
+func VerifyLocalOSV(dir, ecosystem string) (string, error) {
+	zipPath := filepath.Join(dir, "osv-"+ecosystem+"-all.zip")
+	if !fileExists(zipPath) {
+		return "", nil // not present: this distro is simply skipped
+	}
+	metaPath := filepath.Join(dir, "osv-"+ecosystem+"-all.meta.json")
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return "", fmt.Errorf("%s has no %s with its MD5", zipPath, metaPath)
+	}
+	var meta struct {
+		MD5 string `json:"md5"`
+	}
+	if err := jsonUnmarshal(data, &meta); err != nil {
+		return "", err
+	}
+	got, err := md5Base64(zipPath)
+	if err != nil {
+		return "", err
+	}
+	if got != meta.MD5 {
+		return "", fmt.Errorf("%s: MD5 mismatch with %s", zipPath, metaPath)
+	}
+	return zipPath, nil
+}
