@@ -23,7 +23,10 @@ NVD_FEED_BASE = "https://nvd.nist.gov/feeds/json/cve/2.0/"
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 KEV_FILE = "known_exploited_vulnerabilities.json"
 OSV_BASE = "https://osv-vulnerabilities.storage.googleapis.com/"
-ALLOWED_HOSTS = {"nvd.nist.gov", "www.cisa.gov", "osv-vulnerabilities.storage.googleapis.com"}
+EPSS_FILE = "epss_scores-current.csv.gz"
+EPSS_URL = "https://epss.cyentia.com/" + EPSS_FILE
+ALLOWED_HOSTS = {"nvd.nist.gov", "www.cisa.gov", "osv-vulnerabilities.storage.googleapis.com",
+                 "epss.cyentia.com"}
 FIRST_FEED_YEAR = 2002  # the 2002 feed also holds 1999-2001 CVEs
 MAX_DOWNLOAD_BYTES = 1 << 30
 TIMEOUT_SECONDS = 120
@@ -182,6 +185,23 @@ def local_kev(directory: Path) -> Path:
     if not path.exists():
         raise FetchError(f"{path} not found")
     return path
+
+
+def sync_epss(cache: Path, log=print) -> Path:
+    """Download the current FIRST EPSS snapshot (gzipped CSV). FIRST publishes no
+    sidecar checksum, so the gzip/CSV parse at load time is the integrity check;
+    the "current" file changes daily, so it is always refreshed."""
+    cache.mkdir(parents=True, exist_ok=True)
+    dest = cache / EPSS_FILE
+    log(f"  EPSS: downloading current snapshot")
+    download(EPSS_URL, dest, log)
+    return dest
+
+
+def local_epss(directory: Path) -> Path | None:
+    """Use an already-downloaded EPSS snapshot (offline rebuild); None if absent."""
+    path = directory / EPSS_FILE
+    return path if path.exists() else None
 
 
 # --- OSV ecosystem exports ---------------------------------------------------

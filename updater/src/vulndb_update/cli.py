@@ -5,7 +5,8 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, aliases, build, fetch, httpapps, httptech, kev, jsonstream, osv, productnames, windows
+from . import (__version__, aliases, build, epss, fetch, httpapps, httptech, kev, jsonstream, osv,
+               productnames, windows)
 
 # src/vulndb_update/cli.py -> repository root is three levels up.
 _REPO = Path(__file__).resolve().parents[3]
@@ -50,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="curated HTTP application fingerprints (default: data/http_apps.json)")
     b.add_argument("--http-tech", type=Path, default=_REPO_HTTP_TECH,
                    help="web technology name -> CPE map for ingest (default: data/http_tech.json)")
+    b.add_argument("--no-epss", action="store_true", help="build without FIRST EPSS scores")
+    b.add_argument("--epss", type=Path,
+                   help="EPSS CSV snapshot (gzipped); default: fetched (--cache) or found in --offline-from")
     b.add_argument("--allow-small", action="store_true",
                    help="skip the completeness floors (for tests and partial builds)")
     b.add_argument("--quiet", action="store_true")
@@ -77,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
             return _review_products(args)
         return _build(args, log)
     except (fetch.FetchError, build.BuildError, kev.KEVError, jsonstream.StreamError,
-            aliases.AliasError, OSError, ValueError) as e:
+            aliases.AliasError, epss.EPSSError, OSError, ValueError) as e:
         print(f"vulndb-update: {e}", file=sys.stderr)
         return 1
 
@@ -95,6 +99,7 @@ def _build(args, log) -> int:
     wanted = [] if args.no_distro else (args.distro or sorted(osv.DISTROS))
     start = time.monotonic()
     distros = []
+    epss_path = None
     if args.offline_from:
         log(f"Using local source files in {args.offline_from}")
         feeds = fetch.local_feeds(args.offline_from)
@@ -105,6 +110,8 @@ def _build(args, log) -> int:
             if export is None:
                 raise fetch.FetchError(f"no OSV {d.ecosystem} export in {args.offline_from} (use --no-distro)")
             distros.append(build.DistroInput(d, export))
+        if not args.no_epss:
+            epss_path = args.epss or fetch.local_epss(args.offline_from)
     else:
         log(f"Syncing NVD feeds into {args.cache}")
         feeds = fetch.sync_nvd(args.cache, fetch.feed_names(), log)
@@ -112,13 +119,16 @@ def _build(args, log) -> int:
         for name in wanted:
             d = osv.DISTROS[name]
             distros.append(build.DistroInput(d, fetch.sync_osv(args.cache, d.ecosystem, log)))
+        if not args.no_epss:
+            epss_path = args.epss or fetch.sync_epss(args.cache, log)
+    epss_data = epss.load(epss_path) if epss_path else None
 
     log(f"Building {args.out}")
     stats = build.build(args.out, args.schema.read_text(encoding="utf-8"), feeds, kev_path,
                         allow_small=args.allow_small, log=log, alias_rows=alias_rows,
                         distros=distros, package_map=package_map, releases=releases,
                         windows_builds=windows_builds, product_names=product_names, http_apps=http_apps,
-                        http_tech=http_tech)
+                        http_tech=http_tech, epss=epss_data)
     log(f"Done in {time.monotonic() - start:.0f}s: {stats.loaded} CVEs loaded, "
         f"{stats.replaced} updated by overlay, {stats.unchanged} unchanged, "
         f"{stats.rejected} rejected, {len(stats.skipped_rules)} unparseable rules skipped")

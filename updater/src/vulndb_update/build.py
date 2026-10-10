@@ -75,7 +75,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
           distros: list[DistroInput] | None = None, package_map: list | None = None,
           releases: list | None = None, windows_builds: list | None = None,
           product_names: list | None = None, http_apps: list | None = None,
-          http_tech: list | None = None) -> Stats:
+          http_tech: list | None = None, epss=None) -> Stats:
     out = Path(out)
     tmp = out.with_name(f".{out.name}.building")
     tmp.unlink(missing_ok=True)
@@ -83,7 +83,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
     try:
         stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows or [],
                        distros or [], package_map or [], releases or [], windows_builds or [],
-                       product_names or [], http_apps or [], http_tech or [])
+                       product_names or [], http_apps or [], http_tech or [], epss)
         conn.close()
         os.replace(tmp, out)
         return stats
@@ -94,7 +94,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
 
 
 def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, distros, package_map, releases,
-           windows_builds, product_names, http_apps, http_tech) -> Stats:
+           windows_builds, product_names, http_apps, http_tech, epss) -> Stats:
     # The file is private until renamed, so durability during the load is
     # unnecessary; integrity is checked explicitly before the rename.
     conn.execute("PRAGMA journal_mode = OFF")
@@ -120,6 +120,14 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, dist
           r.known_ransomware, r.notes) for r in catalogue.rows])
     conn.execute("COMMIT")
     log(f"  KEV {catalogue.catalog_version}: {len(catalogue.rows)} entries")
+
+    if epss is not None:
+        conn.execute("BEGIN")
+        conn.executemany(
+            "INSERT OR REPLACE INTO epss (cve_id, score, percentile) VALUES (?, ?, ?)",
+            [(r.cve_id, r.score, r.percentile) for r in epss.rows])
+        conn.execute("COMMIT")
+        log(f"  EPSS {epss.model_version} ({epss.score_date}): {len(epss.rows)} scores")
 
     _load_aliases(conn, alias_rows, stats, log)
     for di in distros:
@@ -152,7 +160,7 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, dist
         stats.product_names_without_rules = productnames.targets_without_rules(conn, product_names)
         log(f"  product names: {len(product_names)} loaded, "
             f"{len(stats.product_names_without_rules)} targets without NVD rules")
-    _write_metadata(conn, ordered, catalogue, stats, distros)
+    _write_metadata(conn, ordered, catalogue, stats, distros, epss)
     _self_check(conn, allow_small, bool(distros))
     conn.executescript(DROP_BUILD_INDEXES)
     conn.execute("ANALYZE")
@@ -334,7 +342,7 @@ def _count(conn, sql: str) -> int:
 
 
 def _write_metadata(conn, feeds: list[Feed], catalogue: kev.Catalogue, stats: Stats,
-                    distros: list[DistroInput]) -> None:
+                    distros: list[DistroInput], epss=None) -> None:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     meta = {
         "dataset": DATASET,
@@ -350,6 +358,9 @@ def _write_metadata(conn, feeds: list[Feed], catalogue: kev.Catalogue, stats: St
             "SELECT COUNT(*) FROM cves WHERE NOT EXISTS"
             " (SELECT 1 FROM cve_configurations c WHERE c.cve_id = cves.cve_id)")),
         "nvd_rules_skipped": str(len(stats.skipped_rules)),
+        "epss_model_version": epss.model_version if epss else "",
+        "epss_score_date": epss.score_date if epss else "",
+        "epss_scores": str(_count(conn, "SELECT COUNT(*) FROM epss")),
         "aliases_loaded": str(stats.aliases),
         "distro_sources": ",".join(di.distro.name for di in distros),
         "distro_advisory_rows": str(stats.distro_rows),
