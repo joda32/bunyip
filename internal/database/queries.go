@@ -98,6 +98,13 @@ type KEVEntry struct {
 	Notes             string
 }
 
+// EPSSEntry is a CVE's FIRST EPSS score and percentile rank.
+type EPSSEntry struct {
+	CVEID      string
+	Score      float64
+	Percentile float64
+}
+
 // ExploitEvidence is a reference indicating a public exploit exists.
 type ExploitEvidence struct {
 	CVEID         string
@@ -144,6 +151,23 @@ func (s *Store) KEV(ctx context.Context, ids []string) (map[string]KEVEntry, err
 				return err
 			}
 			out[k.CVEID] = k
+			return nil
+		})
+	})
+	return out, err
+}
+
+// EPSS loads EPSS scores keyed by CVE ID. CVEs with no EPSS row are absent.
+func (s *Store) EPSS(ctx context.Context, ids []string) (map[string]EPSSEntry, error) {
+	out := map[string]EPSSEntry{}
+	err := forChunks(ids, func(chunk []string) error {
+		q := `SELECT cve_id, score, percentile FROM epss WHERE cve_id IN (` + placeholders(len(chunk)) + `)`
+		return s.each(ctx, q, chunk, func(rows *sql.Rows) error {
+			var e EPSSEntry
+			if err := rows.Scan(&e.CVEID, &e.Score, &e.Percentile); err != nil {
+				return err
+			}
+			out[e.CVEID] = e
 			return nil
 		})
 	})

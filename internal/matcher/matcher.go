@@ -217,6 +217,8 @@ type Vulnerability struct {
 	KnownExploited  bool            `json:"known_exploited"`
 	KnownRansomware bool            `json:"known_ransomware"`
 	KEVDateAdded    string          `json:"kev_date_added,omitempty"`
+	EPSSScore       *float64        `json:"epss_score"`
+	EPSSPercentile  *float64        `json:"epss_percentile"`
 	MatchConfidence Confidence      `json:"match_confidence"`
 	MatchedCPE      string          `json:"matched_cpe"`
 	VersionStatus   version.Status  `json:"version_status"`
@@ -432,8 +434,12 @@ func (e *Engine) enrichAll(ctx context.Context, vs []Vulnerability) error {
 	if err != nil {
 		return err
 	}
+	epss, err := e.Store.EPSS(ctx, ids)
+	if err != nil {
+		return err
+	}
 	for i := range vs {
-		enrich(&vs[i], cves[vs[i].CVE], kev, exploits[vs[i].CVE])
+		enrich(&vs[i], cves[vs[i].CVE], kev, exploits[vs[i].CVE], epss)
 	}
 	return nil
 }
@@ -562,7 +568,7 @@ func describeMatch(reason string) string {
 	return reason
 }
 
-func enrich(v *Vulnerability, c database.CVE, kev map[string]database.KEVEntry, evidence []database.ExploitEvidence) {
+func enrich(v *Vulnerability, c database.CVE, kev map[string]database.KEVEntry, evidence []database.ExploitEvidence, epss map[string]database.EPSSEntry) {
 	v.Description = c.Description
 	v.Severity = c.Severity
 	v.CWE = c.CWE
@@ -589,6 +595,10 @@ func enrich(v *Vulnerability, c database.CVE, kev map[string]database.KEVEntry, 
 		v.KnownRansomware = strings.EqualFold(k.KnownRansomware, "known")
 		v.KEVDateAdded = k.DateAdded
 	}
+	if e, ok := epss[v.CVE]; ok {
+		score, pct := e.Score, e.Percentile
+		v.EPSSScore, v.EPSSPercentile = &score, &pct
+	}
 	for _, e := range evidence {
 		v.ExploitEvidence = append(v.ExploitEvidence, Evidence{e.Source, e.Reference, e.ReferenceType, e.Verified})
 		if !slices.Contains(v.ExploitSources, e.Source) {
@@ -604,10 +614,11 @@ func enrich(v *Vulnerability, c database.CVE, kev map[string]database.KEVEntry, 
 //  2. KEV and public exploit
 //  3. KEV
 //  4. public exploit
-//  5. CVSS (higher first; missing scores last)
-//  6. unconditional before conditional
-//  7. identity confidence (higher first)
-//  8. CVE ID (for determinism)
+//  5. EPSS exploitation probability (higher first; missing last)
+//  6. CVSS (higher first; missing scores last)
+//  7. unconditional before conditional
+//  8. identity confidence (higher first)
+//  9. CVE ID (for determinism)
 func sortVulnerabilities(vs []Vulnerability) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		a, b := vs[i], vs[j]
@@ -619,6 +630,9 @@ func sortVulnerabilities(vs []Vulnerability) {
 		}
 		if x, y := priorityTier(a), priorityTier(b); x != y {
 			return x < y
+		}
+		if x, y := cvssOrNeg(a.EPSSScore), cvssOrNeg(b.EPSSScore); x != y {
+			return x > y
 		}
 		if x, y := cvssOrNeg(a.CVSS), cvssOrNeg(b.CVSS); x != y {
 			return x > y

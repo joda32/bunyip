@@ -336,6 +336,10 @@
       "notes": "Synthetic fixture entry."
     }
   ],
+  "epss": [
+    { "cve_id": "CVE-0000-0001", "score": 0.94321, "percentile": 0.99012 },
+    { "cve_id": "CVE-0000-0006", "score": 0.0421, "percentile": 0.512 }
+  ],
   "exploit_evidence": [
     {
       "cve_id": "CVE-0000-0001",

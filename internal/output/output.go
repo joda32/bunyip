@@ -140,6 +140,9 @@ func writeVuln(p *printer, v matcher.Vulnerability, firstIdentity string) {
 	p.f("\n%-16s %-9s %s\n", v.CVE, orDash(v.Severity), cvssLabel(v))
 	p.f("  Public exploit: %s\n", exploitLabel(v))
 	p.f("  CISA KEV:       %s\n", kevLabel(v))
+	if s := epssLabel(v); s != "" {
+		p.f("  EPSS:           %s\n", s)
+	}
 	p.f("  Version status: %s\n", v.VersionStatus)
 	if d := v.Distro; d != nil {
 		label := string(d.Status)
@@ -256,6 +259,19 @@ func kevLabel(v matcher.Vulnerability) string {
 		s += ")"
 	} else if v.KnownRansomware {
 		s += " (known ransomware use)"
+	}
+	return s
+}
+
+// epssLabel renders the EPSS probability and percentile, or "" when the CVE has
+// no EPSS score (so the line is omitted rather than shown as zero).
+func epssLabel(v matcher.Vulnerability) string {
+	if v.EPSSScore == nil {
+		return ""
+	}
+	s := fmt.Sprintf("%.1f%% probability of exploitation", *v.EPSSScore*100)
+	if v.EPSSPercentile != nil {
+		s += fmt.Sprintf(" (%.0fth percentile)", *v.EPSSPercentile*100)
 	}
 	return s
 }

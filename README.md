@@ -51,7 +51,8 @@ and answers queries (`vulndb query` / `nmap` / `ingest`, on the offline side).
 - **Query engine (Go).** CPE 2.2/2.3 parsing and normalisation; per-product
   version comparators (generic, OpenSSH, dpkg, RPM, PEP 440); range evaluation
   (`MATCH` / `NO_MATCH` / `UNKNOWN`); awareness of NVD AND/OR configuration
-  structure; KEV and exploit enrichment; text, JSON and debug output.
+  structure; KEV, exploit and **EPSS** (exploitation-probability) enrichment,
+  with results ordered KEV → exploit → EPSS → CVSS; text, JSON and debug output.
 - **Nmap input.** `vulndb nmap scan.xml` assesses every open, fingerprinted
   service in Nmap `-oX` output. `nse/vulndb.nse` shows the same results inline
   during a scan (`nmap -sV --script vulndb`).
@@ -181,7 +182,9 @@ make real-db                                    # same thing, caching sources in
 - **OSV.dev** distribution exports for Ubuntu, Debian, Red Hat, Rocky and
   AlmaLinux, each verified against its published MD5;
 - the **webappanalyzer** technology corpus, from which the technology→CPE map
-  (`http_tech`) is derived at build time.
+  (`http_tech`) is derived at build time;
+- the **FIRST EPSS** daily snapshot (exploitation-probability scores). Skip it
+  with `--no-epss`, or point `--epss FILE` at a local snapshot.
 
 Curated first-party data (aliases, the distro package map and release
 lifecycle, Windows builds, product names, HTTP app fingerprints) is embedded in
@@ -304,6 +307,9 @@ valid JSON.
   condition (typically a specific OS) that was not evaluated.
 - `identity_confidence` / `match_confidence` — `EXACT` (concrete version),
   `HIGH` (via a curated alias), `LOW` (product only, no version).
+- `epss_score` / `epss_percentile` — FIRST EPSS probability of exploitation in
+  the next 30 days and its percentile rank (both 0–1); `null` when the CVE has no
+  EPSS score. Used first after KEV/exploit to rank results.
 - `match_reason` — a human-readable explanation, always present.
 
 For a distribution-packaged service, pass the distro and the installed package
@@ -507,6 +513,7 @@ this source tree. With gratitude to the maintainers of these datasets:
 |---|---|---|
 | [**NVD** CVE JSON 2.0 feeds](https://nvd.nist.gov/vuln/data-feeds) (NIST) | CVEs, CPE applicability, CVSS, CWE, exploit references | U.S. Government work — public domain |
 | [**CISA KEV** catalogue](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known-exploited / ransomware flags | U.S. Government work — public domain |
+| [**FIRST EPSS**](https://www.first.org/epss/) | Exploitation-probability scores for prioritisation | Free public use, attribution requested |
 | [**OSV.dev**](https://osv.dev) distribution exports (Ubuntu, Debian, Red Hat, Rocky, AlmaLinux) | Distribution backport / fix verdicts | Each advisory under its upstream distribution's license |
 | [**webappanalyzer**](https://github.com/enthec/webappanalyzer) | Web technology → CPE map (`http_tech`), for `vulndb ingest` | **GPL-3.0** — the derived map is generated at build time and is **not** shipped in this repo (gitignored) |
 | [**Nmap**](https://nmap.org) service-probe database | `review-products` candidate proposals (curation only) | Read from the local Nmap install; not redistributed |

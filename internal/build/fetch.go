@@ -60,6 +60,7 @@ type Fetcher struct {
 	KEVURL       string
 	OSVBase      string
 	WappBase     string
+	EPSSURL      string
 	Allowed      map[string]bool
 	Client       *http.Client
 	UserAgent    string
@@ -94,7 +95,7 @@ func NewFetcher(ua string, log func(string, ...any)) *Fetcher {
 	return &Fetcher{
 		FeedBase:     nvdFeedBase,
 		KEVURL:       kevURL,
-		Allowed:      map[string]bool{"nvd.nist.gov": true, "www.cisa.gov": true, "osv-vulnerabilities.storage.googleapis.com": true, "raw.githubusercontent.com": true},
+		Allowed:      map[string]bool{"nvd.nist.gov": true, "www.cisa.gov": true, "osv-vulnerabilities.storage.googleapis.com": true, "raw.githubusercontent.com": true, "epss.cyentia.com": true},
 		Client:       &http.Client{Transport: tr},
 		UserAgent:    ua,
 		RetryBackoff: func(attempt int) time.Duration { return time.Duration(1<<attempt) * time.Second },
@@ -488,6 +489,38 @@ func (f *Fetcher) SyncWebappanalyzer(cache string) (string, error) {
 		}
 	}
 	return dir, nil
+}
+
+const epssFile = "epss_scores-current.csv.gz"
+const epssURL = "https://epss.cyentia.com/" + epssFile
+
+// SyncEPSS downloads the current FIRST EPSS snapshot (gzipped CSV) into cache
+// and returns its path. FIRST publishes no sidecar checksum, so the gzip/CSV
+// parse at load time is the integrity check; the download is always refreshed
+// because the "current" file changes daily.
+func (f *Fetcher) SyncEPSS(cache string) (string, error) {
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		return "", err
+	}
+	url := f.EPSSURL
+	if url == "" {
+		url = epssURL
+	}
+	dest := filepath.Join(cache, epssFile)
+	f.Log("  EPSS: downloading current snapshot")
+	if err := f.download(url, dest); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+// LocalEPSS returns the EPSS snapshot path in dir if present, else "".
+func LocalEPSS(dir string) string {
+	p := filepath.Join(dir, epssFile)
+	if fileExists(p) {
+		return p
+	}
+	return ""
 }
 
 // VerifyLocalOSV checks an offline OSV export against its .meta.json MD5,

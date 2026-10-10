@@ -457,6 +457,8 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	productNamesPath := fs.String("product-names", "embedded:product_names.json", "curated Nmap product names")
 	httpAppsPath := fs.String("http-apps", "embedded:http_apps.json", "curated HTTP application fingerprints")
 	webappanalyzer := fs.String("webappanalyzer", "", "webappanalyzer technologies dir (derive http_tech); empty to skip")
+	noEPSS := fs.Bool("no-epss", false, "build without FIRST EPSS scores")
+	epssPath := fs.String("epss", "", "EPSS CSV snapshot (gzipped); default: fetched (--cache) or found in --offline-from")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return err
@@ -483,6 +485,11 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 				return err
 			}
 		}
+		if !*noEPSS && *epssPath == "" {
+			if *epssPath, err = fetcher.SyncEPSS(*cache); err != nil {
+				return err
+			}
+		}
 	} else {
 		if feeds, err = build.LocalFeeds(*offlineFrom); err != nil {
 			return err
@@ -491,6 +498,9 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 			return usageError{"build: no nvdcve-2.0-*.meta feeds in " + *offlineFrom}
 		}
 		kev = filepath.Join(*offlineFrom, "known_exploited_vulnerabilities.json")
+		if !*noEPSS && *epssPath == "" {
+			*epssPath = build.LocalEPSS(*offlineFrom)
+		}
 	}
 	bopts := build.Options{AllowSmall: *allowSmall, Log: logf}
 	if bopts.Aliases, err = build.LoadAliases(*aliasesPath); err != nil {
@@ -509,6 +519,13 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 		if bopts.HTTPTech, err = build.DeriveHTTPTech(*webappanalyzer); err != nil {
 			return err
 		}
+	}
+	if *epssPath != "" {
+		epss, err := build.LoadEPSS(*epssPath)
+		if err != nil {
+			return err
+		}
+		bopts.EPSS, bopts.EPSSModel, bopts.EPSSDate = epss.Rows, epss.ModelVersion, epss.ScoreDate
 	}
 	if !*noDistro {
 		if bopts.PackageMap, err = build.LoadPackageMap(*pkgMapPath); err != nil {

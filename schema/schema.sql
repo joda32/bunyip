@@ -100,6 +100,15 @@ CREATE TABLE kev (
     notes              TEXT
 );
 
+-- FIRST EPSS (Exploit Prediction Scoring System): the probability a CVE will be
+-- exploited in the wild within 30 days, and its percentile rank. One snapshot,
+-- taken when the database is built; absent CVEs simply have no EPSS.
+CREATE TABLE epss (
+    cve_id     TEXT PRIMARY KEY,
+    score      REAL NOT NULL,
+    percentile REAL NOT NULL
+) WITHOUT ROWID;
+
 -- Observed (e.g. Nmap) product names mapped to canonical CPE identities.
 -- Not used by the milestone 1 exact-CPE query path.
 CREATE TABLE aliases (
@@ -253,4 +262,4 @@ CREATE INDEX idx_distro_adv_cve      ON distro_advisories (cve_id);
 CREATE INDEX idx_distro_pkgver_up    ON distro_package_versions (distro, package, upstream);
 CREATE INDEX idx_distro_packages_cpe ON distro_packages (cpe_part, cpe_vendor, cpe_product);
 
-INSERT INTO database_metadata (key, value) VALUES ('schema_version', '12');
+INSERT INTO database_metadata (key, value) VALUES ('schema_version', '13');

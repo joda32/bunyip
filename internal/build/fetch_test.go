@@ -212,6 +212,31 @@ func TestSyncWebappanalyzer(t *testing.T) {
 	}
 }
 
+func TestSyncEPSS(t *testing.T) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	gw.Write([]byte("#model_version:v1,score_date:2026-10-10T00:00:00+0000\ncve,epss,percentile\nCVE-2021-41773,0.9,0.99\n"))
+	gw.Close()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(buf.Bytes())
+	}))
+	defer srv.Close()
+	f := testFetcher(t, srv)
+	f.EPSSURL = srv.URL + "/epss_scores-current.csv.gz"
+	cache := t.TempDir()
+	p, err := f.SyncEPSS(cache)
+	if err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	d, err := LoadEPSS(p)
+	if err != nil || len(d.Rows) != 1 || d.Rows[0].CVEID != "CVE-2021-41773" {
+		t.Fatalf("load fetched EPSS: %v rows=%+v", err, d.Rows)
+	}
+	if LocalEPSS(cache) == "" {
+		t.Error("LocalEPSS did not find the cached file")
+	}
+}
+
 func TestVerifyLocalOSV(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := filepath.Join(dir, "osv-Debian-all.zip")

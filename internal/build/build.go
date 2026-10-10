@@ -31,6 +31,10 @@ type Options struct {
 	ProductNames  []ProductNameRow
 	HTTPApps      []HTTPAppRow
 	HTTPTech      []HTTPTechRow
+	// Optional FIRST EPSS snapshot.
+	EPSS      []EPSSRow
+	EPSSModel string
+	EPSSDate  string
 }
 
 // Stats summarises a build.
@@ -125,6 +129,13 @@ func BuildNVDKEV(ctx context.Context, out string, feeds []Feed, kevPath string, 
 	}
 	log("  KEV %s: %d entries", cat.CatalogVersion, len(cat.Rows))
 
+	if len(opts.EPSS) > 0 {
+		if err := insertEPSS(ctx, db, opts.EPSS); err != nil {
+			return stats, err
+		}
+		log("  EPSS %s (%s): %d scores", opts.EPSSModel, opts.EPSSDate, len(opts.EPSS))
+	}
+
 	if len(opts.Distros) > 0 || len(opts.PackageMap) > 0 || len(opts.Releases) > 0 {
 		if _, err := loadDistros(ctx, db, opts.Distros, opts.PackageMap, opts.Releases, log); err != nil {
 			return stats, err
@@ -135,7 +146,7 @@ func BuildNVDKEV(ctx context.Context, out string, feeds []Feed, kevPath string, 
 		return stats, err
 	}
 
-	if err := writeMetadata(ctx, db, ordered, cat, &stats); err != nil {
+	if err := writeMetadata(ctx, db, ordered, cat, opts, &stats); err != nil {
 		return stats, err
 	}
 
@@ -296,7 +307,7 @@ func insertKEV(ctx context.Context, db *sql.DB, cat KEVCatalogue) error {
 	return tx.Commit()
 }
 
-func writeMetadata(ctx context.Context, db *sql.DB, feeds []Feed, cat KEVCatalogue, stats *Stats) error {
+func writeMetadata(ctx context.Context, db *sql.DB, feeds []Feed, cat KEVCatalogue, opts Options, stats *Stats) error {
 	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	feedNames := ""
 	lastMod := ""
@@ -317,6 +328,8 @@ func writeMetadata(ctx context.Context, db *sql.DB, feeds []Feed, cat KEVCatalog
 		{"nvd_cves_without_configurations", countStr(ctx, db,
 			"SELECT COUNT(*) FROM cves WHERE NOT EXISTS (SELECT 1 FROM cve_configurations c WHERE c.cve_id = cves.cve_id)")},
 		{"nvd_rules_skipped", fmt.Sprintf("%d", len(stats.SkippedRules))},
+		{"epss_model_version", opts.EPSSModel}, {"epss_score_date", opts.EPSSDate},
+		{"epss_scores", countStr(ctx, db, "SELECT COUNT(*) FROM epss")},
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {

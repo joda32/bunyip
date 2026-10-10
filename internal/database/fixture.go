@@ -21,6 +21,7 @@ type Fixture struct {
 	Metadata        map[string]string       `json:"metadata"`
 	CVEs            []FixtureCVE            `json:"cves"`
 	KEV             []FixtureKEV            `json:"kev"`
+	EPSS            []FixtureEPSS           `json:"epss"`
 	ExploitEvidence []FixtureExploit        `json:"exploit_evidence"`
 	Aliases         []FixtureAlias          `json:"aliases"`
 	DistroPackages  []FixtureDistroPackage  `json:"distro_packages"`
@@ -153,6 +154,12 @@ type FixtureKEV struct {
 	Notes             string `json:"notes"`
 }
 
+type FixtureEPSS struct {
+	CVEID      string  `json:"cve_id"`
+	Score      float64 `json:"score"`
+	Percentile float64 `json:"percentile"`
+}
+
 type FixtureExploit struct {
 	CVEID         string          `json:"cve_id"`
 	Source        string          `json:"source"`
@@ -216,6 +223,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			k.CVEID, k.VendorProject, k.Product, k.VulnerabilityName,
 			k.DateAdded, k.DueDate, k.KnownRansomware, k.Notes); err != nil {
 			return fmt.Errorf("kev %s: %w", k.CVEID, err)
+		}
+	}
+	for _, e := range f.EPSS {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO epss (cve_id, score, percentile) VALUES (?, ?, ?)`,
+			e.CVEID, e.Score, e.Percentile); err != nil {
+			return fmt.Errorf("epss %s: %w", e.CVEID, err)
 		}
 	}
 	for _, e := range f.ExploitEvidence {

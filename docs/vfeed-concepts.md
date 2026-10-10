@@ -45,7 +45,7 @@ exploitation / defense`.
 
 Legend: 🟢 adopt · 🟡 optional · 🔴 skip.
 
-### 🟢 1. EPSS — exploitation probability
+### 🟢 1. EPSS — exploitation probability — **IMPLEMENTED**
 
 vFeed surfaced **EPSS** next to CVSS and KEV. We have KEV + CVSS but no
 probabilistic prioritisation. The 2025 practitioner consensus is firmly: *KEV
@@ -55,9 +55,12 @@ impact.* CVSS alone over-flags (~40% of CVEs are High/Critical).
 - **Viability: high.** EPSS is published by FIRST as a **free daily CSV**,
   permissive usage (attribution requested), covering ~all CVEs, and tiny. It fits
   our offline snapshot-at-build model exactly.
-- **Effort: low.** An `epss` table + join, a field in JSON/text output, and a
-  factor in result ordering.
-- **This is the recommended first addition.**
+- **Status: shipped (schema v13).** `vulndb update`/`build` fetches the FIRST
+  EPSS snapshot (`epss.cyentia.com`, `--no-epss` to skip, `--epss FILE` to
+  override) into an `epss` table; the score and percentile appear in query output
+  (text + JSON `epss_score`/`epss_percentile`) and rank results immediately after
+  KEV/exploit, ahead of CVSS. Metadata keys `epss_model_version` /
+  `epss_score_date` / `epss_scores` record the snapshot.
 
 ### 🟢 2. Explicit triage flags + an explainable priority
 
@@ -121,7 +124,7 @@ linking for the Windows path later).
 
 ## Recommended roadmap (priority order)
 
-1. **EPSS** — cheapest, most defensible prioritisation upgrade; clean offline fit.
+1. ~~**EPSS**~~ — **done** (schema v13; see above).
 2. **Explicit triage booleans + SSVC-style explainable priority** (not an opaque
    score).
 3. **Enriched exploit intel** (Nuclei/Metasploit/PoC; fetch-at-build, GPL-safe) to
