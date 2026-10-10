@@ -25,8 +25,12 @@ KEV_FILE = "known_exploited_vulnerabilities.json"
 OSV_BASE = "https://osv-vulnerabilities.storage.googleapis.com/"
 EPSS_FILE = "epss_scores-current.csv.gz"
 EPSS_URL = "https://epss.cyentia.com/" + EPSS_FILE
+MSF_FILE = "modules_metadata_base.json"
+MSF_URL = "https://raw.githubusercontent.com/rapid7/metasploit-framework/master/db/" + MSF_FILE
+EDB_FILE = "files_exploits.csv"
+EDB_URL = "https://gitlab.com/exploit-database/exploitdb/-/raw/main/" + EDB_FILE
 ALLOWED_HOSTS = {"nvd.nist.gov", "www.cisa.gov", "osv-vulnerabilities.storage.googleapis.com",
-                 "epss.cyentia.com"}
+                 "epss.cyentia.com", "raw.githubusercontent.com", "gitlab.com"}
 FIRST_FEED_YEAR = 2002  # the 2002 feed also holds 1999-2001 CVEs
 MAX_DOWNLOAD_BYTES = 1 << 30
 TIMEOUT_SECONDS = 120
@@ -201,6 +205,36 @@ def sync_epss(cache: Path, log=print) -> Path:
 def local_epss(directory: Path) -> Path | None:
     """Use an already-downloaded EPSS snapshot (offline rebuild); None if absent."""
     path = directory / EPSS_FILE
+    return path if path.exists() else None
+
+
+def sync_metasploit(cache: Path, log=print) -> Path:
+    """Download Metasploit's module metadata (BSD-3-Clause). It changes daily, so
+    it is always refreshed; the JSON parse at load time is the integrity check."""
+    return _sync_file(cache, MSF_FILE, MSF_URL, "Metasploit module metadata", log)
+
+
+def sync_exploitdb(cache: Path, log=print) -> Path:
+    """Download the Exploit-DB index (GPL-2.0); the derived references are loaded
+    at build time and not shipped."""
+    return _sync_file(cache, EDB_FILE, EDB_URL, "Exploit-DB index", log)
+
+
+def _sync_file(cache: Path, name: str, url: str, what: str, log=print) -> Path:
+    cache.mkdir(parents=True, exist_ok=True)
+    dest = cache / name
+    log(f"  {what}: downloading")
+    download(url, dest, log)
+    return dest
+
+
+def local_metasploit(directory: Path) -> Path | None:
+    path = directory / MSF_FILE
+    return path if path.exists() else None
+
+
+def local_exploitdb(directory: Path) -> Path | None:
+    path = directory / EDB_FILE
     return path if path.exists() else None
 
 

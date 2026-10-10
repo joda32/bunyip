@@ -61,6 +61,7 @@ class Stats:
     unchanged: int = 0
     rejected: int = 0
     skipped_rules: list[str] = field(default_factory=list)
+    exploit_counts: dict = field(default_factory=dict)
 
 
 def feed_order(feeds: list[Feed]) -> list[Feed]:
@@ -75,7 +76,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
           distros: list[DistroInput] | None = None, package_map: list | None = None,
           releases: list | None = None, windows_builds: list | None = None,
           product_names: list | None = None, http_apps: list | None = None,
-          http_tech: list | None = None, epss=None) -> Stats:
+          http_tech: list | None = None, epss=None, exploits: list | None = None) -> Stats:
     out = Path(out)
     tmp = out.with_name(f".{out.name}.building")
     tmp.unlink(missing_ok=True)
@@ -83,7 +84,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
     try:
         stats = _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows or [],
                        distros or [], package_map or [], releases or [], windows_builds or [],
-                       product_names or [], http_apps or [], http_tech or [], epss)
+                       product_names or [], http_apps or [], http_tech or [], epss, exploits or [])
         conn.close()
         os.replace(tmp, out)
         return stats
@@ -94,7 +95,7 @@ def build(out: Path, schema_sql: str, feeds: list[Feed], kev_path: Path,
 
 
 def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, distros, package_map, releases,
-           windows_builds, product_names, http_apps, http_tech, epss) -> Stats:
+           windows_builds, product_names, http_apps, http_tech, epss, exploits) -> Stats:
     # The file is private until renamed, so durability during the load is
     # unnecessary; integrity is checked explicitly before the rename.
     conn.execute("PRAGMA journal_mode = OFF")
@@ -128,6 +129,9 @@ def _build(conn, schema_sql, feeds, kev_path, allow_small, log, alias_rows, dist
             [(r.cve_id, r.score, r.percentile) for r in epss.rows])
         conn.execute("COMMIT")
         log(f"  EPSS {epss.model_version} ({epss.score_date}): {len(epss.rows)} scores")
+
+    if exploits:
+        _load_exploits(conn, exploits, stats, log)
 
     _load_aliases(conn, alias_rows, stats, log)
     for di in distros:
@@ -178,6 +182,26 @@ def _load_feed(conn, feed: Feed, stats: Stats, log) -> None:
             count += 1
         conn.execute("COMMIT")
     log(f"  {feed.gz_path.name}: {count} records in {time.monotonic() - start:.1f}s")
+
+
+def _load_exploits(conn, rows: list, stats: Stats, log) -> None:
+    """Add enriched exploit references, skipping any CVE not in the database (no
+    orphan evidence rows). Records the count inserted per source."""
+    known = {r[0] for r in conn.execute("SELECT cve_id FROM cves")}
+    counts: dict[str, int] = {}
+    conn.execute("BEGIN")
+    for e in rows:
+        if e.cve_id not in known:
+            continue
+        conn.execute(
+            "INSERT INTO exploit_evidence (cve_id, source, reference, reference_type, verified, metadata_json)"
+            " VALUES (?, ?, ?, ?, 0, NULL)",
+            (e.cve_id, e.source, e.reference, e.reference_type))
+        counts[e.source] = counts.get(e.source, 0) + 1
+    conn.execute("COMMIT")
+    stats.exploit_counts = counts
+    log(f"  exploit intel: {counts.get('metasploit', 0)} metasploit, "
+        f"{counts.get('exploit-db', 0)} exploit-db references (for known CVEs)")
 
 
 def _load_aliases(conn, rows: list, stats: Stats, log) -> None:
@@ -361,6 +385,8 @@ def _write_metadata(conn, feeds: list[Feed], catalogue: kev.Catalogue, stats: St
         "epss_model_version": epss.model_version if epss else "",
         "epss_score_date": epss.score_date if epss else "",
         "epss_scores": str(_count(conn, "SELECT COUNT(*) FROM epss")),
+        "exploit_metasploit": str(stats.exploit_counts.get("metasploit", 0)),
+        "exploit_exploitdb": str(stats.exploit_counts.get("exploit-db", 0)),
         "aliases_loaded": str(stats.aliases),
         "distro_sources": ",".join(di.distro.name for di in distros),
         "distro_advisory_rows": str(stats.distro_rows),

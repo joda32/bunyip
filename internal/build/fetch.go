@@ -61,6 +61,8 @@ type Fetcher struct {
 	OSVBase      string
 	WappBase     string
 	EPSSURL      string
+	MSFURL       string
+	EDBURL       string
 	Allowed      map[string]bool
 	Client       *http.Client
 	UserAgent    string
@@ -93,9 +95,10 @@ func NewFetcher(ua string, log func(string, ...any)) *Fetcher {
 		IdleConnTimeout:       90 * time.Second,
 	}
 	return &Fetcher{
-		FeedBase:     nvdFeedBase,
-		KEVURL:       kevURL,
-		Allowed:      map[string]bool{"nvd.nist.gov": true, "www.cisa.gov": true, "osv-vulnerabilities.storage.googleapis.com": true, "raw.githubusercontent.com": true, "epss.cyentia.com": true},
+		FeedBase: nvdFeedBase,
+		KEVURL:   kevURL,
+		Allowed: map[string]bool{"nvd.nist.gov": true, "www.cisa.gov": true, "osv-vulnerabilities.storage.googleapis.com": true,
+			"raw.githubusercontent.com": true, "epss.cyentia.com": true, "gitlab.com": true},
 		Client:       &http.Client{Transport: tr},
 		UserAgent:    ua,
 		RetryBackoff: func(attempt int) time.Duration { return time.Duration(1<<attempt) * time.Second },
@@ -517,6 +520,50 @@ func (f *Fetcher) SyncEPSS(cache string) (string, error) {
 // LocalEPSS returns the EPSS snapshot path in dir if present, else "".
 func LocalEPSS(dir string) string {
 	p := filepath.Join(dir, epssFile)
+	if fileExists(p) {
+		return p
+	}
+	return ""
+}
+
+const (
+	msfFile = "modules_metadata_base.json"
+	msfURL  = "https://raw.githubusercontent.com/rapid7/metasploit-framework/master/db/" + msfFile
+	edbFile = "files_exploits.csv"
+	edbURL  = "https://gitlab.com/exploit-database/exploitdb/-/raw/main/" + edbFile
+)
+
+// SyncMetasploit downloads Metasploit's module metadata (BSD-3-Clause) into
+// cache and returns its path. It changes daily, so it is always refreshed; the
+// JSON parse at load time is the integrity check.
+func (f *Fetcher) SyncMetasploit(cache string) (string, error) {
+	return f.syncFile(cache, msfFile, firstNonEmpty(f.MSFURL, msfURL), "Metasploit module metadata")
+}
+
+// SyncExploitDB downloads the Exploit-DB index (GPL-2.0) into cache and returns
+// its path. The derived references are loaded at build time and not shipped.
+func (f *Fetcher) SyncExploitDB(cache string) (string, error) {
+	return f.syncFile(cache, edbFile, firstNonEmpty(f.EDBURL, edbURL), "Exploit-DB index")
+}
+
+func (f *Fetcher) syncFile(cache, name, url, what string) (string, error) {
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		return "", err
+	}
+	dest := filepath.Join(cache, name)
+	f.Log("  %s: downloading", what)
+	if err := f.download(url, dest); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+// LocalMetasploit / LocalExploitDB return the source path in dir if present,
+// else "" (the source is optional on the offline path).
+func LocalMetasploit(dir string) string { return localIfExists(filepath.Join(dir, msfFile)) }
+func LocalExploitDB(dir string) string  { return localIfExists(filepath.Join(dir, edbFile)) }
+
+func localIfExists(p string) string {
 	if fileExists(p) {
 		return p
 	}

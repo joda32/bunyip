@@ -5,7 +5,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import (__version__, aliases, build, epss, fetch, httpapps, httptech, kev, jsonstream, osv,
+from . import (__version__, aliases, build, epss, exploits, fetch, httpapps, httptech, kev, jsonstream, osv,
                productnames, windows)
 
 # src/vulndb_update/cli.py -> repository root is three levels up.
@@ -54,6 +54,12 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--no-epss", action="store_true", help="build without FIRST EPSS scores")
     b.add_argument("--epss", type=Path,
                    help="EPSS CSV snapshot (gzipped); default: fetched (--cache) or found in --offline-from")
+    b.add_argument("--no-exploits", action="store_true",
+                   help="build without Metasploit/Exploit-DB exploit references")
+    b.add_argument("--metasploit", type=Path,
+                   help="Metasploit modules_metadata_base.json; default: fetched or found in --offline-from")
+    b.add_argument("--exploitdb", type=Path,
+                   help="Exploit-DB files_exploits.csv; default: fetched or found in --offline-from")
     b.add_argument("--allow-small", action="store_true",
                    help="skip the completeness floors (for tests and partial builds)")
     b.add_argument("--quiet", action="store_true")
@@ -81,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
             return _review_products(args)
         return _build(args, log)
     except (fetch.FetchError, build.BuildError, kev.KEVError, jsonstream.StreamError,
-            aliases.AliasError, epss.EPSSError, OSError, ValueError) as e:
+            aliases.AliasError, epss.EPSSError, exploits.ExploitError, OSError, ValueError) as e:
         print(f"vulndb-update: {e}", file=sys.stderr)
         return 1
 
@@ -100,6 +106,7 @@ def _build(args, log) -> int:
     start = time.monotonic()
     distros = []
     epss_path = None
+    msf_path = edb_path = None
     if args.offline_from:
         log(f"Using local source files in {args.offline_from}")
         feeds = fetch.local_feeds(args.offline_from)
@@ -112,6 +119,9 @@ def _build(args, log) -> int:
             distros.append(build.DistroInput(d, export))
         if not args.no_epss:
             epss_path = args.epss or fetch.local_epss(args.offline_from)
+        if not args.no_exploits:
+            msf_path = args.metasploit or fetch.local_metasploit(args.offline_from)
+            edb_path = args.exploitdb or fetch.local_exploitdb(args.offline_from)
     else:
         log(f"Syncing NVD feeds into {args.cache}")
         feeds = fetch.sync_nvd(args.cache, fetch.feed_names(), log)
@@ -121,14 +131,22 @@ def _build(args, log) -> int:
             distros.append(build.DistroInput(d, fetch.sync_osv(args.cache, d.ecosystem, log)))
         if not args.no_epss:
             epss_path = args.epss or fetch.sync_epss(args.cache, log)
+        if not args.no_exploits:
+            msf_path = args.metasploit or fetch.sync_metasploit(args.cache, log)
+            edb_path = args.exploitdb or fetch.sync_exploitdb(args.cache, log)
     epss_data = epss.load(epss_path) if epss_path else None
+    exploit_rows = []
+    if msf_path:
+        exploit_rows += exploits.load_metasploit(msf_path)
+    if edb_path:
+        exploit_rows += exploits.load_exploitdb(edb_path)
 
     log(f"Building {args.out}")
     stats = build.build(args.out, args.schema.read_text(encoding="utf-8"), feeds, kev_path,
                         allow_small=args.allow_small, log=log, alias_rows=alias_rows,
                         distros=distros, package_map=package_map, releases=releases,
                         windows_builds=windows_builds, product_names=product_names, http_apps=http_apps,
-                        http_tech=http_tech, epss=epss_data)
+                        http_tech=http_tech, epss=epss_data, exploits=exploit_rows)
     log(f"Done in {time.monotonic() - start:.0f}s: {stats.loaded} CVEs loaded, "
         f"{stats.replaced} updated by overlay, {stats.unchanged} unchanged, "
         f"{stats.rejected} rejected, {len(stats.skipped_rules)} unparseable rules skipped")

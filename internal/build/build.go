@@ -35,12 +35,15 @@ type Options struct {
 	EPSS      []EPSSRow
 	EPSSModel string
 	EPSSDate  string
+	// Optional enriched exploit references (Metasploit, Exploit-DB).
+	Exploits []ExploitRow
 }
 
 // Stats summarises a build.
 type Stats struct {
 	Loaded, Replaced, Unchanged, Rejected int
 	SkippedRules                          []string
+	ExploitCounts                         map[string]int // extra exploit refs inserted, by source
 }
 
 // BuildNVDKEV creates a database at out from NVD feeds and the KEV catalogue
@@ -134,6 +137,16 @@ func BuildNVDKEV(ctx context.Context, out string, feeds []Feed, kevPath string, 
 			return stats, err
 		}
 		log("  EPSS %s (%s): %d scores", opts.EPSSModel, opts.EPSSDate, len(opts.EPSS))
+	}
+
+	if len(opts.Exploits) > 0 {
+		counts, err := insertExploits(ctx, db, opts.Exploits)
+		if err != nil {
+			return stats, err
+		}
+		stats.ExploitCounts = counts
+		log("  exploit intel: %d metasploit, %d exploit-db references (for known CVEs)",
+			counts[msfSource], counts[edbSource])
 	}
 
 	if len(opts.Distros) > 0 || len(opts.PackageMap) > 0 || len(opts.Releases) > 0 {
@@ -307,6 +320,50 @@ func insertKEV(ctx context.Context, db *sql.DB, cat KEVCatalogue) error {
 	return tx.Commit()
 }
 
+// insertExploits adds enriched exploit references, skipping any CVE not in the
+// database (so no orphan evidence rows). Returns the count inserted per source.
+func insertExploits(ctx context.Context, db *sql.DB, rows []ExploitRow) (map[string]int, error) {
+	known := map[string]bool{}
+	cur, err := db.QueryContext(ctx, "SELECT cve_id FROM cves")
+	if err != nil {
+		return nil, err
+	}
+	for cur.Next() {
+		var id string
+		if err := cur.Scan(&id); err != nil {
+			cur.Close()
+			return nil, err
+		}
+		known[id] = true
+	}
+	cur.Close()
+	if err := cur.Err(); err != nil {
+		return nil, err
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	counts := map[string]int{}
+	for _, e := range rows {
+		if !known[e.CVEID] {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx,
+			"INSERT INTO exploit_evidence (cve_id, source, reference, reference_type, verified, metadata_json)"+
+				" VALUES (?, ?, ?, ?, 0, NULL)",
+			e.CVEID, e.Source, e.Reference, e.ReferenceType); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		counts[e.Source]++
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return counts, nil
+}
+
 func writeMetadata(ctx context.Context, db *sql.DB, feeds []Feed, cat KEVCatalogue, opts Options, stats *Stats) error {
 	now := time.Now().UTC().Format("2006-01-02T15:04:05Z")
 	feedNames := ""
@@ -330,6 +387,8 @@ func writeMetadata(ctx context.Context, db *sql.DB, feeds []Feed, cat KEVCatalog
 		{"nvd_rules_skipped", fmt.Sprintf("%d", len(stats.SkippedRules))},
 		{"epss_model_version", opts.EPSSModel}, {"epss_score_date", opts.EPSSDate},
 		{"epss_scores", countStr(ctx, db, "SELECT COUNT(*) FROM epss")},
+		{"exploit_metasploit", fmt.Sprintf("%d", stats.ExploitCounts[msfSource])},
+		{"exploit_exploitdb", fmt.Sprintf("%d", stats.ExploitCounts[edbSource])},
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {

@@ -51,9 +51,11 @@ and answers queries (`vulndb query` / `nmap` / `ingest`, on the offline side).
 - **Query engine (Go).** CPE 2.2/2.3 parsing and normalisation; per-product
   version comparators (generic, OpenSSH, dpkg, RPM, PEP 440); range evaluation
   (`MATCH` / `NO_MATCH` / `UNKNOWN`); awareness of NVD AND/OR configuration
-  structure; KEV, exploit and **EPSS** (exploitation-probability) enrichment;
-  an SSVC-inspired, explainable **triage priority** (Act / Attend / Track);
-  results ordered KEV → exploit → EPSS → CVSS; text, JSON and debug output.
+  structure; KEV, **EPSS** (exploitation-probability) and exploit/PoC
+  enrichment (NVD references plus **Metasploit** modules and **Exploit-DB**
+  entries); an SSVC-inspired, explainable **triage priority** (Act / Attend /
+  Track); results ordered KEV → exploit → EPSS → CVSS; text, JSON and debug
+  output.
 - **Nmap input.** `vulndb nmap scan.xml` assesses every open, fingerprinted
   service in Nmap `-oX` output. `nse/vulndb.nse` shows the same results inline
   during a scan (`nmap -sV --script vulndb`).
@@ -185,7 +187,11 @@ make real-db                                    # same thing, caching sources in
 - the **webappanalyzer** technology corpus, from which the technology→CPE map
   (`http_tech`) is derived at build time;
 - the **FIRST EPSS** daily snapshot (exploitation-probability scores). Skip it
-  with `--no-epss`, or point `--epss FILE` at a local snapshot.
+  with `--no-epss`, or point `--epss FILE` at a local snapshot;
+- exploit/PoC references from **Metasploit** module metadata and the
+  **Exploit-DB** index (references only — never exploit code). Skip them with
+  `--no-exploits`, or point `--metasploit FILE` / `--exploitdb FILE` at local
+  copies.
 
 Curated first-party data (aliases, the distro package map and release
 lifecycle, Windows builds, product names, HTTP app fingerprints) is embedded in
@@ -521,6 +527,8 @@ this source tree. With gratitude to the maintainers of these datasets:
 | [**NVD** CVE JSON 2.0 feeds](https://nvd.nist.gov/vuln/data-feeds) (NIST) | CVEs, CPE applicability, CVSS, CWE, exploit references | U.S. Government work — public domain |
 | [**CISA KEV** catalogue](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known-exploited / ransomware flags | U.S. Government work — public domain |
 | [**FIRST EPSS**](https://www.first.org/epss/) | Exploitation-probability scores for prioritisation | Free public use, attribution requested |
+| [**Metasploit Framework**](https://github.com/rapid7/metasploit-framework) | Exploit-module references per CVE | BSD-3-Clause; module metadata only, no code |
+| [**Exploit-DB**](https://gitlab.com/exploit-database/exploitdb) | Public exploit/PoC references per CVE | GPL-2.0; the index is read at build time and **not** shipped |
 | [**OSV.dev**](https://osv.dev) distribution exports (Ubuntu, Debian, Red Hat, Rocky, AlmaLinux) | Distribution backport / fix verdicts | Each advisory under its upstream distribution's license |
 | [**webappanalyzer**](https://github.com/enthec/webappanalyzer) | Web technology → CPE map (`http_tech`), for `vulndb ingest` | **GPL-3.0** — the derived map is generated at build time and is **not** shipped in this repo (gitignored) |
 | [**Nmap**](https://nmap.org) service-probe database | `review-products` candidate proposals (curation only) | Read from the local Nmap install; not redistributed |

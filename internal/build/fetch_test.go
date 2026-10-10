@@ -237,6 +237,42 @@ func TestSyncEPSS(t *testing.T) {
 	}
 }
 
+func TestSyncExploitSources(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if filepath.Ext(r.URL.Path) == ".json" {
+			w.Write([]byte(`{"m":{"fullname":"exploit/x","references":["CVE-2021-41773"]}}`))
+		} else {
+			w.Write([]byte("id,codes\n1,CVE-2021-41773\n"))
+		}
+	}))
+	defer srv.Close()
+	f := testFetcher(t, srv)
+	f.MSFURL = srv.URL + "/modules_metadata_base.json"
+	f.EDBURL = srv.URL + "/files_exploits.csv"
+	cache := t.TempDir()
+
+	mp, err := f.SyncMetasploit(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := LoadMetasploit(mp); err != nil || len(rows) != 1 {
+		t.Fatalf("msf: %v rows=%d", err, len(rows))
+	}
+	ep, err := f.SyncExploitDB(cache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := LoadExploitDB(ep); err != nil || len(rows) != 1 {
+		t.Fatalf("edb: %v rows=%d", err, len(rows))
+	}
+	if LocalMetasploit(cache) == "" || LocalExploitDB(cache) == "" {
+		t.Error("Local* did not find the cached files")
+	}
+	if LocalMetasploit(t.TempDir()) != "" {
+		t.Error("LocalMetasploit found a nonexistent file")
+	}
+}
+
 func TestVerifyLocalOSV(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := filepath.Join(dir, "osv-Debian-all.zip")

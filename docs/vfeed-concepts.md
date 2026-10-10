@@ -81,20 +81,28 @@ critique levelled at CVSS.
   remain. It is a query-time computation, so there is nothing to build into the
   database or port to the Python updater.
 
-### 🟡 3. Enriched exploit / PoC evidence
+### 🟢 3. Enriched exploit / PoC evidence — **IMPLEMENTED**
 
-Our `public_exploit` today is only "NVD tagged a reference `Exploit`, unverified"
-— a known weak signal. vFeed correlated **ExploitDB + Metasploit**; the modern
-equivalents are **Nuclei templates (CVE→template), Metasploit module CVE refs,
-and GitHub PoC indexes** (nomi-sec/PoC-in-GitHub, trickest/cve). ProjectDiscovery
-`cvemap` (MIT) demonstrates the join (CVE→Nuclei+EPSS+KEV+PoC).
+Our `public_exploit` was only "NVD tagged a reference `Exploit`, unverified" — a
+known weak signal. vFeed correlated **Exploit-DB + Metasploit**; other modern
+sources are Nuclei templates and GitHub PoC indexes (nomi-sec/PoC-in-GitHub,
+trickest/cve).
 
-- **Viability: medium-high.** Materially strengthens a weak signal and can point
-  to an *actionable verification* (a Nuclei template) without us running anything.
-- **Licensing:** ExploitDB is **GPLv2**, Nuclei templates vary, Metasploit is
-  BSD. Treat like `data/http_tech.json`: **fetch/derive at build, do not ship.**
-  Keep the bright line — record references/detection only, never download or run
-  exploit code.
+- **Viability: medium-high.** Materially strengthens a weak signal.
+- **Status: shipped (no schema change).** `vulndb update`/`build` fetches
+  Metasploit's `modules_metadata_base.json` (`raw.githubusercontent.com`) and the
+  Exploit-DB `files_exploits.csv` (`gitlab.com`), derives one `exploit_evidence`
+  row per (CVE, module/exploit) — source `metasploit` / `exploit-db`, references
+  only, `verified = 0` — and inserts only for CVEs already in the database (no
+  orphans). `--no-exploits` / `--metasploit FILE` / `--exploitdb FILE` control it;
+  metadata records `exploit_metasploit` / `exploit_exploitdb` counts. This feeds
+  the existing `public_exploit` flag, the exploit-source list, and the **attend**
+  priority, so a CVE with a Metasploit module but no KEV now surfaces correctly.
+- **Licensing:** Exploit-DB is **GPL-2.0** and Metasploit **BSD-3-Clause**; like
+  `data/http_tech.json` both are **fetched at build time and not shipped**. The
+  bright line holds — we record references only, never exploit code. Ported to
+  the Python updater too (Go/Python parity verified). Nuclei templates and GitHub
+  PoC indexes remain as possible future additions.
 
 ### 🟡 4. CVE → CWE → CAPEC → ATT&CK chain
 
@@ -134,8 +142,8 @@ linking for the Windows path later).
 1. ~~**EPSS**~~ — **done** (schema v13; see above).
 2. ~~**Explicit triage booleans + SSVC-style explainable priority**~~ — **done**
    (query-time `priority`/`priority_reason`; see above).
-3. **Enriched exploit intel** (Nuclei/Metasploit/PoC; fetch-at-build, GPL-safe) to
-   fix our weakest signal.
+3. ~~**Enriched exploit intel**~~ — **done** (Metasploit + Exploit-DB references,
+   fetch-at-build; see above). Nuclei/GitHub-PoC remain optional extensions.
 4. *(Optional)* **Defense indicators** (NSE/Suricata/OpenVAS verification mapping).
 5. *(Optional, reporting)* **CWE → CAPEC → ATT&CK** context.
 

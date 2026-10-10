@@ -459,6 +459,9 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	webappanalyzer := fs.String("webappanalyzer", "", "webappanalyzer technologies dir (derive http_tech); empty to skip")
 	noEPSS := fs.Bool("no-epss", false, "build without FIRST EPSS scores")
 	epssPath := fs.String("epss", "", "EPSS CSV snapshot (gzipped); default: fetched (--cache) or found in --offline-from")
+	noExploits := fs.Bool("no-exploits", false, "build without Metasploit/Exploit-DB exploit references")
+	msfPath := fs.String("metasploit", "", "Metasploit modules_metadata_base.json; default: fetched or found in --offline-from")
+	edbPath := fs.String("exploitdb", "", "Exploit-DB files_exploits.csv; default: fetched or found in --offline-from")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return err
@@ -490,6 +493,18 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 				return err
 			}
 		}
+		if !*noExploits {
+			if *msfPath == "" {
+				if *msfPath, err = fetcher.SyncMetasploit(*cache); err != nil {
+					return err
+				}
+			}
+			if *edbPath == "" {
+				if *edbPath, err = fetcher.SyncExploitDB(*cache); err != nil {
+					return err
+				}
+			}
+		}
 	} else {
 		if feeds, err = build.LocalFeeds(*offlineFrom); err != nil {
 			return err
@@ -500,6 +515,14 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 		kev = filepath.Join(*offlineFrom, "known_exploited_vulnerabilities.json")
 		if !*noEPSS && *epssPath == "" {
 			*epssPath = build.LocalEPSS(*offlineFrom)
+		}
+		if !*noExploits {
+			if *msfPath == "" {
+				*msfPath = build.LocalMetasploit(*offlineFrom)
+			}
+			if *edbPath == "" {
+				*edbPath = build.LocalExploitDB(*offlineFrom)
+			}
 		}
 	}
 	bopts := build.Options{AllowSmall: *allowSmall, Log: logf}
@@ -526,6 +549,20 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 			return err
 		}
 		bopts.EPSS, bopts.EPSSModel, bopts.EPSSDate = epss.Rows, epss.ModelVersion, epss.ScoreDate
+	}
+	if *msfPath != "" {
+		msf, err := build.LoadMetasploit(*msfPath)
+		if err != nil {
+			return err
+		}
+		bopts.Exploits = append(bopts.Exploits, msf...)
+	}
+	if *edbPath != "" {
+		edb, err := build.LoadExploitDB(*edbPath)
+		if err != nil {
+			return err
+		}
+		bopts.Exploits = append(bopts.Exploits, edb...)
 	}
 	if !*noDistro {
 		if bopts.PackageMap, err = build.LoadPackageMap(*pkgMapPath); err != nil {
