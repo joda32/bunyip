@@ -4,7 +4,7 @@ BIN     := bin/vulndb
 DB      ?= vulndb.sqlite
 FIXTURE := testdata/fixtures/synthetic.json
 
-.PHONY: all build test test-short test-all cover bench vet fmt fixture-db venv updater-test real-db real-db-python keygen bundle clean
+.PHONY: all build test test-short test-all cover bench vet fmt fixture-db venv updater-test real-db real-db-python keygen bundle release clean
 
 all: vet test build
 
@@ -72,5 +72,12 @@ BUNDLE ?= vulndb-$(shell date -u +%F).tar.gz
 bundle: build
 	$(BIN) --db $(DB) bundle create --key $(KEY) --out $(BUNDLE)
 
+# Build release archives into dist/. Override VERSION (default: git describe)
+# and PLATFORMS (space-separated GOOS/GOARCH list, default: host-ish linux/amd64).
+VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+PLATFORMS ?= linux/amd64
+release:
+	scripts/release.sh "$(VERSION)" $(PLATFORMS)
+
 clean:
-	rm -rf bin
+	rm -rf bin dist

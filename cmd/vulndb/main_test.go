@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -65,6 +66,18 @@ func TestQueryText(t *testing.T) {
 	}
 	if r.stderr != "" {
 		t.Errorf("unexpected stderr without --debug: %s", r.stderr)
+	}
+}
+
+func TestVersion(t *testing.T) {
+	for _, args := range [][]string{{"version"}, {"--version"}} {
+		r := cli(args...)
+		if r.code != exitOK {
+			t.Fatalf("%v: exit %d: %s", args, r.code, r.stderr)
+		}
+		if !strings.HasPrefix(r.stdout, "vulndb ") || !strings.Contains(r.stdout, runtime.GOOS) {
+			t.Errorf("%v: unexpected version line %q", args, r.stdout)
+		}
 	}
 }
 

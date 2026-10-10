@@ -13,3 +13,6 @@ vulndb-signing.key
 
 # Generated at build time from the GPL-3.0 webappanalyzer corpus; not shipped.
 data/http_tech.json
+
+# release artifacts
+/dist/

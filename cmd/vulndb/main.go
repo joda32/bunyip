@@ -11,6 +11,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -64,18 +66,58 @@ Commands:
   bundle verify FILE --pubkey FILE       check a bundle's signature and contents
   bundle import FILE --pubkey FILE       verify and atomically install a bundle as --db
         [--allow-unsigned] [--allow-downgrade]
+  version                                print the vulndb version and build details
 
 Global options (may also follow the command):
   --db PATH   database file (default $VULNDB_DB, else ./vulndb.sqlite)
   --debug     explain matching decisions on stderr
+  --version   print the vulndb version and exit
 
 Results are CANDIDATE vulnerabilities based on product/version data; they do
 not prove a target is vulnerable. Distribution backported fixes are evaluated
 only where a distribution verdict is shown (Ubuntu, Debian, RHEL family).
 `
 
+// buildVersion is the release version, set at link time with
+//
+//	-ldflags "-X main.buildVersion=v1.2.3".
+//
+// When unset it falls back to the VCS revision the Go toolchain stamps in.
+var buildVersion = "dev"
+
 func main() {
 	os.Exit(runWithStdin(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+// versionLine reports the vulndb version, preferring the link-time value and
+// otherwise the embedded VCS revision (short, with a "-dirty" suffix if the
+// build tree was modified).
+func versionLine() string {
+	v := buildVersion
+	if v == "dev" {
+		if bi, ok := debug.ReadBuildInfo(); ok {
+			rev, dirty := "", false
+			for _, s := range bi.Settings {
+				switch s.Key {
+				case "vcs.revision":
+					if len(s.Value) >= 12 {
+						rev = s.Value[:12]
+					} else {
+						rev = s.Value
+					}
+				case "vcs.modified":
+					dirty = s.Value == "true"
+				}
+			}
+			if rev != "" {
+				v = rev
+				if dirty {
+					v += "-dirty"
+				}
+			}
+		}
+	}
+	return fmt.Sprintf("vulndb %s (%s/%s, %s)", v, runtime.GOOS, runtime.GOARCH, runtime.Version())
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -89,11 +131,13 @@ type globals struct {
 	// missing file is an error rather than a trigger to auto-build.
 	dbExplicit bool
 	debug      bool
+	version    bool
 }
 
 func (g *globals) register(fs *flag.FlagSet) {
 	fs.StringVar(&g.db, "db", g.db, "database file")
 	fs.BoolVar(&g.debug, "debug", g.debug, "explain matching decisions")
+	fs.BoolVar(&g.version, "version", g.version, "print the vulndb version and exit")
 }
 
 // usageError marks errors that should print usage and exit 2.
@@ -113,6 +157,10 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 			g.dbExplicit = true
 		}
 	})
+	if g.version {
+		fmt.Fprintln(stdout, versionLine())
+		return exitOK
+	}
 	rest := fs.Args()
 	if len(rest) == 0 {
 		fmt.Fprint(stderr, usage)
@@ -140,6 +188,9 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		err = cmdDB(ctx, g, rest[1:], stdout, stderr)
 	case "bundle":
 		err = cmdBundle(ctx, g, rest[1:], stdout, stderr)
+	case "version":
+		fmt.Fprintln(stdout, versionLine())
+		return exitOK
 	case "help", "-h", "--help":
 		fmt.Fprint(stdout, usage)
 		return exitOK
