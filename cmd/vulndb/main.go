@@ -387,6 +387,11 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	noDistro := fs.Bool("no-distro", false, "build without distribution advisories")
 	pkgMapPath := fs.String("distro-packages", "data/distro_packages.json", "curated CPE -> distro package map")
 	releasesPath := fs.String("distro-releases", "data/distro_releases.json", "curated distribution release lifecycle")
+	aliasesPath := fs.String("aliases", "data/aliases.json", "curated Nmap->NVD aliases")
+	windowsPath := fs.String("windows-builds", "data/windows_builds.json", "curated Windows build map")
+	productNamesPath := fs.String("product-names", "data/product_names.json", "curated Nmap product names")
+	httpAppsPath := fs.String("http-apps", "data/http_apps.json", "curated HTTP application fingerprints")
+	webappanalyzer := fs.String("webappanalyzer", "", "webappanalyzer technologies dir (derive http_tech); empty to skip")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return err
@@ -418,6 +423,23 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 		kev = filepath.Join(*offlineFrom, "known_exploited_vulnerabilities.json")
 	}
 	bopts := build.Options{AllowSmall: *allowSmall, Log: logf}
+	if bopts.Aliases, err = build.LoadAliases(*aliasesPath); err != nil {
+		return err
+	}
+	if bopts.WindowsBuilds, err = build.LoadWindowsBuilds(*windowsPath); err != nil {
+		return err
+	}
+	if bopts.ProductNames, err = build.LoadProductNames(*productNamesPath); err != nil {
+		return err
+	}
+	if bopts.HTTPApps, err = build.LoadHTTPApps(*httpAppsPath); err != nil {
+		return err
+	}
+	if *webappanalyzer != "" {
+		if bopts.HTTPTech, err = build.DeriveHTTPTech(*webappanalyzer); err != nil {
+			return err
+		}
+	}
 	if !*noDistro {
 		if bopts.PackageMap, err = build.LoadPackageMap(*pkgMapPath); err != nil {
 			return err

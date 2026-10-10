@@ -25,6 +25,12 @@ type Options struct {
 	PackageMap []PackageMapRow
 	Releases   []ReleaseRow
 	Distros    []DistroInput
+	// Curated first-party data + webappanalyzer-derived http_tech.
+	Aliases       []AliasRow
+	WindowsBuilds []WindowsBuildRow
+	ProductNames  []ProductNameRow
+	HTTPApps      []HTTPAppRow
+	HTTPTech      []HTTPTechRow
 }
 
 // Stats summarises a build.
@@ -123,6 +129,10 @@ func BuildNVDKEV(ctx context.Context, out string, feeds []Feed, kevPath string, 
 		if _, err := loadDistros(ctx, db, opts.Distros, opts.PackageMap, opts.Releases, log); err != nil {
 			return stats, err
 		}
+	}
+
+	if err := insertCurated(ctx, db, opts); err != nil {
+		return stats, err
 	}
 
 	if err := writeMetadata(ctx, db, ordered, cat, &stats); err != nil {
@@ -377,4 +387,56 @@ func b2i(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// insertCurated loads the curated first-party tables in one transaction.
+func insertCurated(ctx context.Context, db *sql.DB, opts Options) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	for _, a := range opts.Aliases {
+		if _, err := tx.ExecContext(ctx,
+			"INSERT INTO aliases (observed_vendor, observed_product, canonical_vendor, canonical_product,"+
+				" canonical_cpe_prefix, source, confidence) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			a.ObservedVendor, a.ObservedProduct, a.CanonicalVendor, a.CanonicalProduct, a.prefix(), a.Source, a.Confidence); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	for _, w := range opts.WindowsBuilds {
+		if _, err := tx.ExecContext(ctx,
+			"INSERT INTO windows_builds (build, kind, name, cpes, eol, support, source) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			w.Build, w.Kind, w.Name, w.CPEs, w.EOL, w.Support, w.Source); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	for _, n := range opts.ProductNames {
+		if _, err := tx.ExecContext(ctx,
+			"INSERT INTO product_names (pattern, match, kind, part, vendor, product, os, version, confidence, note, source)"+
+				" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			n.Pattern, n.Match, n.Kind, n.Part, n.Vendor, n.Product, n.OS, n.Version, n.Confidence, n.Note, n.Source); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	for _, a := range opts.HTTPApps {
+		if _, err := tx.ExecContext(ctx,
+			"INSERT INTO http_apps (evidence, header, pattern, vendor, product, version_group, confidence, note, source)"+
+				" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			a.Evidence, a.Header, a.Pattern, a.Vendor, a.Product, a.VersionGroup, a.Confidence, a.Note, a.Source); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	for _, t := range opts.HTTPTech {
+		if _, err := tx.ExecContext(ctx,
+			"INSERT INTO http_tech (name, vendor, product, source) VALUES (?, ?, ?, ?)",
+			t.Name, t.Vendor, t.Product, t.Source); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
 }
