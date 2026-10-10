@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -371,7 +370,7 @@ type PackageMapRow struct {
 
 // LoadPackageMap reads data/distro_packages.json.
 func LoadPackageMap(path string) ([]PackageMapRow, error) {
-	data, err := os.ReadFile(path)
+	data, err := curatedData(path)
 	if err != nil {
 		return nil, err
 	}
@@ -423,7 +422,7 @@ type ReleaseRow struct {
 
 // LoadReleases reads data/distro_releases.json (eol required, ISO dates).
 func LoadReleases(path string) ([]ReleaseRow, error) {
-	data, err := os.ReadFile(path)
+	data, err := curatedData(path)
 	if err != nil {
 		return nil, err
 	}

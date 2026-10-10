@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	curated "offline-vulndb/data"
 	"offline-vulndb/internal/cpe"
 )
 
@@ -397,8 +398,23 @@ func DeriveHTTPTech(techDir string) ([]HTTPTechRow, error) {
 	return rows, nil
 }
 
+// curatedData returns the bytes for a curated-data source. A path of the form
+// "embedded:<name>" resolves to the first-party file compiled into the binary
+// (data.Files); any other path is read from disk, so an explicit --flag still
+// overrides the embedded default.
+func curatedData(path string) ([]byte, error) {
+	if name, ok := strings.CutPrefix(path, "embedded:"); ok {
+		b, ok := curated.Files[name]
+		if !ok {
+			return nil, fmt.Errorf("no embedded curated file %q", name)
+		}
+		return b, nil
+	}
+	return os.ReadFile(path)
+}
+
 func readJSON(path string, v any) error {
-	data, err := os.ReadFile(path)
+	data, err := curatedData(path)
 	if err != nil {
 		return err
 	}

@@ -399,12 +399,12 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	cache := fs.String("cache", "", "download cache; fetch NVD feeds + KEV into it over the network")
 	allowSmall := fs.Bool("allow-small", false, "skip completeness floors (tests/partial builds)")
 	noDistro := fs.Bool("no-distro", false, "build without distribution advisories")
-	pkgMapPath := fs.String("distro-packages", "data/distro_packages.json", "curated CPE -> distro package map")
-	releasesPath := fs.String("distro-releases", "data/distro_releases.json", "curated distribution release lifecycle")
-	aliasesPath := fs.String("aliases", "data/aliases.json", "curated Nmap->NVD aliases")
-	windowsPath := fs.String("windows-builds", "data/windows_builds.json", "curated Windows build map")
-	productNamesPath := fs.String("product-names", "data/product_names.json", "curated Nmap product names")
-	httpAppsPath := fs.String("http-apps", "data/http_apps.json", "curated HTTP application fingerprints")
+	pkgMapPath := fs.String("distro-packages", "embedded:distro_packages.json", "curated CPE -> distro package map")
+	releasesPath := fs.String("distro-releases", "embedded:distro_releases.json", "curated distribution release lifecycle")
+	aliasesPath := fs.String("aliases", "embedded:aliases.json", "curated Nmap->NVD aliases")
+	windowsPath := fs.String("windows-builds", "embedded:windows_builds.json", "curated Windows build map")
+	productNamesPath := fs.String("product-names", "embedded:product_names.json", "curated Nmap product names")
+	httpAppsPath := fs.String("http-apps", "embedded:http_apps.json", "curated HTTP application fingerprints")
 	webappanalyzer := fs.String("webappanalyzer", "", "webappanalyzer technologies dir (derive http_tech); empty to skip")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

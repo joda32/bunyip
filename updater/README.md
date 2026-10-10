@@ -1,5 +1,12 @@
 # vulndb-update
 
+> **Note:** the `vulndb` binary now builds the database itself — `vulndb update`
+> fetches every source and loads its embedded curated data, with no checkout or
+> separate updater needed (see the top-level README). This Python updater is
+> kept as the **porting oracle** (the Go builder is checked for byte-for-byte
+> parity against it) and for its **curation** commands `review-aliases` and
+> `review-products`. For new builds prefer `vulndb update`.
+
 This tool builds the Offline VulnDB SQLite database from public data. It runs
 on an **Internet-connected** machine; you then copy the resulting
 `vulndb.sqlite` into the restricted network next to the `vulndb` binary.

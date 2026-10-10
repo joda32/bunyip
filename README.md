@@ -70,17 +70,29 @@ Implemented:
   The release also decides NVD "running on" conditions for the host's
   services: CVEs that need Windows are confirmed, and CVEs that apply only on
   other operating systems are excluded.
-- **Updater (Python, [`updater/`](updater/README.md)):** builds a real database
-  from the NVD CVE JSON 2.0 feeds, the CISA KEV catalogue, five distributions'
-  advisories (OSV.dev exports), `data/aliases.json` and
-  `data/distro_packages.json`.
+- **Self-contained builder (`vulndb update` / `vulndb build`):** the binary
+  itself fetches the real sources — NVD CVE JSON 2.0 feeds, the CISA KEV
+  catalogue, five distributions' advisories (OSV.dev exports) and the
+  webappanalyzer corpus — and loads them with the curated first-party data
+  compiled into the binary (aliases, distro package map and lifecycle, Windows
+  builds, product names, HTTP app fingerprints). No repository checkout or
+  separate updater is needed on the build machine. `vulndb update` also runs
+  automatically the first time you query a default database that does not exist
+  yet.
+- **Updater (Python, [`updater/`](updater/README.md)):** the original builder,
+  kept as the porting oracle (byte-for-byte parity is checked against it) and
+  for its curation commands `review-aliases` and `review-products`, which
+  propose new `data/aliases.json` / `data/product_names.json` entries for human
+  review.
 
 Not yet: SUSE/Alpine advisories, the CVE List as a second source (evaluated and deferred,
 see [docs/data-sources.md](docs/data-sources.md)).
 
 ## Build
 
-Requires Go 1.27+. No CGO; the result is one static binary.
+Requires Go 1.27+. No CGO; the result is one static binary with the curated
+first-party data embedded, so it builds a database without the repository on
+disk.
 
 ```bash
 make build          # -> bin/vulndb
@@ -92,7 +104,11 @@ make test-all       # Go tests + updater tests, incl. real-data end-to-end test
 ## Build a real database (Internet-connected machine)
 
 ```bash
-make real-db        # NVD feeds + CISA KEV -> ./vulndb.sqlite (feeds cached in .cache/feeds)
+make real-db        # bin/vulndb update: fetch NVD + KEV + OSV + webappanalyzer -> ./vulndb.sqlite
+# or directly, to any path:
+bin/vulndb --db ./vulndb.sqlite update          # sources cached in ~/.cache/vulndb
+bin/vulndb --db ./vulndb.sqlite update --cache .cache/feeds   # choose the cache dir
+make real-db-python # the Python updater (NVD + KEV core), kept as the oracle
 ```
 
 Package it as a signed bundle and install it in the restricted network with
@@ -462,16 +478,18 @@ internal/nmap/       Nmap XML parser and scan assessment
 internal/windows/    Windows build-level assessment (build evidence -> release CPEs)
 internal/output/     text and JSON rendering
 internal/bundle/     signed transport bundles (create, verify, atomic import)
+data/                curated first-party data, embedded in the binary (data/embed.go)
 data/aliases.json    curated vendor/product aliases (loaded into the database)
 data/distro_packages.json  curated CPE -> distribution source package map
 data/distro_releases.json  curated distribution release lifecycle (end of life)
 data/windows_builds.json   curated Windows build -> release, NVD CPEs, lifecycle
 data/product_names.json    curated Nmap product names (no CPE) -> NVD identity or OS component
 data/http_apps.json        curated HTTP fingerprints (Server/generator/header/title) -> web-app CPE
-data/http_tech.json        web-fingerprinter tech name -> CPE for `vulndb ingest` (webappanalyzer-derived)
+data/http_tech.json        web-fingerprinter tech name -> CPE for `vulndb ingest`; NOT embedded,
+                           GPL-3.0-derived and gitignored, built from the webappanalyzer corpus
 scripts/gen_http_tech.py   regenerates data/http_tech.json from a webappanalyzer checkout
 schema/schema.sql    database schema (embedded in the binary)
-updater/             Python updater: NVD + KEV -> vulndb.sqlite
+updater/             Python updater: porting oracle + curation (review-aliases, review-products)
 testdata/fixtures/   synthetic test data
 testdata/nvd/        real NVD/KEV records for updater and end-to-end tests
 testdata/contract/   shared Go/Python vectors (CPE canonicalisation, RPM ordering, version keys)

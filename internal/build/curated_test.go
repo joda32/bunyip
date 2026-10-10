@@ -29,6 +29,41 @@ func TestLoadCuratedRealFiles(t *testing.T) {
 	}
 }
 
+// TestLoadCuratedEmbedded verifies the "embedded:<name>" default source loads
+// the first-party data compiled into the binary, with the same results as the
+// on-disk copy — this is what makes vulndb a single self-contained binary.
+func TestLoadCuratedEmbedded(t *testing.T) {
+	embN, err := LoadAliases("embedded:aliases.json")
+	if err != nil || len(embN) == 0 {
+		t.Fatalf("embedded aliases: %d %v", len(embN), err)
+	}
+	diskN, err := LoadAliases("../../data/aliases.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(embN) != len(diskN) {
+		t.Errorf("embedded vs disk aliases count: %d != %d", len(embN), len(diskN))
+	}
+	for _, src := range []string{
+		"embedded:distro_packages.json", "embedded:distro_releases.json",
+		"embedded:windows_builds.json", "embedded:product_names.json",
+		"embedded:http_apps.json",
+	} {
+		if _, err := curatedData(src); err != nil {
+			t.Errorf("%s: %v", src, err)
+		}
+	}
+	if _, err := curatedData("embedded:nope.json"); err == nil {
+		t.Error("unknown embedded name accepted")
+	}
+	if _, err := LoadPackageMap("embedded:distro_packages.json"); err != nil {
+		t.Errorf("embedded package map: %v", err)
+	}
+	if _, err := LoadReleases("embedded:distro_releases.json"); err != nil {
+		t.Errorf("embedded releases: %v", err)
+	}
+}
+
 func TestLoadAliasesRejects(t *testing.T) {
 	dir := t.TempDir()
 	write := func(s string) string {

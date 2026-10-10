@@ -4,7 +4,7 @@ BIN     := bin/vulndb
 DB      ?= vulndb.sqlite
 FIXTURE := testdata/fixtures/synthetic.json
 
-.PHONY: all build test test-short test-all cover bench vet fmt fixture-db venv updater-test real-db keygen bundle clean
+.PHONY: all build test test-short test-all cover bench vet fmt fixture-db venv updater-test real-db real-db-python keygen bundle clean
 
 all: vet test build
 
@@ -49,9 +49,16 @@ venv:
 updater-test:
 	cd updater && GO=$(shell command -v $(GO)) ../$(PYTHON) -m pytest -q
 
-# Build a REAL database from NVD + CISA KEV (needs Internet access). Feeds are
-# cached in .cache/feeds and only re-downloaded when NVD publishes changes.
-real-db:
+# Build a REAL database from the real sources (needs Internet access): NVD +
+# CISA KEV + OSV distro advisories + webappanalyzer. The self-contained Go
+# binary fetches everything and loads its embedded curated data. Sources are
+# cached in .cache/feeds and only re-downloaded when they change.
+real-db: build
+	$(BIN) --db $(DB) update --cache .cache/feeds
+
+# The Python updater builds the same core tables and is kept as the porting
+# oracle and for its curation commands (review-aliases, review-products).
+real-db-python:
 	$(PYTHON) -m vulndb_update build --out $(DB) --cache .cache/feeds
 
 # Signing key for transport bundles (once; keep the private key on the build machine).
