@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -112,6 +113,60 @@ func TestSyncNVDRejectsBadChecksum(t *testing.T) {
 	f := testFetcher(t, srv)
 	if _, err := f.SyncNVD(t.TempDir(), []string{"modified"}); err == nil {
 		t.Error("expected checksum mismatch error")
+	}
+}
+
+func TestDownloadStallAborts(t *testing.T) {
+	_, metaText := gzMeta(t, `{"version":"2.0","vulnerabilities":[]}`)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if filepath.Ext(r.URL.Path) == ".meta" {
+			w.Write([]byte(metaText))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("partial"))
+		if fl, ok := w.(http.Flusher); ok {
+			fl.Flush()
+		}
+		time.Sleep(400 * time.Millisecond) // idle well past the stall timeout
+	}))
+	defer srv.Close()
+	f := testFetcher(t, srv)
+	f.StallTimeout = 50 * time.Millisecond
+	_, err := f.SyncNVD(t.TempDir(), []string{"modified"})
+	if err == nil || !strings.Contains(err.Error(), "stalled") {
+		t.Fatalf("expected stall error, got %v", err)
+	}
+}
+
+func TestDownloadSlowButSteadySucceeds(t *testing.T) {
+	body := `{"version":"2.0","vulnerabilities":[]}`
+	gz, metaText := gzMeta(t, body)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if filepath.Ext(r.URL.Path) == ".meta" {
+			w.Write([]byte(metaText))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fl, _ := w.(http.Flusher)
+		for i := 0; i < len(gz); i += 4 { // drip in chunks, each gap < stall
+			end := i + 4
+			if end > len(gz) {
+				end = len(gz)
+			}
+			w.Write(gz[i:end])
+			if fl != nil {
+				fl.Flush()
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}))
+	defer srv.Close()
+	f := testFetcher(t, srv)
+	f.StallTimeout = 200 * time.Millisecond // each 10ms gap resets the watchdog
+	feeds, err := f.SyncNVD(t.TempDir(), []string{"modified"})
+	if err != nil || len(feeds) != 1 {
+		t.Fatalf("slow steady download failed: %v feeds=%d", err, len(feeds))
 	}
 }
 

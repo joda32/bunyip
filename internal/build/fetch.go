@@ -2,13 +2,16 @@ package build
 
 import (
 	"compress/gzip"
+	"context"
 	"crypto/md5"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -30,8 +33,17 @@ const (
 	kevFile          = "known_exploited_vulnerabilities.json"
 	firstFeedYear    = 2002
 	maxDownloadBytes = 1 << 30
-	fetchTimeout     = 120 * time.Second
 	fetchRetries     = 4
+
+	// Connection-phase timeouts bound how long a dead or hung connection can
+	// block, without capping the total duration of a large, slow-but-steady
+	// download. Progress is bounded instead by stallTimeout: an attempt is
+	// aborted only when no bytes arrive for this long (NVD throttles its feeds
+	// hard, so a whole-request timeout would abort healthy downloads).
+	dialTimeout           = 30 * time.Second
+	tlsHandshakeTimeout   = 30 * time.Second
+	responseHeaderTimeout = 60 * time.Second
+	stallTimeout          = 90 * time.Second
 )
 
 // Meta is a feed's .meta sidecar.
@@ -52,6 +64,10 @@ type Fetcher struct {
 	Client       *http.Client
 	UserAgent    string
 	RetryBackoff func(attempt int) time.Duration
+	// StallTimeout aborts an attempt when no bytes arrive for this long; a
+	// download that keeps making progress is never cut off. Zero uses the
+	// stallTimeout default.
+	StallTimeout time.Duration
 	Log          func(string, ...any)
 }
 
@@ -60,13 +76,29 @@ func NewFetcher(ua string, log func(string, ...any)) *Fetcher {
 	if log == nil {
 		log = func(string, ...any) {}
 	}
+	// No overall Client.Timeout: it would cap the whole request including the
+	// body read and abort large, slow NVD downloads. Connection setup is
+	// bounded by the transport timeouts; download progress by StallTimeout.
+	// HTTP/2 is disabled (empty TLSNextProto) because NVD's feed host returns
+	// h2 stream INTERNAL_ERRORs under load; HTTP/1.1 downloads cleanly.
+	tr := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: dialTimeout, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:     false,
+		TLSNextProto:          map[string]func(string, *tls.Conn) http.RoundTripper{},
+		TLSHandshakeTimeout:   tlsHandshakeTimeout,
+		ResponseHeaderTimeout: responseHeaderTimeout,
+		ExpectContinueTimeout: time.Second,
+		IdleConnTimeout:       90 * time.Second,
+	}
 	return &Fetcher{
 		FeedBase:     nvdFeedBase,
 		KEVURL:       kevURL,
 		Allowed:      map[string]bool{"nvd.nist.gov": true, "www.cisa.gov": true, "osv-vulnerabilities.storage.googleapis.com": true, "raw.githubusercontent.com": true},
-		Client:       &http.Client{Timeout: fetchTimeout},
+		Client:       &http.Client{Transport: tr},
 		UserAgent:    ua,
 		RetryBackoff: func(attempt int) time.Duration { return time.Duration(1<<attempt) * time.Second },
+		StallTimeout: stallTimeout,
 		Log:          log,
 	}
 }
@@ -116,7 +148,13 @@ func isFatal(err error) bool {
 }
 
 func (f *Fetcher) try(raw, part string) error {
-	req, err := http.NewRequest(http.MethodGet, raw, nil)
+	stall := f.StallTimeout
+	if stall <= 0 {
+		stall = stallTimeout
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
 		return err
 	}
@@ -137,14 +175,37 @@ func (f *Fetcher) try(raw, part string) error {
 		return err
 	}
 	defer out.Close()
-	n, err := io.Copy(out, io.LimitReader(resp.Body, maxDownloadBytes+1))
+	// Abort the request if no bytes arrive for `stall`; each read resets it, so
+	// a slow-but-steady download runs to completion however long it takes.
+	watchdog := time.AfterFunc(stall, cancel)
+	defer watchdog.Stop()
+	body := &progressReader{r: io.LimitReader(resp.Body, maxDownloadBytes+1), onRead: func() { watchdog.Reset(stall) }}
+	n, err := io.Copy(out, body)
 	if err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("stalled: no data for %s", stall)
+		}
 		return err
 	}
 	if n > maxDownloadBytes {
 		return fmt.Errorf("%s: exceeds %d bytes", raw, maxDownloadBytes)
 	}
 	return out.Close()
+}
+
+// progressReader calls onRead whenever bytes are read, used to feed a
+// stall watchdog so an idle (not merely slow) download is aborted.
+type progressReader struct {
+	r      io.Reader
+	onRead func()
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 {
+		p.onRead()
+	}
+	return n, err
 }
 
 // ParseMeta parses a .meta sidecar.
