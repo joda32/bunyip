@@ -1,156 +1,273 @@
 # Offline VulnDB
 
-Offline VulnDB is a lightweight vulnerability correlation engine for isolated
-and restricted networks. Given a software identity — currently a CPE, such as
-the ones Nmap reports — it looks up **candidate CVEs** in a local SQLite
-database, evaluates the affected version ranges, and annotates each result
-with CISA KEV and public-exploit evidence. No Internet access is needed at
-query time.
+Offline VulnDB is a lightweight vulnerability **correlation** engine for
+isolated and restricted networks. Given a software identity — a CPE, an Nmap
+service fingerprint, or a web technology detected by httpx — it looks up
+**candidate CVEs** in a local SQLite database, evaluates the affected version
+ranges, and annotates each result with CISA KEV status and public-exploit
+evidence. No Internet access is needed at query time, and it never touches a
+target.
 
 ```text
-CPE (2.2 or 2.3) -> normalise -> candidate rules in SQLite -> version range evaluation
-                 -> KEV / exploit enrichment -> text or JSON
+  CPE 2.2/2.3 ─┐
+  Nmap -oX     ├─▶ normalise & resolve identity ─▶ candidate rules (SQLite)
+  httpx -td    ─┘                                        │
+                                                         ▼
+                              version-range evaluation (MATCH / UNKNOWN)
+                                                         │
+                    KEV + exploit + distro-backport + Windows-build enrichment
+                                                         │
+                                                         ▼
+                                             text  |  JSON  |  NSE output
 ```
 
-The design is in [`offline_vulndb_design.md`](offline_vulndb_design.md); the
-exact matching rules are in [`docs/matching.md`](docs/matching.md).
+It ships as a **single static binary** with its curated data embedded. The same
+binary builds the database (`vulndb update`, on an Internet-connected machine)
+and answers queries (`vulndb query` / `nmap` / `ingest`, on the offline side).
+
+- Matching semantics: [`docs/matching.md`](docs/matching.md)
+- Design rationale: [`offline_vulndb_design.md`](offline_vulndb_design.md)
+- Data-source coverage and decisions: [`docs/data-sources.md`](docs/data-sources.md)
+- Build → signed bundle → offline import: [`docs/deployment.md`](docs/deployment.md)
 
 ## What it is not
 
-- Not a vulnerability scanner: it never touches a target.
-- Not proof of vulnerability: a version/banner match is a **candidate
-  vulnerability**. The version only *appears* to fall in an affected range.
-- Not a patch-state audit. Distribution backports (fixes shipped without
-  changing the upstream version) are evaluated for Ubuntu, Debian, RHEL, Rocky
-  Linux, AlmaLinux and CentOS, only as far as the scan reveals the installed
-  package. Results for other distributions (SUSE, Alpine, …) can be false
-  positives.
-- Does not run, download or ship exploit code; it only records that exploit
-  references exist.
+- **Not a scanner.** It never connects to a target; it reads data someone else
+  collected (an Nmap XML file, httpx output, or a single CPE).
+- **Not proof of vulnerability.** A version/banner match is a *candidate*: the
+  version only *appears* to fall in an affected range. Confirm before acting.
+- **Not a patch-state audit.** Distribution backports are evaluated for Ubuntu,
+  Debian, RHEL, Rocky Linux, AlmaLinux and CentOS, and only as far as the scan
+  reveals the installed package. Other distributions (SUSE, Alpine, …) can show
+  false positives.
+- **Never runs, downloads or ships exploit code.** It only records that exploit
+  *references* exist.
+- **Not complete.** NVD provides CPE applicability data for only part of recent
+  CVEs (see [coverage](#a-note-on-nvd-coverage)), so an empty result is not
+  evidence of "no vulnerability".
 
-## Status: milestone 9
+## Features
 
-Implemented:
-- **Query engine (Go):** CPE 2.2/2.3 parsing and normalisation, version
-  comparators chosen per product (generic, OpenSSH), range evaluation
-  (MATCH / NO_MATCH / UNKNOWN), awareness of NVD AND/OR configuration
-  structure, KEV and exploit enrichment, text and JSON output, a debug trace,
-  and `db init/verify/stats`.
-- **Nmap input:** `vulndb nmap scan.xml` assesses every open, fingerprinted
-  service in Nmap `-oX` output; `nse/vulndb.nse` shows the same results inline
+- **Query engine (Go).** CPE 2.2/2.3 parsing and normalisation; per-product
+  version comparators (generic, OpenSSH, dpkg, RPM, PEP 440); range evaluation
+  (`MATCH` / `NO_MATCH` / `UNKNOWN`); awareness of NVD AND/OR configuration
+  structure; KEV and exploit enrichment; text, JSON and debug output.
+- **Nmap input.** `vulndb nmap scan.xml` assesses every open, fingerprinted
+  service in Nmap `-oX` output. `nse/vulndb.nse` shows the same results inline
   during a scan (`nmap -sV --script vulndb`).
-- **Identity resolution:** curated aliases map the vendor/product names Nmap
-  reports to the names NVD uses (e.g. `mysql:mysql` → `oracle:mysql`).
-  Distribution packages (Ubuntu, Debian, RHEL, …) are detected.
-- **Distribution security advisories (Ubuntu, Debian, RHEL, Rocky Linux,
-  AlmaLinux; CentOS via RHEL):** for distribution-packaged services,
-  each candidate CVE is checked against the distribution's own fix data (FIXED /
-  VULNERABLE / FIX_AVAILABLE / NO_FIX). This removes backport false positives
-  and adds CVEs NVD lacks data for. See [docs/matching.md](docs/matching.md#9-distribution-advisories-internaldistro).
-- **Web-fingerprinter ingest (`vulndb ingest`):** consumes httpx (`-td -json`)
-  or webanalyze output and assesses the web applications they detect, mapping
-  ~450 technology names to CPEs (`data/http_tech.json`, derived from the
-  webappanalyzer corpus). Specialised web fingerprinting feeds the same engine
-  instead of forcing everything through Nmap. Identities are leads (verify).
-- **HTTP application fingerprints:** a curated map (`data/http_apps.json`)
-  identifies web apps behind a generic web server (WordPress, Drupal, Joomla,
-  Jenkins, …) from HTTP evidence — Server header, `<meta generator>`, response
-  headers, title — adding the app as an identity beside the web-server CPE.
-  Needs `nmap -sC` (http-* scripts) and `vulndb nmap`.
-- **Product names without a CPE:** a curated map (`data/product_names.json`)
-  identifies services Nmap names but gives no application CPE (ClamAV,
-  CouchDB, cPanel, Apache JAMES, …), and marks Windows built-ins (RPC, LDAP,
-  SMB, RDP) as OS components covered by the Windows assessment.
-  `vulndb-update review-products` proposes further candidates for review.
-- **Windows hosts at build level:** `vulndb nmap` reads the build that
-  `rdp-ntlm-info` / `smb-os-discovery` report (`10.0.20348`), maps it to the
-  release's NVD identities (`data/windows_builds.json`) and lists the CVEs that
-  apply unless the host is patched, KEV entries first, with end-of-support
-  status. See [docs/matching.md](docs/matching.md#10-windows-build-level-assessment-internalwindows).
-  The release also decides NVD "running on" conditions for the host's
-  services: CVEs that need Windows are confirmed, and CVEs that apply only on
-  other operating systems are excluded.
-- **Self-contained builder (`vulndb update` / `vulndb build`):** the binary
-  itself fetches the real sources — NVD CVE JSON 2.0 feeds, the CISA KEV
-  catalogue, five distributions' advisories (OSV.dev exports) and the
-  webappanalyzer corpus — and loads them with the curated first-party data
-  compiled into the binary (aliases, distro package map and lifecycle, Windows
-  builds, product names, HTTP app fingerprints). No repository checkout or
-  separate updater is needed on the build machine. `vulndb update` also runs
-  automatically the first time you query a default database that does not exist
-  yet.
-- **Updater (Python, [`updater/`](updater/README.md)):** the original builder,
-  kept as the porting oracle (byte-for-byte parity is checked against it) and
-  for its curation commands `review-aliases` and `review-products`, which
-  propose new `data/aliases.json` / `data/product_names.json` entries for human
-  review.
+- **Web-fingerprinter ingest.** `vulndb ingest` consumes httpx (`-td -json`) or
+  webanalyze output and assesses the web applications they detect, mapping
+  technology names to CPEs — so specialised web fingerprinting feeds the same
+  engine instead of being forced through Nmap.
+- **Identity resolution.** Curated aliases map the vendor/product names Nmap
+  reports to the names NVD uses (e.g. `mysql:mysql` → `oracle:mysql`). A curated
+  product-name map identifies services Nmap names but gives no CPE (ClamAV,
+  CouchDB, cPanel, …). A curated HTTP app map identifies web apps behind a
+  generic web server (WordPress, Drupal, Jenkins, …) from HTTP evidence.
+- **Distribution security advisories** (Ubuntu, Debian, RHEL, Rocky Linux,
+  AlmaLinux; CentOS via RHEL). Each candidate CVE for a distro-packaged service
+  is checked against the distribution's own fix data
+  (`FIXED` / `VULNERABLE` / `FIX_AVAILABLE` / `NO_FIX`), removing backport false
+  positives and adding CVEs NVD lacks data for.
+- **Windows build-level assessment.** `vulndb nmap` reads the build that
+  `rdp-ntlm-info` / `smb-os-discovery` report (e.g. `10.0.20348`), maps it to
+  the release's NVD identities, and lists the CVEs that apply *unless patched*,
+  KEV first, with end-of-support status.
+- **Self-contained builder.** `vulndb update` fetches all real sources and
+  builds the database locally; curated first-party data is embedded in the
+  binary, so no repository checkout is needed on the build machine.
+- **Signed transport bundles.** Package a built database, verify its signature,
+  schema and integrity, and install it atomically on the offline side.
 
-Not yet: SUSE/Alpine advisories, the CVE List as a second source (evaluated and deferred,
-see [docs/data-sources.md](docs/data-sources.md)).
+Not yet: SUSE/Alpine advisories, and the official CVE List as a second
+applicability source (evaluated and deferred — see
+[`docs/data-sources.md`](docs/data-sources.md)).
 
-## Build
+## Architecture
 
-Requires Go 1.27+. No CGO; the result is one static binary with the curated
-first-party data embedded, so it builds a database without the repository on
-disk.
+The engine is a set of small, single-purpose Go packages. A query flows through
+them in order; [`docs/matching.md`](docs/matching.md) documents each step.
+
+```text
+cmd/vulndb/          CLI, command dispatch, end-to-end tests
+internal/cpe/        CPE 2.2/2.3 parsing, normalisation, attribute matching
+internal/identity/   candidate identities: aliases, product names, platform CPEs, distro detection
+internal/database/   SQLite access, schema checks, candidate lookup, verify/stats, fixture import
+internal/version/    comparator interface; generic, OpenSSH, dpkg, RPM, PEP 440 comparators; range eval
+internal/matcher/    rule evaluation, per-CVE aggregation, enrichment, ordering, platform conditions
+internal/distro/     distribution advisory verdicts (release inference, dpkg/rpm comparison)
+internal/windows/    Windows build-level assessment (build evidence → release CPEs)
+internal/nmap/       Nmap XML parser and whole-scan assessment
+internal/ingest/     httpx / webanalyze adapters → scan model
+internal/output/     text and JSON rendering
+internal/build/      the builder: fetch, NVD transform, OSV distros, curated loaders, embed
+internal/bundle/     signed transport bundles (create, verify, atomic import)
+data/                curated first-party JSON, embedded via data/embed.go
+schema/schema.sql    database schema (embedded in the binary)
+```
+
+**How a single query is evaluated** (`internal/matcher`):
+
+1. **Normalise** the input to a canonical CPE 2.3 and derive its
+   part/vendor/product (`internal/cpe`).
+2. **Resolve identities** — the CPE itself plus any curated aliases, and, for a
+   scan, product-name and HTTP-app identities (`internal/identity`).
+3. **Look up candidate rules**: every `cve_match` whose part/vendor/product
+   matches, scoped by indexed columns so the read stays small
+   (`internal/database`).
+4. **Evaluate each rule's version range** with the comparator chosen for the
+   product. The engine *never turns uncertainty into a match*: anything it can't
+   decide is `UNKNOWN`, and `NO_MATCH` CVEs are dropped (`internal/version`).
+5. **Aggregate per CVE**, take the strongest status, and **enrich** with KEV,
+   exploit references, distribution verdicts and (for Windows hosts) platform
+   conditions (`internal/matcher`, `internal/distro`, `internal/windows`).
+6. **Order and render**: KEV first, then exploit evidence, then severity
+   (`internal/output`).
+
+**The database** is one SQLite file (~0.8 GB for a full build, ~385k CVEs). It
+is produced by `internal/build` from public sources and read-only at query
+time. The schema is embedded, so `db verify` can re-check every stored match
+criterion against its index columns.
+
+## Install
+
+### Release binary
+
+Download the archive for your platform, verify it, and run it. Each release
+archive contains the `vulndb` binary plus the licenses and this README, and a
+`SHA256SUMS` covers the archives.
+
+```bash
+sha256sum -c SHA256SUMS                         # verify the download
+tar xzf vulndb_v0.1.0_linux_amd64.tar.gz
+./vulndb_v0.1.0_linux_amd64/vulndb version      # vulndb v0.1.0 (linux/amd64, go1.27.1)
+```
+
+The binary is statically linked (no CGO, pure-Go SQLite) and self-contained.
+
+### Build from source
+
+Requires Go 1.27+.
 
 ```bash
 make build          # -> bin/vulndb
-make test           # go test ./...  (no network access needed)
-make venv           # Python venv for the updater (stdlib-only) + pytest
-make test-all       # Go tests + updater tests, incl. real-data end-to-end test
+make test           # go test ./...   (no network access needed)
+make test-all       # Go tests + Python updater tests (incl. a real-data end-to-end test)
+
+# release archives into dist/ (override VERSION / PLATFORMS):
+make release VERSION=v0.1.0 PLATFORMS="linux/amd64 linux/arm64 darwin/arm64 windows/amd64"
 ```
 
-## Build a real database (Internet-connected machine)
+`vulndb version` / `vulndb --version` prints the stamped version plus the
+OS/arch and Go version.
 
-```bash
-make real-db        # bin/vulndb update: fetch NVD + KEV + OSV + webappanalyzer -> ./vulndb.sqlite
-# or directly, to any path:
-bin/vulndb --db ./vulndb.sqlite update          # sources cached in ~/.cache/vulndb
-bin/vulndb --db ./vulndb.sqlite update --cache .cache/feeds   # choose the cache dir
-make real-db-python # the Python updater (NVD + KEV core), kept as the oracle
-```
+## Updating the database
 
-Package it as a signed bundle and install it in the restricted network with
-`vulndb bundle import`. The import verifies the signature, checksum, schema and
-SQLite integrity, refuses rollbacks, and replaces the database atomically. See
-[docs/deployment.md](docs/deployment.md).
-
-```bash
-make keygen                 # once: vulndb-signing.key (keep) + vulndb-signing.pub (copy to offline side)
-make bundle                 # vulndb-YYYY-MM-DD.tar.gz (835 MB database -> 140 MB)
-vulndb --db /opt/vulndb/vulndb.sqlite bundle import vulndb-2026-10-07.tar.gz --pubkey vulndb-signing.pub
-```
-- `vulndb info` shows how old the NVD data is, and warns after 7 days.
-- It also shows how many CVEs have no CPE applicability data. Since April 2026
-  NVD adds that data to only a minority of new CVEs, so recent vulnerabilities
-  are under-represented. See [`updater/README.md`](updater/README.md).
-
-## Create the synthetic fixture database
-
-For development and tests there is a small **synthetic** fixture
-(`testdata/fixtures/synthetic.json`). Its CVE IDs (`CVE-0000-*`), scores, KEV
-and exploit entries are made up so tests are deterministic. They do not
-describe real vulnerabilities, and the CLI warns whenever this data is loaded.
-
-```bash
-make fixture-db                     # creates ./vulndb.sqlite
-# or
-bin/vulndb --db ./vulndb.sqlite db init --fixture testdata/fixtures/synthetic.json
-```
-
-The database path is chosen as: `--db PATH`, else `$VULNDB_DB`, else
+The database path is chosen as `--db PATH`, else `$VULNDB_DB`, else
 `./vulndb.sqlite`.
 
-## Query a CPE
+### Build it on an Internet-connected machine
 
 ```bash
-bin/vulndb query --cpe 'cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*'
-bin/vulndb query --cpe 'cpe:/a:apache:http_server:2.4.49' --format json   # Nmap-style CPE 2.2
-bin/vulndb --debug query --cpe 'cpe:/a:openbsd:openssh:8.9p1'              # explain every rule
+vulndb --db ./vulndb.sqlite update              # fetch everything, build ./vulndb.sqlite
+make real-db                                    # same thing, caching sources in .cache/feeds
 ```
 
-Text output (abridged):
+`vulndb update` fetches, over HTTPS from an allow-list of hosts only:
+
+- **NVD CVE JSON 2.0 feeds** — every yearly feed plus the `modified` overlay,
+  each verified against the sha256 in its `.meta` sidecar;
+- the **CISA KEV** catalogue;
+- **OSV.dev** distribution exports for Ubuntu, Debian, Red Hat, Rocky and
+  AlmaLinux, each verified against its published MD5;
+- the **webappanalyzer** technology corpus, from which the technology→CPE map
+  (`http_tech`) is derived at build time.
+
+Curated first-party data (aliases, the distro package map and release
+lifecycle, Windows builds, product names, HTTP app fingerprints) is embedded in
+the binary, so nothing else is needed on the build machine.
+
+Useful flags:
+
+```bash
+vulndb update --cache DIR         # cache downloads in DIR (default: ~/.cache/vulndb);
+                                  #   unchanged feeds are not re-downloaded
+vulndb update --out FILE          # write to FILE instead of --db
+vulndb build --offline-from DIR   # build from files already downloaded into DIR (no network)
+vulndb build --no-distro          # skip distribution advisories
+vulndb build --webappanalyzer DIR # use a local webappanalyzer checkout instead of fetching
+```
+
+The build is atomic: it writes to a temporary file, runs integrity and
+completeness self-checks, and only then renames over the target — so an
+interrupted or failed build never corrupts an existing database. Downloads are
+cached per feed, so a throttled or interrupted `update` can simply be re-run and
+resumes where it left off.
+
+> **Note on NVD throttling.** NVD rate-limits its feed host aggressively; a full
+> first build can take a long time (mostly download time). This is server-side
+> and not fixable client-side; an NVD API key does not help, because the feeds
+> are static files, not the rate-limited REST API. The fetcher aborts an attempt
+> only if a download *stalls* (no bytes for a while), never because it is merely
+> slow, and re-runs resume from cache.
+
+### First-run auto-bootstrap
+
+If you run a query-facing command (`query`, `nmap`, `ingest`, `info`) and the
+**default** database does not exist yet, the binary runs `update` automatically
+to create it. Pointing `--db` at an explicit path that is missing is an error
+instead, so scripts fail loudly rather than silently downloading hundreds of MB.
+
+### Deploy into an air-gapped network
+
+Build on the connected side, sign a bundle, carry it across, and import it. The
+import verifies the Ed25519 signature, checksum, schema version and SQLite
+integrity, refuses downgrades, and replaces the database atomically.
+
+```bash
+make keygen         # once: vulndb-signing.key (keep secret) + vulndb-signing.pub (copy across)
+make bundle         # vulndb-YYYY-MM-DD.tar.gz (a ~0.8 GB database compresses to ~140 MB)
+
+# on the offline side:
+vulndb --db /opt/vulndb/vulndb.sqlite bundle import vulndb-2026-10-10.tar.gz --pubkey vulndb-signing.pub
+```
+
+See [`docs/deployment.md`](docs/deployment.md) for the full procedure.
+
+### Check freshness
+
+```bash
+vulndb info      # schema/data versions, NVD data age (warns after 7 days), KEV version, coverage
+```
+
+### A note on NVD coverage
+
+Since April 2026 NIST fully enriches only a minority of new CVEs (KEV, US
+federal-use and EO 14028 "critical software"). Many recent CVEs therefore have
+**no CPE applicability data and can never match a query**. `vulndb info` reports
+the exact share, and query output carries a warning. This is a property of the
+upstream data, surfaced honestly rather than hidden. See
+[`docs/data-sources.md`](docs/data-sources.md) for measurements.
+
+### Synthetic fixture (development only)
+
+```bash
+make fixture-db     # builds ./vulndb.sqlite from a small SYNTHETIC fixture
+```
+
+Its CVE IDs (`CVE-0000-*`), scores and KEV/exploit entries are invented so tests
+are deterministic. They are not real vulnerabilities, and the CLI warns whenever
+this data is loaded.
+
+## Usage
+
+### Query a single CPE
+
+```bash
+vulndb query --cpe 'cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*'
+vulndb query --cpe 'cpe:/a:apache:http_server:2.4.49' --format json   # Nmap-style CPE 2.2
+vulndb --debug query --cpe 'cpe:/a:openbsd:openssh:8.9p1'             # explain every rule, on stderr
+```
 
 ```text
 Product:             apache http_server
@@ -158,111 +275,57 @@ Version:             2.4.49
 Normalized CPE:      cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*
 Identity confidence: EXACT
 
-Candidate vulnerabilities: 4 version match, 1 undetermined
+Candidate vulnerabilities: 88 version match, 0 undetermined
 
-CVE-0000-0001    CRITICAL  CVSS 9.8 (v3)
-  Public exploit: YES (exploit-db, metasploit)
-  CISA KEV:       YES (added 2021-11-03)
+CVE-2021-41773   CRITICAL  CVSS 9.8 (v3)
+  Public exploit: YES (nvd-reference; unverified)
+  CISA KEV:       YES (added 2021-11-03; known ransomware use)
   Version status: MATCH
   Confidence:     EXACT
   Match reason:   Exact supplied CPE matched vulnerability criteria
-                  cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:* and detected version 2.4.49 is within
-                  affected range (>= 2.4.49, < 2.4.51).
+                  cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:* and detected version 2.4.49
+                  equals affected version 2.4.49.
 ...
-Undetermined (version applicability UNKNOWN; review manually):
-
-CVE-0000-0006    MEDIUM    CVSS 4.3 (v3)
-  ...
-  Match reason:   ... applicability could not be determined: criteria requires target_hw "x64"
-                  but supplied CPE does not specify it; ...
 ```
 
-JSON output (abridged). `output_version` changes only when the layout breaks
-compatibility:
+The JSON form (`--format json`) is a stable document — `output_version` only
+changes on a breaking layout change — carrying every field below plus CVSS
+vectors, CWEs, exploit evidence and matched rules. With `--debug` a rule-by-rule
+trace goes to stderr and the JSON gains a `rule_evaluations` array; stdout stays
+valid JSON.
 
-```json
-{
-  "output_version": "1",
-  "database": {
-    "path": "vulndb.sqlite",
-    "schema_version": "1",
-    "database_version": "fixture-1",
-    "created_at": "2026-10-06T06:06:00Z",
-    "dataset": "synthetic-fixture"
-  },
-  "result": {
-    "input": "cpe:/a:apache:http_server:2.4.49",
-    "normalized_cpe": "cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*",
-    "part": "a", "vendor": "apache", "product": "http_server", "version": "2.4.49",
-    "identity_confidence": "EXACT",
-    "comparator": "generic",
-    "candidate_rules": 6,
-    "match_count": 4,
-    "unknown_count": 1,
-    "vulnerabilities": [
-      {
-        "cve": "CVE-0000-0001",
-        "description": "[SYNTHETIC] Path traversal in Apache HTTP Server. ...",
-        "cvss": 9.8,
-        "cvss_version": "3",
-        "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-        "cvss_v3_score": 9.8,
-        "cvss_v4_score": null,
-        "severity": "CRITICAL",
-        "cwe": "CWE-22",
-        "published_at": "2021-10-05T00:00:00Z",
-        "public_exploit": true,
-        "exploit_sources": ["exploit-db", "metasploit"],
-        "exploit_evidence": [
-          {"source": "exploit-db", "reference": "EDB-ID:00001 (synthetic)", "reference_type": "exploit", "verified": true},
-          {"source": "metasploit", "reference": "exploit/multi/http/synthetic_fixture", "reference_type": "module", "verified": true}
-        ],
-        "known_exploited": true,
-        "known_ransomware": false,
-        "kev_date_added": "2021-11-03",
-        "match_confidence": "EXACT",
-        "version_status": "MATCH",
-        "applicability": "UNCONDITIONAL",
-        "match_reason": "Exact supplied CPE matched vulnerability criteria cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:* and detected version 2.4.49 is within affected range (>= 2.4.49, < 2.4.51).",
-        "matched_rules": [
-          {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "version_range": ">= 2.4.49, < 2.4.51",
-           "status": "MATCH", "reason": "version 2.4.49 is within affected range (>= 2.4.49, < 2.4.51)"}
-        ]
-      }
-    ],
-    "warnings": [
-      "Matching is based on upstream product/version data. Distribution backported security fixes are only evaluated where a distribution verdict is shown (Ubuntu, Debian and Red Hat-family packages).",
-      "Database contains SYNTHETIC test fixture data, not real vulnerability information."
-    ]
-  }
-}
-```
+**Result fields that matter:**
 
-With `--debug`, a rule-by-rule trace goes to stderr and the JSON gains a
-`rule_evaluations` array. stdout stays valid JSON.
+- `version_status` — `MATCH` (version inside the affected range) or `UNKNOWN`
+  (could not decide: no version, unparseable version, or criteria more specific
+  than the input). `UNKNOWN` is never promoted to a match; `NO_MATCH` CVEs are
+  not returned.
+- `applicability: CONDITIONAL` — NVD says the CVE applies only with another
+  condition (typically a specific OS) that was not evaluated.
+- `identity_confidence` / `match_confidence` — `EXACT` (concrete version),
+  `HIGH` (via a curated alias), `LOW` (product only, no version).
+- `match_reason` — a human-readable explanation, always present.
 
-### Result fields that matter
-
-- `version_status`
-  - `MATCH`: the version is inside the affected range.
-  - `UNKNOWN`: the engine could not decide, e.g. no version supplied, an
-    unparseable version, or criteria more specific than the supplied CPE.
-    UNKNOWN is never turned into a match. NO_MATCH CVEs are not returned.
-- `applicability: CONDITIONAL`: NVD says the CVE applies only together with
-  another condition (typically a specific OS). That condition was not
-  evaluated.
-- `match_confidence` / `identity_confidence`
-  - `EXACT`: the supplied CPE has a concrete version.
-  - `LOW`: product only, no version.
-- `match_reason`: a human-readable explanation, always present.
-
-## Assess an Nmap scan
+For a distribution-packaged service, pass the distro and the installed package
+version to get a backport-aware verdict:
 
 ```bash
-nmap -sV -oX scan.xml 10.0.0.0/24        # -sV is required; -O adds OS guesses (shown, not assessed)
-bin/vulndb nmap scan.xml                  # compact per-host/per-port report
-bin/vulndb nmap scan.xml --format json    # full structured report
-nmap -sV -oX - 10.0.0.5 | bin/vulndb nmap -
+vulndb query --cpe cpe:/a:openbsd:openssh:9.6p1 --distro ubuntu --package-version 1:9.6p1-3ubuntu13.18
+vulndb query --cpe cpe:/a:openbsd:openssh:9.2p1 --distro debian --package-version 1:9.2p1-2+deb12u3
+vulndb query --cpe cpe:/a:openbsd:openssh:8.7p1 --distro redhat --package-version 0:8.7p1-34.el9_3
+```
+
+### Assess an Nmap scan
+
+`-sV` (service/version detection) is required. Add `-sC` (or
+`--script rdp-ntlm-info,smb-os-discovery`) to enable Windows build assessment
+and HTTP app fingerprinting.
+
+```bash
+nmap -sV -oX scan.xml 10.0.0.0/24
+vulndb nmap scan.xml                   # compact per-host/per-port report
+vulndb nmap scan.xml --format json     # full structured report
+nmap -sV -oX - 10.0.0.5 | vulndb nmap - # read from stdin
 ```
 
 ```text
@@ -277,52 +340,53 @@ Candidate vulnerabilities: 8 version matches (2 in CISA KEV, 4 with public explo
           backported security fixes without changing the upstream version, ...
     CVE-0000-0201    HIGH      CVSS 8.1  exploit:YES KEV:NO  MATCH
   443/tcp http nginx 1.20.1 (ssl)
-    Identity: cpe:2.3:a:igor_sysoev:nginx:1.20.1:*:*:*:*:*:*:* [EXACT]
     Identity: cpe:2.3:a:f5:nginx:1.20.1:*:*:*:*:*:*:* [HIGH] (curated alias)
     CVE-0000-0101    HIGH      CVSS 7.7  exploit:YES KEV:NO  MATCH  [via alias, HIGH]
   8080/tcp http Mystery httpd 1.2
     Note: No application CPE reported for "Mystery httpd 1.2"; ... not assessed.
 ```
 
-Each open port is one of:
-- `ASSESSED`: an application CPE (reported by Nmap, or from a curated product
-  name) was looked up, plus any curated aliases.
-- `OS_COMPONENT`: a Windows built-in (RPC, LDAP, SMB, RDP, …), covered by the
-  host's Windows build assessment. The text report lists these ports once per
-  host ("Windows components, covered by the build assessment above: 135/tcp
-  msrpc, 389/tcp ldap, …") instead of repeating a note for each.
-- `UNIDENTIFIED`: the service was fingerprinted but has no application CPE and
-  its name is not in the curated map.
-- `NOT_PROBED`: Nmap only guessed the service from the port number.
+Each open port is `ASSESSED`, `OS_COMPONENT` (a Windows built-in, covered by the
+build assessment), `UNIDENTIFIED` (fingerprinted but no CPE and not in the
+curated map), or `NOT_PROBED` (guessed from the port number). OS and hardware
+CPEs are listed but never queried as if they were the service.
 
-OS and hardware CPEs are listed but never queried as if they were the service.
-Windows hosts are assessed separately, at build level, when the scan includes
-`rdp-ntlm-info` or `smb-os-discovery` output (`nmap -sV -sC`):
+Windows hosts are assessed at build level when the scan includes NTLM/SMB OS
+evidence:
 
 ```text
 192.0.2.10 (dc01.example.test)
   Windows: Windows Server 2022 (build 10.0.20348) [HIGH]
     Evidence: rdp-ntlm-info on 3389/tcp Product_Version 10.0.20348
-    Server release because: Microsoft Windows Kerberos on 88/tcp (domain controllers run Windows Server)
     Support: mainstream support until 2026-10-13; extended support until 2031-10-14
-    3957 CVEs apply unless patched: 107 in CISA KEV, 29 with public exploit evidence, 129 critical; 11 undetermined
-    KEV, most recently added first:
+    3957 CVEs apply unless patched: 107 in CISA KEV, 29 with public exploit evidence, 129 critical
     CVE-2026-85880   HIGH      CVSS 7.8  KEV added 2026-09-08
-    CVE-2026-33824   CRITICAL  CVSS 9.8  KEV added 2026-08-18
     ...
 ```
 
-The patch level (the update revision) is not visible to an unauthenticated
-scan, so these are the release's CVEs that apply *unless patched*, not
-findings. When a build is shared (14393 is Windows Server 2016 and Windows 10
-1607) and nothing on the host tells them apart, both are listed with `MEDIUM`
-confidence.
+The patch level is invisible to an unauthenticated scan, so these are the
+release's CVEs that apply *unless patched*, not findings.
 
-Flags on a CVE line mark results to review: `CONDITIONAL` (another condition,
-such as a specific OS, was not evaluated), `ransomware` (known use per KEV), and
-`via alias` (found only through a curated alias identity).
+#### Distribution-packaged hosts
 
-### Inline in Nmap (NSE)
+For a distro-packaged service, candidate CVEs are checked against the
+distribution's own advisory data. Example from a real Ubuntu 24.04 host
+(`OpenSSH 9.6p1 Ubuntu 3ubuntu13.18`):
+
+```text
+  22/tcp ssh OpenSSH 9.6p1 Ubuntu 3ubuntu13.18
+    Distribution: Ubuntu: RESOLVED (openssh 24.04, installed 1:9.6p1-3ubuntu13.18)
+    CVE-2026-73282   MEDIUM    CVSS 4.8  exploit:NO  KEV:NO  MATCH  [Ubuntu: VULNERABLE]
+    + 16 fixed in the Ubuntu package: CVE-2024-6387, CVE-2026-60002, ...
+```
+
+Upstream matching alone reported 22 CVEs; Ubuntu's data shows 16 of them fixed
+in the installed package. Debian works the same way (a revision like `2+deb12u3`
+pins the release). Red Hat-family hosts have no visible package release, so
+verdicts are by upstream version (`FIXED` / `FIX_AVAILABLE` / `VULNERABLE`), with
+AppStream module streams judged per stream.
+
+#### Inline in Nmap (NSE)
 
 ```bash
 nmap -sV --script /opt/vulndb/vulndb.nse \
@@ -336,170 +400,127 @@ nmap -sV --script /opt/vulndb/vulndb.nse \
 |   Distribution: Ubuntu 24.04 installed 1:9.6p1-3ubuntu13.18; 16 more fixed in the package
 |   CVE-2023-51767   HIGH      CVSS 7.0
 |   CVE-2026-73282   MEDIUM    CVSS 4.8  Ubuntu: VULNERABLE
-|   ...
 ```
 
-How it works:
-- The script is a thin adapter. Per port, it writes the service fingerprint
-  and the host's other open ports (for distribution evidence) to a temporary
-  file, runs `vulndb nse --request FILE`, and prints the answer.
-- Target-controlled banner text never appears on a command line.
-- Each port takes about 12 ms.
-- With `-oX`, the results are also stored as structured `<elem>` data.
+The script is a thin adapter: per port it writes the fingerprint and the host's
+other open ports to a temp file, runs `vulndb nse --request FILE`, and prints the
+answer. Target-controlled banner text never reaches a command line. Script args:
+`vulndb.bin`, `vulndb.db`, `vulndb.max` (CVEs per port, default 10),
+`vulndb.mincvss`, `vulndb.showall`. Unix-like systems only.
 
-Script arguments:
-- `vulndb.bin`, `vulndb.db`: paths to the binary and database;
-- `vulndb.max` (default 10): CVEs listed per port;
-- `vulndb.mincvss`: hide lower-scored CVEs;
-- `vulndb.showall`: also list undetermined CVEs and ones fixed in the
-  distribution package.
+### Ingest web fingerprints (httpx / webanalyze)
 
-Ports with nothing to report print nothing. Configuration errors (wrong binary
-or database path) are always shown. Unix-like systems only.
+Web applications sit behind a web server, so a port-and-banner scan usually sees
+only the server. A web fingerprinter identifies the apps; `vulndb ingest` maps
+each detected technology to a CPE (via the curated `http_tech` map) and assesses
+it like any other identity.
 
-### Distribution-packaged hosts
+**httpx** — run with tech detection and JSON output, then ingest:
 
-A real scan of an Ubuntu 24.04 machine (`OpenSSH 9.6p1 Ubuntu 3ubuntu13.18`):
+```bash
+httpx -l hosts.txt -td -json -o httpx.jsonl     # -td = tech detect, -json = one object per line
+vulndb ingest --from httpx httpx.jsonl
+# or stream it straight through:
+httpx -l hosts.txt -td -json | vulndb ingest --from httpx -
+```
+
+Each httpx line looks like
+`{"input":"blog.test","host":"192.0.2.80","port":"443","scheme":"https","tech":["WordPress","PHP:8.2.7"]}`
+(a `Name:version` entry carries a version). The report:
 
 ```text
-  Distribution release (from an exact package version on this host): 24.04
-  22/tcp ssh OpenSSH 9.6p1 Ubuntu 3ubuntu13.18
-    Distribution: Ubuntu: RESOLVED (openssh 24.04, installed 1:9.6p1-3ubuntu13.18) - ...
-    CVE-2026-73282   MEDIUM    CVSS 4.8  exploit:NO  KEV:NO  MATCH  [Ubuntu: VULNERABLE]
+192.0.2.80 (blog.test)
+  443/tcp http PHP 8.2.7
+    Identity: cpe:2.3:a:php:php:8.2.7:*:*:*:*:*:*:* [EXACT]
+    CVE-0000-0940   HIGH   CVSS 7.5   MATCH
+  443/tcp http WordPress
+    Identity: cpe:2.3:a:wordpress:wordpress:*:*:*:*:*:*:*:* [LOW]
     ...
-    + 16 fixed in the Ubuntu package: CVE-2024-6387, CVE-2026-60002, ...
+Note: Identities were supplied by an HTTP fingerprint ingest; verify before acting.
+      1 technology had no CPE mapping and was skipped.
 ```
 
-Upstream matching alone reported 22 CVEs, including regreSSHion.
-- Ubuntu's data shows 16 of them fixed in the installed package.
-- Three are fixed only in the newer `3ubuntu13.19`, which `apt` on that
-  machine confirmed as the pending update.
+Versionless technologies resolve to a product-only (`LOW`) identity and are
+listed; technologies with no CPE mapping are skipped and counted. `--format json`
+gives the structured report.
 
-Debian works the same way. A revision such as `2+deb12u3` pins Debian 12 even
-when that exact version is not in the data. Debian 11 (LTS) fixes come from
-DLA advisories.
-
-Red Hat-family hosts (RHEL, Rocky Linux, AlmaLinux, CentOS):
-- **Distribution inferred per host.** Their OpenSSH banner names no
-  distribution (`OpenSSH_8.7`), so it is taken from other services on the host
-  (Apache `(Red Hat Enterprise Linux)`). It is used only if the advisory data
-  knows that upstream version, because the software might be self-built.
-- **No package release is visible,** so verdicts are `FIX_AVAILABLE`, `FIXED`
-  or `VULNERABLE` by upstream version.
-- **AppStream module streams** (nginx 1.16 / 1.18 / 1.20 on RHEL 8) are judged
-  only by their own stream's fixes.
-- **Red Hat-family advisories contain only fixes**, so there is no `NO_FIX`;
-  missing data is `NO_DATA`.
-
-Only OpenSSH on Debian/Ubuntu shows the package revision in its banner. Apache, nginx, Postfix
-and others show only "(Ubuntu)" or "(Debian)", so their verdicts are about the
-release:
-- `FIXED` when no package of that upstream version in the release is affected;
-- `FIX_AVAILABLE` when the fix came in a later package revision, so the host is
-  patched only if it is up to date.
-
-For a single CPE, pass the distribution yourself:
+**webanalyze** — ingest its JSON output the same way:
 
 ```bash
-bin/vulndb query --cpe cpe:/a:openbsd:openssh:9.6p1 --distro ubuntu --package-version 1:9.6p1-3ubuntu13.18
-bin/vulndb query --cpe cpe:/a:openbsd:openssh:9.2p1 --distro debian --package-version 1:9.2p1-2+deb12u3
-bin/vulndb query --cpe cpe:/a:openbsd:openssh:8.7p1 --distro redhat --package-version 0:8.7p1-34.el9_3
+webanalyze -hosts hosts.txt -output json > webanalyze.json
+vulndb ingest --from webanalyze webanalyze.json
 ```
 
-## Utility commands
+### Utility commands
 
 ```bash
-bin/vulndb info        # versions, NVD data age, KEV version, coverage; warns if stale or synthetic
-bin/vulndb db verify   # SQLite integrity, foreign keys, criteria re-parse vs index columns
-bin/vulndb db stats    # row counts and file size
-bin/vulndb bundle keygen|create|verify|import   # signed transport bundles (docs/deployment.md)
+vulndb info      # versions, NVD data age, KEV version, coverage; warns if stale or synthetic
+vulndb db verify # SQLite integrity, foreign keys, every criterion re-parsed vs its index columns
+vulndb db stats  # row counts and file size
+vulndb bundle keygen|create|verify|import   # signed transport bundles (docs/deployment.md)
+vulndb version   # version, OS/arch, Go version
 ```
 
-Exit codes: `0` success (including "no results"), `1` runtime error (missing
+**Exit codes:** `0` success (including "no results"); `1` runtime error (missing
 or corrupt database, incompatible schema, malformed CPE, insufficient identity,
-failed verify), `2` usage error (unknown command or flag, unsupported
-`--format`).
+failed verify); `2` usage error (unknown command/flag, unsupported `--format`).
 
 ## Current limitations
 
-- Services are assessed only through the CPEs Nmap reports. A service with a
-  product name but no CPE is reported as `UNIDENTIFIED` (product-name
-  resolution is planned).
-- Aliases cover 74 hand-reviewed Nmap identities. Others that NVD records under
-  a different vendor are missed until reviewed (`vulndb-update review-aliases`
-  lists candidates).
-- Version comparison: OpenSSH has its own comparator; everything else uses a
-  conservative generic one. Distro (`-1ubuntu1`), RPM, PEP 440 and similar
-  schemes give UNKNOWN.
-- AND/negated NVD configurations are flagged, not evaluated, because one CPE
-  can't satisfy several conditions. The exception is "running on" platform
-  conditions on Windows hosts whose build was assessed; Linux hosts' platform
-  conditions are not evaluated yet.
-- Distro backports are not evaluated (see above).
-- NVD is currently the only applicability source, and it covers only part of
-  recent CVEs (see above). An empty result is not evidence of no vulnerability.
-- Exploit evidence is limited to references NVD tagged `Exploit`, and none of it
-  is verified.
-- Releases past end of life are flagged (`data/distro_releases.json`): their
-  distributions no longer publish advisory data. Example: Debian 11, whose LTS
-  ended 2026-08-31.
-- Windows hosts are assessed per build, not per patch level. An
-  unauthenticated scan cannot see installed updates, so the result is the
-  release's exposure ("applies unless patched"), not a vulnerability finding.
-  It needs `-sC` (or `--script rdp-ntlm-info,smb-os-discovery`) and works in
-  `vulndb nmap` only, not in the NSE adapter. Windows services themselves
-  (SMB, RDP, LDAP) are still `UNIDENTIFIED`.
-- Debian 11 (LTS) verdicts exist only for CVEs with a DLA/DSA advisory.
-  Debian's per-CVE data barely covers LTS, so most other CVEs are `NO_DATA`
-  there. On a real bookworm OpenSSH, 26 upstream matches split into FIXED,
-  VULNERABLE and NO_FIX; on bullseye, 24 of 28 are `NO_DATA`.
-- Components that NVD attributes to an operating system are invisible to a
-  product CPE. For example, IIS vulnerabilities since about 2017 are listed
-  against Windows CPEs, so `cpe:/a:microsoft:internet_information_services:10.0`
-  finds none of them.
-- Products with enormous rule sets are slower. A `linux_kernel` 5.15 query
-  reads 53k of the kernel's 163k rules and takes about 0.7 s, versus 4–13 ms
-  for typical services.
-- NVD itself contains a handful of malformed criteria (e.g. unescaped
-  parentheses in Cisco IOS versions). They are skipped and counted in
+- **Coverage.** NVD is the only applicability source and covers only part of
+  recent CVEs (see above). An empty result is not evidence of "no vulnerability".
+- **Version comparison.** OpenSSH, dpkg, RPM and PEP 440 have dedicated
+  comparators; other schemes use a conservative generic comparator and give
+  `UNKNOWN` rather than guessing.
+- **NVD configurations.** AND/negated configurations are flagged, not evaluated
+  (one CPE can't satisfy several conditions). The exception is "running on"
+  platform conditions on Windows hosts whose build was assessed; Linux hosts'
+  platform conditions are not evaluated yet.
+- **Distro scope.** Backport-aware verdicts cover Ubuntu, Debian, RHEL, Rocky,
+  AlmaLinux and CentOS only, and only as far as the scan reveals the installed
+  package. Only OpenSSH on Debian/Ubuntu exposes its package revision in the
+  banner; other services show just "(Ubuntu)"/"(Debian)", so their verdicts are
+  about the release. End-of-life releases (e.g. Debian 11) no longer publish
+  advisory data and are flagged.
+- **Windows.** Assessed per build, not per patch level — the result is the
+  release's exposure ("applies unless patched"), not a finding. Needs `-sC` and
+  works in `vulndb nmap` only, not the NSE adapter. Windows services themselves
+  (SMB, RDP, LDAP) are reported as OS components, not assessed individually.
+- **OS-attributed components.** Vulnerabilities NVD files against an OS CPE are
+  invisible to a product CPE (e.g. recent IIS CVEs are listed against Windows,
+  so `cpe:/a:microsoft:internet_information_services:10.0` finds none).
+- **Exploit evidence** is limited to references NVD tagged `Exploit`, and none of
+  it is verified.
+- **Large rule sets** are slower: a `linux_kernel` query reads tens of thousands
+  of rules (~0.7 s) versus a few ms for typical services.
+- **Upstream data quirks.** A handful of NVD criteria are malformed (e.g.
+  unescaped parentheses in Cisco IOS versions); they are skipped and counted in
   `nvd_rules_skipped`.
 
-## Layout
+## Acknowledgements — third-party data sources
 
-```text
-cmd/vulndb/          CLI and end-to-end tests
-internal/cpe/        CPE 2.2/2.3 parsing, normalisation, attribute matching
-internal/version/    comparator interface, generic comparator, range evaluation
-internal/database/   SQLite access, schema checks, verify/stats, fixture import
-internal/identity/   candidate identities: aliases, platform CPEs, distro detection
-internal/distro/     distribution advisory verdicts (release inference, dpkg comparison)
-internal/matcher/    rule evaluation, per-CVE aggregation, enrichment, ordering
-internal/nmap/       Nmap XML parser and scan assessment
-internal/windows/    Windows build-level assessment (build evidence -> release CPEs)
-internal/output/     text and JSON rendering
-internal/bundle/     signed transport bundles (create, verify, atomic import)
-data/                curated first-party data, embedded in the binary (data/embed.go)
-data/aliases.json    curated vendor/product aliases (loaded into the database)
-data/distro_packages.json  curated CPE -> distribution source package map
-data/distro_releases.json  curated distribution release lifecycle (end of life)
-data/windows_builds.json   curated Windows build -> release, NVD CPEs, lifecycle
-data/product_names.json    curated Nmap product names (no CPE) -> NVD identity or OS component
-data/http_apps.json        curated HTTP fingerprints (Server/generator/header/title) -> web-app CPE
-data/http_tech.json        web-fingerprinter tech name -> CPE for `vulndb ingest`; NOT embedded,
-                           GPL-3.0-derived and gitignored, built from the webappanalyzer corpus
-scripts/gen_http_tech.py   regenerates data/http_tech.json from a webappanalyzer checkout
-schema/schema.sql    database schema (embedded in the binary)
-updater/             Python updater: porting oracle + curation (review-aliases, review-products)
-testdata/fixtures/   synthetic test data
-testdata/nvd/        real NVD/KEV records for updater and end-to-end tests
-testdata/contract/   shared Go/Python vectors (CPE canonicalisation, RPM ordering, version keys)
-testdata/nmap/       a real Nmap scan and hand-written multi-host samples
-testdata/osv/        real Ubuntu, Debian, Red Hat, Rocky and AlmaLinux OSV advisory records
-docs/matching.md     matching semantics
-docs/data-sources.md source coverage measurements and decisions
-docs/deployment.md   build -> signed bundle -> offline import
-nse/vulndb.nse       Nmap script adapter (nmap -sV --script vulndb)
-```
+Offline VulnDB is a correlation layer over public vulnerability data. All of the
+following is **fetched at build/update time** and is **not** redistributed in
+this source tree. With gratitude to the maintainers of these datasets:
+
+| Source | Used for | License / terms |
+|---|---|---|
+| [**NVD** CVE JSON 2.0 feeds](https://nvd.nist.gov/vuln/data-feeds) (NIST) | CVEs, CPE applicability, CVSS, CWE, exploit references | U.S. Government work — public domain |
+| [**CISA KEV** catalogue](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known-exploited / ransomware flags | U.S. Government work — public domain |
+| [**OSV.dev**](https://osv.dev) distribution exports (Ubuntu, Debian, Red Hat, Rocky, AlmaLinux) | Distribution backport / fix verdicts | Each advisory under its upstream distribution's license |
+| [**webappanalyzer**](https://github.com/enthec/webappanalyzer) | Web technology → CPE map (`http_tech`), for `vulndb ingest` | **GPL-3.0** — the derived map is generated at build time and is **not** shipped in this repo (gitignored) |
+| [**Nmap**](https://nmap.org) service-probe database | `review-products` candidate proposals (curation only) | Read from the local Nmap install; not redistributed |
+
+These tools pair naturally with Offline VulnDB and are acknowledged with thanks:
+[Nmap](https://nmap.org) (service/version detection and the NSE adapter),
+[httpx](https://github.com/projectdiscovery/httpx) and
+[webanalyze](https://github.com/rverton/webanalyze) (web fingerprinting feeding
+`vulndb ingest`).
+
+The curated first-party data in `data/` (aliases, the distro package map and
+release lifecycle, Windows builds, product names, HTTP app fingerprints) is part
+of this project and embedded in the binary. See [NOTICE](NOTICE) for the
+authoritative attribution.
 
 ## License
 
@@ -511,8 +532,9 @@ Dual-licensed under either of
 at your option. Unless you state otherwise, any contribution you submit for
 inclusion is dual-licensed as above, without additional terms.
 
-Vulnerability and fingerprint **data** is fetched at build/update time under
-its own license and is not part of this source tree — see [NOTICE](NOTICE).
-In particular the web technology → CPE map is derived from the GPL-3.0
-[webappanalyzer](https://github.com/enthec/webappanalyzer) corpus by
-`scripts/gen_http_tech.py`.
+Vulnerability and fingerprint **data** is fetched under its own license and is
+not part of this source tree — see [NOTICE](NOTICE) and
+[Acknowledgements](#acknowledgements--third-party-data-sources). In particular,
+the web technology → CPE map is derived from the GPL-3.0
+[webappanalyzer](https://github.com/enthec/webappanalyzer) corpus and is
+generated at build time, never committed.
