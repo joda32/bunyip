@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"offline-vulndb/internal/cpe"
-	"offline-vulndb/internal/database"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/cpe"
+	"bunyip/internal/database"
+	"bunyip/internal/version"
 )
 
 const fixturePath = "../../testdata/fixtures/synthetic.json"

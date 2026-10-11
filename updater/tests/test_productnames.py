@@ -3,7 +3,7 @@ import sqlite3
 
 import pytest
 
-from vulndb_update import productnames
+from bunyip_update import productnames
 from conftest import REPO, SCHEMA
 
 

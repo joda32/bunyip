@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"offline-vulndb/internal/cpe"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/cpe"
+	"bunyip/internal/version"
 )
 
 // Distribution security advisories from OSV.dev ecosystem exports, ported from

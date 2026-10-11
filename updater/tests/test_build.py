@@ -3,7 +3,7 @@ import sqlite3
 import pytest
 
 from conftest import OVERLAY_DESCRIPTION, SCHEMA, make_sources
-from vulndb_update import build, fetch
+from bunyip_update import build, fetch
 
 QUIET = lambda *a, **k: None  # noqa: E731
 

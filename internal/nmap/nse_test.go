@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"offline-vulndb/internal/database"
-	"offline-vulndb/internal/matcher"
+	"bunyip/internal/database"
+	"bunyip/internal/matcher"
 )
 
 func fixtureEngine(t *testing.T) *matcher.Engine {

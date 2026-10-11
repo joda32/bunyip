@@ -1,5 +1,5 @@
 {
-  "comment": "Shared Go/Python contract: CPE 2.3 match criteria -> canonical part/vendor/product used for the cve_matches lookup columns. Both internal/cpe (Go) and updater/src/vulndb_update/cpe.py (Python) must agree with every vector. error=true means the criteria must be rejected.",
+  "comment": "Shared Go/Python contract: CPE 2.3 match criteria -> canonical part/vendor/product used for the cve_matches lookup columns. Both internal/cpe (Go) and updater/src/bunyip_update/cpe.py (Python) must agree with every vector. error=true means the criteria must be rejected.",
   "vectors": [
     {"criteria": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*", "part": "a", "vendor": "apache", "product": "http_server"},
     {"criteria": "cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*", "part": "a", "vendor": "apache", "product": "http_server"},

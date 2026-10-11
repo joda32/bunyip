@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from vulndb_update.jsonstream import ArrayStream, StreamError
+from bunyip_update.jsonstream import ArrayStream, StreamError
 
 TRICKY = [
     {"s": "contains ] and , and } and { and \"quotes\" and \\ backslash"},

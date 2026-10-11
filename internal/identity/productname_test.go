@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"offline-vulndb/internal/database"
+	"bunyip/internal/database"
 )
 
 var testNames = []database.ProductName{

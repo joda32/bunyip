@@ -8,7 +8,7 @@ from pathlib import Path
 from . import (__version__, aliases, build, epss, exploits, fetch, httpapps, httptech, kev, jsonstream, osv,
                productnames, windows)
 
-# src/vulndb_update/cli.py -> repository root is three levels up.
+# src/bunyip_update/cli.py -> repository root is three levels up.
 _REPO = Path(__file__).resolve().parents[3]
 _REPO_SCHEMA = _REPO / "schema" / "schema.sql"
 _REPO_ALIASES = _REPO / "data" / "aliases.json"

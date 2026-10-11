@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"strings"
 
-	"offline-vulndb/internal/cpe"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/cpe"
+	"bunyip/internal/version"
 )
 
 const (

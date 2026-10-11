@@ -35,7 +35,7 @@ FIRST_FEED_YEAR = 2002  # the 2002 feed also holds 1999-2001 CVEs
 MAX_DOWNLOAD_BYTES = 1 << 30
 TIMEOUT_SECONDS = 120
 RETRIES = 4
-USER_AGENT = f"offline-vulndb-updater/{__version__}"
+USER_AGENT = f"bunyip-updater/{__version__}"
 
 
 class FetchError(RuntimeError):

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"offline-vulndb/internal/cpe"
-	"offline-vulndb/internal/database"
+	"bunyip/internal/cpe"
+	"bunyip/internal/database"
 )
 
 var testAliases = []database.Alias{

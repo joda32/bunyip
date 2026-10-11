@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"offline-vulndb/internal/nmap"
+	"bunyip/internal/nmap"
 )
 
 func TestOSComponentsListedOnce(t *testing.T) {

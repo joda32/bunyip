@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"offline-vulndb/internal/distro"
-	"offline-vulndb/internal/identity"
-	"offline-vulndb/internal/matcher"
-	"offline-vulndb/internal/windows"
+	"bunyip/internal/distro"
+	"bunyip/internal/identity"
+	"bunyip/internal/matcher"
+	"bunyip/internal/windows"
 )
 
 func TestParseScripts(t *testing.T) {

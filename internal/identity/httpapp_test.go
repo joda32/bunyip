@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"offline-vulndb/internal/database"
+	"bunyip/internal/database"
 )
 
 var testHTTPApps = []database.HTTPApp{

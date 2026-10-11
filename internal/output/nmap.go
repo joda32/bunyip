@@ -7,11 +7,11 @@ import (
 	"slices"
 	"strings"
 
-	"offline-vulndb/internal/distro"
-	"offline-vulndb/internal/matcher"
-	"offline-vulndb/internal/nmap"
-	"offline-vulndb/internal/version"
-	"offline-vulndb/internal/windows"
+	"bunyip/internal/distro"
+	"bunyip/internal/matcher"
+	"bunyip/internal/nmap"
+	"bunyip/internal/version"
+	"bunyip/internal/windows"
 )
 
 type nmapDocument struct {

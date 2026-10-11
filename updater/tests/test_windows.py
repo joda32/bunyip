@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from vulndb_update import windows
+from bunyip_update import windows
 from conftest import REPO
 
 

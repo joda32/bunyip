@@ -7,7 +7,7 @@ import (
 )
 
 // TestRPMContractVectors checks the vectors shared with the Python updater
-// (updater/src/vulndb_update/rpmversion.py).
+// (updater/src/bunyip_update/rpmversion.py).
 func TestRPMContractVectors(t *testing.T) {
 	data, err := os.ReadFile("../../testdata/contract/rpm_vectors.json")
 	if err != nil {

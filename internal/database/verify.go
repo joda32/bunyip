@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"offline-vulndb/internal/cpe"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/cpe"
+	"bunyip/internal/version"
 )
 
 // CheckStatus is the outcome of one verification check.

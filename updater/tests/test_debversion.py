@@ -1,6 +1,6 @@
 import pytest
 
-from vulndb_update import debversion
+from bunyip_update import debversion
 
 # Same vectors as internal/version/dpkg_test.go (dpkg's own suite + real versions).
 VECTORS = [

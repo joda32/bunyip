@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"offline-vulndb/internal/database"
+	"bunyip/internal/database"
 )
 
 func testMap() TechMap {

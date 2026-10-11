@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 
 from conftest import REPO, SCHEMA
-from vulndb_update import aliases, build, fetch
+from bunyip_update import aliases, build, fetch
 
 REAL = REPO / "data" / "aliases.json"
 

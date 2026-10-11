@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"offline-vulndb/internal/database"
+	"bunyip/internal/database"
 
 	_ "modernc.org/sqlite"
 )

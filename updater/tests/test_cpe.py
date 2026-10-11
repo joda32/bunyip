@@ -3,7 +3,7 @@ import json
 import pytest
 
 from conftest import REPO
-from vulndb_update import cpe
+from bunyip_update import cpe
 
 VECTORS = json.loads((REPO / "testdata" / "contract" / "cpe_vectors.json").read_text())["vectors"]
 

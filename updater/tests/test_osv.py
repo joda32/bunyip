@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from conftest import OSV_DEBIAN, OSV_UBUNTU, REPO, SCHEMA, write_osv_export
-from vulndb_update import build, fetch, osv
+from bunyip_update import build, fetch, osv
 
 UBUNTU = osv.DISTROS["ubuntu"]
 MAPPED = {"openssh", "apache2"}

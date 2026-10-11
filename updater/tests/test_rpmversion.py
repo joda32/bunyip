@@ -3,7 +3,7 @@ import json
 import pytest
 
 from conftest import REPO
-from vulndb_update import rpmversion
+from bunyip_update import rpmversion
 
 VECTORS = json.loads((REPO / "testdata" / "contract" / "rpm_vectors.json").read_text())["vectors"]
 

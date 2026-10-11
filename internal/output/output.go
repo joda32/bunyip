@@ -7,9 +7,9 @@ import (
 	"io"
 	"strings"
 
-	"offline-vulndb/internal/distro"
-	"offline-vulndb/internal/matcher"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/distro"
+	"bunyip/internal/matcher"
+	"bunyip/internal/version"
 )
 
 // Format is an output format name accepted by the CLI.

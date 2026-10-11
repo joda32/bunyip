@@ -793,7 +793,7 @@ This will be critical for troubleshooting false positives and identity mappings.
 ## 25. Suggested Repository Structure
 
 ```text
-offline-vulndb/
+bunyip/
 ├── README.md
 ├── LICENSE
 ├── Makefile

@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
-	"offline-vulndb/internal/database"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/database"
+	"bunyip/internal/version"
 )
 
 // Status is a distribution advisory verdict for one CVE.

@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"offline-vulndb/internal/database"
+	"bunyip/internal/database"
 )
 
 func writeFeed(t *testing.T, dir, name string, items []string, lastMod string) {

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"offline-vulndb/internal/version"
+	"bunyip/internal/version"
 )
 
 // MatchRule is one vulnerable CPE match rule together with the structure of

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"offline-vulndb/schema"
+	"bunyip/schema"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver ("sqlite")
 )

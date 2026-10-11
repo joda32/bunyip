@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	curated "offline-vulndb/data"
-	"offline-vulndb/internal/cpe"
+	curated "bunyip/data"
+	"bunyip/internal/cpe"
 )
 
 // Curated first-party data loaders (aliases, windows builds, product names,

@@ -3,7 +3,7 @@ import json
 import pytest
 
 from conftest import KEV_FILE, NVD_DATA
-from vulndb_update import kev
+from bunyip_update import kev
 
 
 def test_load_real_trimmed_catalogue():

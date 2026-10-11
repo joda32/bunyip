@@ -8,9 +8,9 @@ import (
 	"io"
 	"strings"
 
-	"offline-vulndb/internal/distro"
-	"offline-vulndb/internal/matcher"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/distro"
+	"bunyip/internal/matcher"
+	"bunyip/internal/version"
 )
 
 // NSE support: nse/bunyip.nse writes one request per port (with the host's

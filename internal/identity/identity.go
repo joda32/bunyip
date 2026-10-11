@@ -21,9 +21,9 @@ import (
 	"regexp"
 	"strings"
 
-	"offline-vulndb/internal/cpe"
-	"offline-vulndb/internal/database"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/cpe"
+	"bunyip/internal/database"
+	"bunyip/internal/version"
 )
 
 // Confidence classifies how certain a software identity is.

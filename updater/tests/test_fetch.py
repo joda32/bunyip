@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 
 from conftest import write_feed
-from vulndb_update import fetch
+from bunyip_update import fetch
 
 REAL_META = ("lastModifiedDate:2026-10-06T01:00:06-04:00\r\nsize:51550134\r\nzipSize:4556862\r\n"
              "gzSize:4556718\r\nsha256:C4F6E366515C9F5D10458CACC26C6F756556298BC356C4BCBA76A1DB6A163E8F\r\n")

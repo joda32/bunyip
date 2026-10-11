@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"offline-vulndb/internal/matcher"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/matcher"
+	"bunyip/internal/version"
 )
 
 func sampleResult() *matcher.Result {

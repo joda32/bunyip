@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"offline-vulndb/internal/distro"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/distro"
+	"bunyip/internal/version"
 )
 
 func f64(v float64) *float64 { return &v }

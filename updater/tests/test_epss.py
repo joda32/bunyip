@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 
 from conftest import SCHEMA
-from vulndb_update import build, epss, fetch
+from bunyip_update import build, epss, fetch
 
 SAMPLE = (
     "#model_version:v2025.03.14,score_date:2026-10-10T00:00:00+0000\n"

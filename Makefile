@@ -59,7 +59,7 @@ real-db: build
 # The Python updater builds the same core tables and is kept as the porting
 # oracle and for its curation commands (review-aliases, review-products).
 real-db-python:
-	$(PYTHON) -m vulndb_update build --out $(DB) --cache .cache/feeds
+	$(PYTHON) -m bunyip_update build --out $(DB) --cache .cache/feeds
 
 # Signing key for transport bundles (once; keep the private key on the build machine).
 KEY ?= bunyip-signing.key

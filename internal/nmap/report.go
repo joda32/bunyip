@@ -6,11 +6,11 @@ import (
 	"slices"
 	"strings"
 
-	"offline-vulndb/internal/distro"
-	"offline-vulndb/internal/identity"
-	"offline-vulndb/internal/matcher"
-	"offline-vulndb/internal/version"
-	"offline-vulndb/internal/windows"
+	"bunyip/internal/distro"
+	"bunyip/internal/identity"
+	"bunyip/internal/matcher"
+	"bunyip/internal/version"
+	"bunyip/internal/windows"
 )
 
 // Assessment says what happened to an open port.

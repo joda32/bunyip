@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"offline-vulndb/internal/database"
+	"bunyip/internal/database"
 
 	_ "modernc.org/sqlite"
 )
@@ -222,7 +222,7 @@ func TestMaliciousAndBrokenBundles(t *testing.T) {
 		"missing database":        {{name: manifestName, data: manifest}, {name: sigName, data: sig}},
 		"truncated database":      {{name: manifestName, data: manifest}, {name: sigName, data: sig}, {name: dbName, data: dbBytes[:len(dbBytes)/2]}},
 		"not json manifest":       {{name: manifestName, data: []byte("<xml/>")}, {name: sigName, data: sig}, {name: dbName, data: dbBytes}},
-		"unknown manifest fields": {{name: manifestName, data: []byte(`{"format":"offline-vulndb-bundle","format_version":1,"x":1}`)}},
+		"unknown manifest fields": {{name: manifestName, data: []byte(`{"format":"bunyip-bundle","format_version":1,"x":1}`)}},
 	}
 	target := filepath.Join(dir, "installed", "bunyip.sqlite")
 	os.Mkdir(filepath.Dir(target), 0o755)

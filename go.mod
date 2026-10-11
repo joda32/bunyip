@@ -1,4 +1,4 @@
-module offline-vulndb
+module bunyip
 
 go 1.27.1
 

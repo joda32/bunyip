@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from conftest import OVERLAY_DESCRIPTION, REPO
-from vulndb_update import cli
+from bunyip_update import cli
 
 
 def find_go():

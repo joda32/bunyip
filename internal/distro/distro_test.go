@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"offline-vulndb/internal/database"
+	"bunyip/internal/database"
 )
 
 // fakeStore holds rows copied from the real Ubuntu OSV records in

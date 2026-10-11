@@ -23,11 +23,11 @@ import (
 	"sort"
 	"strings"
 
-	"offline-vulndb/internal/cpe"
-	"offline-vulndb/internal/database"
-	"offline-vulndb/internal/distro"
-	"offline-vulndb/internal/identity"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/cpe"
+	"bunyip/internal/database"
+	"bunyip/internal/distro"
+	"bunyip/internal/identity"
+	"bunyip/internal/version"
 )
 
 // Confidence is the identity confidence attached to results.

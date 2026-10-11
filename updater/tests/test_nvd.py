@@ -1,5 +1,5 @@
 from conftest import record
-from vulndb_update import nvd
+from bunyip_update import nvd
 
 
 def rules(rec):

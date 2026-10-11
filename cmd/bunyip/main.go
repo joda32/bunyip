@@ -17,15 +17,15 @@ import (
 	"strings"
 	"time"
 
-	"offline-vulndb/internal/build"
-	"offline-vulndb/internal/bundle"
-	"offline-vulndb/internal/database"
-	"offline-vulndb/internal/identity"
-	"offline-vulndb/internal/ingest"
-	"offline-vulndb/internal/matcher"
-	"offline-vulndb/internal/nmap"
-	"offline-vulndb/internal/output"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/build"
+	"bunyip/internal/bundle"
+	"bunyip/internal/database"
+	"bunyip/internal/identity"
+	"bunyip/internal/ingest"
+	"bunyip/internal/matcher"
+	"bunyip/internal/nmap"
+	"bunyip/internal/output"
+	"bunyip/internal/version"
 )
 
 // Exit codes.
@@ -476,7 +476,7 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 	var kev string
 	var err error
 	if *cache != "" {
-		fetcher := build.NewFetcher("offline-vulndb-builder", logf)
+		fetcher := build.NewFetcher("bunyip-builder", logf)
 		if feeds, err = fetcher.SyncNVD(*cache, build.FeedNames(time.Now().UTC().Year())); err != nil {
 			return err
 		}
@@ -575,7 +575,7 @@ func cmdBuild(ctx context.Context, g *globals, args []string, stdout, stderr io.
 			d := build.Distros[name]
 			var zipPath string
 			if *cache != "" {
-				osv := build.NewFetcher("offline-vulndb-builder", logf)
+				osv := build.NewFetcher("bunyip-builder", logf)
 				exp, ferr := osv.SyncOSV(*cache, d.Ecosystem)
 				if ferr != nil {
 					return ferr

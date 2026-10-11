@@ -16,8 +16,8 @@ import (
 	"io"
 	"strings"
 
-	"offline-vulndb/internal/database"
-	"offline-vulndb/internal/nmap"
+	"bunyip/internal/database"
+	"bunyip/internal/nmap"
 )
 
 // IngestNote is attached to every ingested report: the identities are

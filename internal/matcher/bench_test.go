@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"offline-vulndb/internal/database"
+	"bunyip/internal/database"
 )
 
 // Scale roughly comparable to NVD: ~100k CVEs and ~500k match rules, plus

@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"offline-vulndb/internal/cpe"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/cpe"
+	"bunyip/internal/version"
 )
 
 // Fixture is a small, self-contained dataset in a JSON shape that mirrors the

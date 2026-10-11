@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"offline-vulndb/internal/cpe"
-	"offline-vulndb/internal/database"
-	"offline-vulndb/internal/identity"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/cpe"
+	"bunyip/internal/database"
+	"bunyip/internal/identity"
+	"bunyip/internal/version"
 )
 
 // versionIndex is the position of the version attribute in cpe.Attributes().

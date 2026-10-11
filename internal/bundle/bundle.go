@@ -35,11 +35,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"offline-vulndb/internal/database"
+	"bunyip/internal/database"
 )
 
 const (
-	Format        = "offline-vulndb-bundle"
+	Format        = "bunyip-bundle"
 	FormatVersion = 1
 
 	manifestName = "manifest.json"

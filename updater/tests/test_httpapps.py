@@ -1,6 +1,6 @@
 import json
 import pytest
-from vulndb_update import httpapps
+from bunyip_update import httpapps
 from conftest import REPO
 
 

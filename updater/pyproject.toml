@@ -13,7 +13,7 @@ dependencies = []  # standard library only
 dev = ["pytest>=8"]
 
 [project.scripts]
-bunyip-update = "vulndb_update.cli:main"
+bunyip-update = "bunyip_update.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

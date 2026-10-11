@@ -3,8 +3,8 @@ package matcher
 import (
 	"testing"
 
-	"offline-vulndb/internal/database"
-	"offline-vulndb/internal/version"
+	"bunyip/internal/database"
+	"bunyip/internal/version"
 )
 
 // osNode builds a platform node (non-vulnerable OS rules) under OR.
