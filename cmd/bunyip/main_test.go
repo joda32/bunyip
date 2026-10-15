@@ -630,6 +630,27 @@ func TestBundleCLI(t *testing.T) {
 	}
 }
 
+func TestPullCLI(t *testing.T) {
+	db := initDB(t)
+	// The default URL is never contacted in tests; only explicit --url is used,
+	// and non-HTTPS URLs are rejected before any network access.
+	steps := []struct {
+		args []string
+		code int
+		want string
+	}{
+		{[]string{"--db", db, "pull", "--url", "http://example.test/bunyip-db.tar.gz"}, exitError, "only HTTPS"},
+		{[]string{"--db", db, "pull", "--url", "not a url"}, exitError, "only HTTPS"},
+		{[]string{"--db", db, "pull", "stray-arg"}, exitUsage, "unexpected"},
+	}
+	for _, s := range steps {
+		r := cli(s.args...)
+		if r.code != s.code || !strings.Contains(r.stdout+r.stderr, s.want) {
+			t.Errorf("%v: exit %d, want %d with %q\n%s%s", s.args, r.code, s.code, s.want, r.stdout, r.stderr)
+		}
+	}
+}
+
 func TestNSECommand(t *testing.T) {
 	db := initDB(t)
 	dir := t.TempDir()

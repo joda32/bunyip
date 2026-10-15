@@ -25,6 +25,7 @@ import (
 	"bunyip/internal/matcher"
 	"bunyip/internal/nmap"
 	"bunyip/internal/output"
+	"bunyip/internal/release"
 	"bunyip/internal/version"
 )
 
@@ -56,6 +57,8 @@ Commands:
   info                                   show database provenance and age
   update                                 fetch all sources and (re)build --db (auto-runs on first
                                          query when --db is the default and no database exists yet)
+  pull [--url URL] [--allow-downgrade]   download the latest prebuilt database from GitHub and
+                                         install it as --db (the quickest way to stay current)
   build (--cache DIR | --offline-from DIR) --out FILE
                                          build a database from fetched/cached sources (see --help)
   db init [--fixture FILE] [--force]     create a new database (optionally loading a fixture)
@@ -180,6 +183,8 @@ func runWithStdin(args []string, stdin io.Reader, stdout, stderr io.Writer) int 
 		err = cmdBuild(ctx, g, rest[1:], stdout, stderr)
 	case "update":
 		err = cmdUpdate(ctx, g, rest[1:], stdout, stderr)
+	case "pull":
+		err = cmdPull(ctx, g, rest[1:], stdout, stderr)
 	case "nse":
 		err = cmdNSE(ctx, g, rest[1:], stdout, stderr)
 	case "info":
@@ -635,6 +640,71 @@ func defaultCacheDir() string {
 	return ".bunyip-cache"
 }
 
+// cmdPull downloads the latest prebuilt database bundle published to the
+// project's GitHub releases and installs it as --db, so most users can stay
+// current without rebuilding from upstream sources. Integrity (SHA-256),
+// schema compatibility and rollback protection are enforced by the import.
+func cmdPull(ctx context.Context, g *globals, args []string, stdout, stderr io.Writer) error {
+	fs := newFlagSet("pull", stderr)
+	g.register(fs)
+	rawURL := fs.String("url", release.DefaultBundleURL, "bundle download URL (HTTPS)")
+	allowDowngrade := fs.Bool("allow-downgrade", false, "install a database older than the installed one")
+	if err := parseSub(fs, args); err != nil {
+		return err
+	}
+	dir := filepath.Dir(g.db)
+	tmp, err := os.CreateTemp(dir, "bunyip-pull-*.tar.gz")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	tmp.Close()
+	defer os.Remove(tmpPath)
+
+	log := func(format string, a ...any) { fmt.Fprintf(stderr, format+"\n", a...) }
+	if err := release.Download(ctx, *rawURL, tmpPath, log); err != nil {
+		return err
+	}
+	// The published bundles are unsigned (integrity is the manifest SHA-256 over
+	// HTTPS); rollback protection still blocks installing an older database.
+	opts := bundle.Options{AllowUnsigned: true, AllowDowngrade: *allowDowngrade}
+	res, err := bundle.Import(ctx, tmpPath, g.db, opts)
+	if err != nil {
+		return err
+	}
+	if res.Skipped {
+		fmt.Fprintf(stdout, "Already up to date; %s has the latest database. Nothing to do.\n", g.db)
+	} else {
+		fmt.Fprintf(stdout, "Installed the latest database as %s\n", g.db)
+		if res.Previous != "" {
+			fmt.Fprintf(stdout, "Previous database kept as %s\n", res.Previous)
+		}
+	}
+	writeManifest(stdout, res.Manifest)
+	return nil
+}
+
+// resolveBundle returns a local path to the bundle named by pathOrURL. When it
+// is an HTTPS URL the bundle is downloaded to a temp file; cleanup removes it.
+func resolveBundle(ctx context.Context, pathOrURL string, stderr io.Writer) (local string, cleanup func(), err error) {
+	cleanup = func() {}
+	if !strings.HasPrefix(pathOrURL, "https://") {
+		return pathOrURL, cleanup, nil
+	}
+	tmp, err := os.CreateTemp("", "bunyip-bundle-*.tar.gz")
+	if err != nil {
+		return "", cleanup, err
+	}
+	tmpPath := tmp.Name()
+	tmp.Close()
+	log := func(format string, a ...any) { fmt.Fprintf(stderr, format+"\n", a...) }
+	if err := release.Download(ctx, pathOrURL, tmpPath, log); err != nil {
+		os.Remove(tmpPath)
+		return "", cleanup, err
+	}
+	return tmpPath, func() { os.Remove(tmpPath) }, nil
+}
+
 // distroInput builds the distribution context for `query`. The package
 // version's revision (after the last '-') is what advisories compare against.
 func distroInput(name, pkgVersion string) (*matcher.DistroInput, error) {
@@ -976,6 +1046,13 @@ func cmdBundle(ctx context.Context, g *globals, args []string, stdout, stderr io
 		if err != nil {
 			return err
 		}
+		// A FILE given as an https:// URL is downloaded first (e.g. a bundle
+		// published to GitHub releases), then verified/imported from the copy.
+		local, cleanup, err := resolveBundle(ctx, file, stderr)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
 		opts := bundle.Options{AllowUnsigned: *allowUnsigned, AllowDowngrade: *allowDowngrade}
 		if *pub != "" {
 			if opts.PublicKey, err = bundle.LoadPublicKey(*pub); err != nil {
@@ -983,7 +1060,7 @@ func cmdBundle(ctx context.Context, g *globals, args []string, stdout, stderr io
 			}
 		}
 		if args[0] == "verify" {
-			m, err := bundle.Verify(file, opts)
+			m, err := bundle.Verify(local, opts)
 			if err != nil {
 				return err
 			}
@@ -991,7 +1068,7 @@ func cmdBundle(ctx context.Context, g *globals, args []string, stdout, stderr io
 			writeManifest(stdout, m)
 			return nil
 		}
-		res, err := bundle.Import(ctx, file, g.db, opts)
+		res, err := bundle.Import(ctx, local, g.db, opts)
 		if err != nil {
 			return err
 		}

@@ -170,6 +170,28 @@ OS/arch and Go version.
 The database path is chosen as `--db PATH`, else `$BUNYIP_DB`, else
 `./bunyip.sqlite`.
 
+### Update from GitHub (recommended)
+
+A fresh database is rebuilt from upstream sources **once a day** by GitHub
+Actions and published to the rolling [`db-latest`](https://github.com/joda32/bunyip/releases/tag/db-latest)
+release. Most users never need to run the full build themselves — just pull it:
+
+```bash
+bunyip pull                       # download the latest database and install it as --db
+bunyip pull --db /opt/bunyip/bunyip.sqlite
+```
+
+`pull` downloads the published bundle over HTTPS, checks its SHA-256, schema
+version and SQLite integrity, refuses to install a database older than the one
+already in place (override with `--allow-downgrade`), and replaces the database
+atomically — keeping the previous one as `<db>.previous`. If it is already
+current, it does nothing. Point it elsewhere (e.g. an internal mirror) with
+`--url URL`; the same URL form works for `bunyip bundle import <https URL>`.
+
+> The published database is rebuilt daily by [`.github/workflows/build-db.yml`](.github/workflows/build-db.yml)
+> and can be regenerated at any time. If you need to pin or reproduce a specific
+> build, or run fully offline, build it yourself as below.
+
 ### Build it on an Internet-connected machine
 
 ```bash
