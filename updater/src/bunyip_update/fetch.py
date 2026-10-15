@@ -30,7 +30,7 @@ MSF_URL = "https://raw.githubusercontent.com/rapid7/metasploit-framework/master/
 EDB_FILE = "files_exploits.csv"
 EDB_URL = "https://gitlab.com/exploit-database/exploitdb/-/raw/main/" + EDB_FILE
 ALLOWED_HOSTS = {"nvd.nist.gov", "www.cisa.gov", "osv-vulnerabilities.storage.googleapis.com",
-                 "epss.cyentia.com", "raw.githubusercontent.com", "gitlab.com"}
+                 "epss.cyentia.com", "epss.empiricalsecurity.com", "raw.githubusercontent.com", "gitlab.com"}
 FIRST_FEED_YEAR = 2002  # the 2002 feed also holds 1999-2001 CVEs
 MAX_DOWNLOAD_BYTES = 1 << 30
 TIMEOUT_SECONDS = 120

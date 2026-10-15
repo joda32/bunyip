@@ -98,7 +98,7 @@ func NewFetcher(ua string, log func(string, ...any)) *Fetcher {
 		FeedBase: nvdFeedBase,
 		KEVURL:   kevURL,
 		Allowed: map[string]bool{"nvd.nist.gov": true, "www.cisa.gov": true, "osv-vulnerabilities.storage.googleapis.com": true,
-			"raw.githubusercontent.com": true, "epss.cyentia.com": true, "gitlab.com": true},
+			"raw.githubusercontent.com": true, "epss.cyentia.com": true, "epss.empiricalsecurity.com": true, "gitlab.com": true},
 		Client:       &http.Client{Transport: tr},
 		UserAgent:    ua,
 		RetryBackoff: func(attempt int) time.Duration { return time.Duration(1<<attempt) * time.Second },
