@@ -143,8 +143,8 @@ archive contains the `bunyip` binary plus the licenses and this README, and a
 
 ```bash
 sha256sum -c SHA256SUMS                         # verify the download
-tar xzf bunyip_v0.1.0_linux_amd64.tar.gz
-./bunyip_v0.1.0_linux_amd64/bunyip version      # bunyip v0.1.0 (linux/amd64, go1.27.1)
+tar xzf bunyip_v0.3.0_linux_amd64.tar.gz
+./bunyip_v0.3.0_linux_amd64/bunyip version      # bunyip v0.3.0 (linux/amd64, go1.27.1)
 ```
 
 The binary is statically linked (no CGO, pure-Go SQLite) and self-contained.
@@ -159,7 +159,7 @@ make test           # go test ./...   (no network access needed)
 make test-all       # Go tests + Python updater tests (incl. a real-data end-to-end test)
 
 # release archives into dist/ (override VERSION / PLATFORMS):
-make release VERSION=v0.1.0 PLATFORMS="linux/amd64 linux/arm64 darwin/arm64 windows/amd64"
+make release VERSION=v0.3.0 PLATFORMS="linux/amd64 linux/arm64 darwin/arm64 windows/amd64"
 ```
 
 `bunyip version` / `bunyip --version` prints the stamped version plus the
