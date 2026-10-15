@@ -34,14 +34,15 @@ jobs:
       - name: Build the bunyip binary
         run: CGO_ENABLED=0 go build -trimpath -o bunyip ./cmd/bunyip
 
+      # --db is a global flag and must precede the subcommand.
       - name: Build the database from upstream sources
-        run: ./bunyip update --db bunyip.sqlite
+        run: ./bunyip --db bunyip.sqlite update
 
       - name: Verify the database
-        run: ./bunyip db verify --db bunyip.sqlite
+        run: ./bunyip --db bunyip.sqlite db verify
 
       - name: Package the database as a bundle
-        run: ./bunyip bundle create --db bunyip.sqlite --out bunyip-db.tar.gz
+        run: ./bunyip --db bunyip.sqlite bundle create --out bunyip-db.tar.gz
 
       - name: Checksums and release notes
         run: |
@@ -52,7 +53,7 @@ jobs:
             echo "Built: $(date -u '+%Y-%m-%d %H:%M UTC')"
             echo
             echo '```'
-            ./bunyip info --db bunyip.sqlite
+            ./bunyip --db bunyip.sqlite info
             echo '```'
             echo
             echo '```'
