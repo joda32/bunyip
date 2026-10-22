@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build-db:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180 # NVD throttles its feeds hard; the retry loop needs room
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -34,9 +34,25 @@ jobs:
       - name: Build the bunyip binary
         run: CGO_ENABLED=0 go build -trimpath -o bunyip ./cmd/bunyip
 
-      # --db is a global flag and must precede the subcommand.
+      # --db is a global flag and must precede the subcommand. NVD throttles its
+      # feeds aggressively and a download can stall; bunyip caches each completed
+      # feed and resumes on re-run, so retry the whole update against one cache
+      # dir until it completes. Each attempt skips feeds already fetched.
       - name: Build the database from upstream sources
-        run: ./bunyip --db bunyip.sqlite update
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            echo "::group::update attempt $attempt"
+            if ./bunyip --db bunyip.sqlite update --cache .feedcache; then
+              echo "::endgroup::"
+              echo "update succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "attempt $attempt failed (likely NVD throttling); cached feeds are kept, retrying in 60s"
+            sleep 60
+          done
+          echo "update did not complete after 6 attempts"
+          exit 1
 
       - name: Verify the database
         run: ./bunyip --db bunyip.sqlite db verify
