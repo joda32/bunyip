@@ -34,10 +34,25 @@ jobs:
       - name: Build the bunyip binary
         run: CGO_ENABLED=0 go build -trimpath -o bunyip ./cmd/bunyip
 
-      # --db is a global flag and must precede the subcommand. NVD throttles its
-      # feeds aggressively and a download can stall; bunyip caches each completed
-      # feed and resumes on re-run, so retry the whole update against one cache
-      # dir until it completes. Each attempt skips feeds already fetched.
+      # Persist the feed cache across runs. A from-scratch build has to pull ~24
+      # yearly NVD feeds, and NVD throttles them hard; SyncNVD re-downloads a feed
+      # only when its .meta sha256 changed, so a warm cache turns a daily run into
+      # a handful of tiny .meta checks plus the feeds that actually changed
+      # (modified, the current year, EPSS/MSF/EDB on other hosts). The run_id key
+      # with a prefix restore-key gives a rolling, always-updated cache.
+      - name: Restore the feed cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .feedcache
+          key: feedcache-v1-${{ github.run_id }}
+          restore-keys: |
+            feedcache-v1-
+
+      # --db is a global flag and must precede the subcommand. A download can
+      # still stall on a cold or partly-warm cache, so retry the whole update
+      # against the one cache dir until it completes. Each attempt skips feeds
+      # already fetched, and the cache is saved even on failure (below) so partial
+      # progress carries into the next run.
       - name: Build the database from upstream sources
         run: |
           for attempt in 1 2 3 4 5 6; do
@@ -53,6 +68,16 @@ jobs:
           done
           echo "update did not complete after 6 attempts"
           exit 1
+
+      # Save even on failure so a throttled run that only fetched some feeds still
+      # advances the cache for the next run. The run_id key is always new, so the
+      # save never collides with an existing entry.
+      - name: Save the feed cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .feedcache
+          key: feedcache-v1-${{ github.run_id }}
 
       - name: Verify the database
         run: ./bunyip --db bunyip.sqlite db verify
