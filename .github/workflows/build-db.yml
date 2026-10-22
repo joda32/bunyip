@@ -48,6 +48,35 @@ jobs:
           restore-keys: |
             feedcache-v1-
 
+      # A cold cache (first run, cache eviction, a new branch) is the only case
+      # that has to warm from throttled NVD, and that is what kills the build.
+      # Instead warm the historical feeds from the feed-cache release asset over
+      # GitHub's CDN, so the update below only fetches the feeds that actually
+      # changed (current year + modified). The static years (2002..last year)
+      # never change, so a once-built seed stays valid; CI refreshes it after
+      # each successful build (below).
+      - name: Seed the feed cache from the release
+        run: |
+          mkdir -p .feedcache
+          # The seed holds every static year through last year. If last year's
+          # feed is present the static set is complete (a warm, not merely partial,
+          # cache), so there is nothing to seed. A partial cache that stopped early
+          # is missing it and gets seeded.
+          last_year=$(( $(date -u +%Y) - 1 ))
+          if [ -f ".feedcache/nvdcve-2.0-$last_year.json.gz" ]; then
+            echo "cache already holds the static feeds through $last_year; no seed needed"
+            exit 0
+          fi
+          echo "cold or partial cache; fetching the NVD feed seed from the feed-cache release"
+          if gh release download feed-cache -p nvd-feed-cache.tar -D . --clobber; then
+            # --skip-old-files keeps any fresher current-year/modified feed the
+            # cache already has; the seed only fills the gaps.
+            tar --skip-old-files -C .feedcache -xf nvd-feed-cache.tar && rm -f nvd-feed-cache.tar
+            echo "seeded $(ls .feedcache/nvdcve-2.0-*.json.gz 2>/dev/null | wc -l) NVD feeds from the release"
+          else
+            echo "no seed published yet; the update will fetch all feeds from NVD"
+          fi
+
       # --db is a global flag and must precede the subcommand. A download can
       # still stall on a cold or partly-warm cache, so retry the whole update
       # against the one cache dir until it completes. Each attempt skips feeds
@@ -81,6 +110,16 @@ jobs:
 
       - name: Verify the database
         run: ./bunyip --db bunyip.sqlite db verify
+
+      # Refresh the seed from this run's known-good feeds (only reached when the
+      # build and verify succeeded), so the next cold start is just as cheap and
+      # the current-year feed in the seed stays current.
+      - name: Refresh the feed cache seed
+        run: |
+          tar -C .feedcache -cf nvd-feed-cache.tar \
+            $(cd .feedcache && ls nvdcve-2.0-*.json.gz nvdcve-2.0-*.meta)
+          gh release upload feed-cache nvd-feed-cache.tar --clobber
+          rm -f nvd-feed-cache.tar
 
       - name: Package the database as a bundle
         run: ./bunyip --db bunyip.sqlite bundle create --out bunyip-db.tar.gz
